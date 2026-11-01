@@ -24,7 +24,7 @@ from Soyjak, one piece at a time, each as a separate, confirmed step.
 | Governance | `governorReader.js` | Yes |
 | Prices and NFT data | `tokenPrice.js`, `nftMarket.js`, `cryptoPricing.js` | Yes |
 | Yield data and risk | `yieldRates.js`, `yieldRiskRules.js`, `yieldRiskWatcher.js` | Yes (read-only data and alerts) |
-| Wallet safety | `walletSafety.js` | Yes (checks only) |
+| Wallet safety and Wallet Guardian | `walletSafety.js`, `walletGuardian.js`, `walletGuardianRules.js` | Yes (read-only: holds no key, signs nothing) |
 | Solana | `solanaWatcher.js`, `solanaBalancesAt.js`, Solana deposit pool | Later, with Solana payments |
 | x402 extras | `x402Pricing.js`, `x402Eligibility.js`, `x402AnomalyTracking.js` | Review; RektBull's pricing lives in `payments/catalog.js` |
 
@@ -37,8 +37,7 @@ is ported; its custodial wallets are not needed. These parts of
 soyjak-agentic hold keys or move funds on users' behalf, so they do **not**
 move as they are:
 
-- `walletCustody.js`, `userWalletProvisioning.js`, `walletWithdrawals.js`,
-  `walletGuardian.js`, `walletGuardianRules.js`
+- `walletCustody.js`, `userWalletProvisioning.js`, `walletWithdrawals.js`
 - `swapTrading.js`, `swapRules.js`, `swapContext.js`, `tradePositions.js`
 - `defiExecution.js`, `defiCalls.js`, `depositSweeper.js`, `depositSweepPolicies.js`
 - `coinbaseAgenticWallet.js` (agent wallets that pay other agents)
