@@ -44,6 +44,36 @@ curl -X POST localhost:8080/v1/tokens/quick-check \
 Without a session or payment it answers `402 Payment Required` with every
 way to pay, including x402 terms in `accepts`.
 
+## Try it on your own computer (one command)
+
+You need Docker Desktop, a free 0x API key, and a wallet extension (MetaMask,
+Coinbase Wallet or Phantom) in your browser.
+
+```bash
+git clone https://github.com/SoyjakAgentic/RektBull.git
+cd RektBull
+git checkout claude/dappradar-website-outline-wdv0qx
+cp .env.local.example .env      # then put your 0x key and fee wallet in .env
+docker compose up               # first run builds the app: give it a few minutes
+```
+
+When the terminal shows `RektBull API listening on 8080`, open
+**http://localhost:8080/trade** in the same browser as your wallet. Ctrl+C
+stops it; your trade history is kept until `docker compose down -v`.
+
+Trades are real (Base mainnet), signed by your wallet, from your wallet back to
+your wallet. Only you can open the page; nothing is put online.
+
+**"This page can't be reached"** means nothing is answering on that computer:
+- Is `docker compose up` still running, and did it print `listening on 8080`?
+  If it stopped, the lines just before tell you why.
+- Open it in a browser **on the same computer** that runs Docker. `localhost`
+  on a phone or another machine is that device, not yours.
+- Use `http://`, not `https://`.
+- Something else on port 8080? Stop it, or change the left number in
+  `docker-compose.yml` (`"127.0.0.1:8081:8080"`) and open :8081, setting
+  `SIWE_DOMAIN` and `SIWE_URI` to match.
+
 ## Run it locally
 
 ```bash

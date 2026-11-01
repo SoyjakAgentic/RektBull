@@ -44,5 +44,10 @@ async function main() {
 
 main().catch(err => {
   logger.error('startup failed', { error: err.message });
+  if (/ECONNREFUSED|ENOTFOUND|password authentication|does not exist/i.test(err.message)) {
+    console.error(`\nRektBull could not reach its database (${err.message}).\n` +
+      'Check that Postgres is running and that DATABASE_URL in .env points at it, or use `docker compose up`.\n' +
+      'Until it starts, http://localhost:8080 will say the page can\'t be reached.\n');
+  }
   process.exit(1);
 });

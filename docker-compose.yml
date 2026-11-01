@@ -1,0 +1,44 @@
+# Run RektBull on your own computer: `docker compose up`, then open
+# http://localhost:8080/trade in the browser where your wallet is installed.
+#
+# Put your own values (at least ZEROEX_API_KEY and SWAP_FEE_WALLET_EVM) in a
+# file named .env next to this one; see .env.local.example. Everything below
+# is set for local use and wins over .env.
+#
+# Nothing here is reachable from the internet, and RektBull never holds your
+# funds: your wallet signs every trade.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: rektbull
+    volumes:
+      - rektbull-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://postgres:rektbull@db:5432/postgres
+      SERVICE_ROLE: all
+      PORT: "8080"
+      SIWE_DOMAIN: localhost:8080
+      SIWE_URI: http://localhost:8080
+      TRADING_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-local-only-not-a-secret}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  rektbull-db:
