@@ -1,6 +1,8 @@
 # Automatic trading with session keys: Design
 
-*Status: design, nothing built yet. Decided: users keep their own wallets,
+*Status: milestone 0 built. The Trade Router and its break-it tests are in
+`contracts/` (23 tests, all passing, against MetaMask's real deployed
+contracts on a copy of Base Sepolia). Not audited; not on mainnet. Decided: users keep their own wallets,
 and RektBull trades for them through a limited, revocable permission
 ("session key"). RektBull never holds user funds and can never withdraw.*
 
@@ -135,6 +137,24 @@ exactly what this design rules out.
   current competitor fees before launch.
 - 0x may charge its own fee on some pairs on its free plan; check before
   launch, since it adds to the user's cost.
+
+### What building milestone 0 changed
+
+- **Limits live in the Trade Router, not in the delegation.** The user sets
+  them by calling `setLimits` from their own wallet, in USD, valued at the
+  Chainlink price. The delegation allows only the router's `swap`, so RektBull
+  can't change them. One standing approval to the router is safe, because the
+  router only ever pulls from the account calling it.
+- **Caveats used:** Redeemer, Timestamp, AllowedTargets (router only),
+  AllowedMethods (`swap` only). Spending-limit enforcers and the
+  balance-change check weren't needed: the router does both, with prices.
+- **The worst case of a bad price is bounded:** a hacked RektBull could take
+  at most the price bound (2%) on each trade, within the limits. Lower the bound
+  for liquid pairs if that's too much.
+- **MetaMask can pause its DelegationManager** (it has an owner). A pause
+  stops automatic trading, but can't move anyone's funds.
+- Base Sepolia's tokens, price feeds and exchange are test mocks; mainnet
+  uses real Chainlink feeds and 0x.
 
 ## 3. Solana (second)
 
