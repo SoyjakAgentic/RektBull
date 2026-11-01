@@ -28,6 +28,7 @@ paid runs that protect, find or save money pay the bills.**
 | Payments | **Crypto only.** x402 for calls up to about $1; USDT/USDC credit top-ups for everything else; prepaid passes. No card payments |
 | Accounts | Sign in with your wallet. Email optional, for alerts |
 | Custody | RektBull never holds user funds or keys. Agents prepare transactions, users sign |
+| Automatic trading | **Session keys** ([SESSION_KEYS.md](SESSION_KEYS.md)): users keep their own wallets and grant a limited, revocable permission enforced onchain. RektBull can trade within the caps but can never withdraw. Its own keys live in Google Cloud KMS |
 | Data | Free provider plans first, with caching, daily limits and fallback |
 | AI | Claude, called from one module; the model is a setting |
 
@@ -103,8 +104,9 @@ Home
 ## 7. Open questions
 
 1. **Which crypto features move from soyjak-agentic, and when.** See
-   [MIGRATION_FROM_SOYJAK.md](MIGRATION_FROM_SOYJAK.md); the custodial wallet
-   and trading code there conflicts with RektBull's no-custody rule.
+   [MIGRATION_FROM_SOYJAK.md](MIGRATION_FROM_SOYJAK.md). Custody is decided:
+   Soyjak's custodial wallets are replaced by session keys
+   ([SESSION_KEYS.md](SESSION_KEYS.md)).
 2. **Smart-contract wallet sign-in** (EIP-1271, e.g. Safe). Plain wallets only for now.
 3. **Solana payments.** USDC on Solana (x402 is widely used there) is planned
    but not built; Solana is covered for token checks only.

@@ -89,5 +89,6 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/SCOPE.md](docs/SCOPE.md): what RektBull is, what it covers, roadmap
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
+- [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
 - [docs/DEPLOY.md](docs/DEPLOY.md): Cloud Run, secrets, and the domain
 - [docs/MIGRATION_FROM_SOYJAK.md](docs/MIGRATION_FROM_SOYJAK.md): which crypto pieces move here from soyjak-agentic, and which don't

@@ -28,11 +28,14 @@ from Soyjak, one piece at a time, each as a separate, confirmed step.
 | Solana | `solanaWatcher.js`, `solanaBalancesAt.js`, Solana deposit pool | Later, with Solana payments |
 | x402 extras | `x402Pricing.js`, `x402Eligibility.js`, `x402AnomalyTracking.js` | Review; RektBull's pricing lives in `payments/catalog.js` |
 
-## Needs a decision first: custody
+## Custody: decided, session keys
 
-RektBull's rule is that it **never holds user funds or keys**. These parts of
-soyjak-agentic hold keys or move funds on users' behalf, so they should
-**not** move as they are:
+RektBull **never holds user funds or keys**. Automatic trading is rebuilt on
+session keys ([SESSION_KEYS.md](SESSION_KEYS.md)): the user's own wallet grants
+a limited, revocable permission. Soyjak's trading rules and positions code
+is ported; its custodial wallets are not needed. These parts of
+soyjak-agentic hold keys or move funds on users' behalf, so they do **not**
+move as they are:
 
 - `walletCustody.js`, `userWalletProvisioning.js`, `walletWithdrawals.js`,
   `walletGuardian.js`, `walletGuardianRules.js`
@@ -41,8 +44,12 @@ soyjak-agentic hold keys or move funds on users' behalf, so they should
 - `coinbaseAgenticWallet.js` (agent wallets that pay other agents)
 - `yieldFee.js`, `yieldRewards.js`
 
-Options: keep them in Soyjak; rebuild them as "prepare a transaction, the
-user signs" in RektBull; or drop them. This is yours to decide.
+What happens to each: `swapRules.js`, `tradePositions.js` and the trading
+caps are ported as the trade service's off-chain checks; `swapTrading.js` is
+rewritten to redeem a delegation; `defiCalls.js` comes later as delegations
+to lending venues; wallet custody, provisioning and withdrawals aren't needed
+(users hold their own wallets). Soyjak's existing custodial wallets stay in
+Soyjak.
 
 ## Also yours to decide
 

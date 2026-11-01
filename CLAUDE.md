@@ -6,6 +6,11 @@
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the
   server must never receive an xprv or mnemonic.
+- **Automatic trading uses session keys only** (docs/SESSION_KEYS.md): a
+  limited, expiring, revocable permission the user signs. Its limits must be
+  enforced onchain; no permission may allow transfers to any address but the
+  user's own. RektBull's own keys live in Google Cloud KMS, used only by the
+  trade service.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
   free uses on failure, settle x402 only after the run succeeds.
