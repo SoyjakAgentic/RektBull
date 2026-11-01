@@ -60,3 +60,15 @@ refuses to run on any chain but Base Sepolia.
 
 Mainnet deployment is a separate, audited step, run by you from a hardware
 wallet, with real Chainlink feeds and 0x as the venue.
+
+## Live on Base Sepolia (testnet)
+
+| | |
+|---|---|
+| Trade Router | [`0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68`](https://sepolia.basescan.org/address/0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68) |
+| EIP-7702 upgrade of a test wallet | [tx](https://sepolia.basescan.org/tx/0x9d184dabed0d053edfd09127b07693e62ca15b09115db629a6224b9d24be006a) |
+| A delegated trade by the session key (1% fee taken) | [tx](https://sepolia.basescan.org/tx/0x3539ab456d634594d859c9a4d97e783e12c718e8f18298cce2fb948fa1bea33d) |
+| The session key trying to take the user's tokens | Refused by MetaMask's `AllowedTargetsEnforcer` (simulated, no gas) |
+
+Deployed 2026-11-01 with test tokens, price feeds and exchange. Full
+addresses: `deployments/base-sepolia.json`. Source not yet verified on Basescan.

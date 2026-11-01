@@ -2,7 +2,8 @@
 
 *Status: milestone 0 built. The Trade Router and its break-it tests are in
 `contracts/` (27 tests, all passing, against MetaMask's real deployed
-contracts on a copy of Base Sepolia). Not audited; not on mainnet. Decided: users keep their own wallets,
+contracts on a copy of Base Sepolia), and deployed live on Base Sepolia at
+`0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68` with one real delegated trade. Not audited; not on mainnet. Decided: users keep their own wallets,
 and RektBull trades for them through a limited, revocable permission
 ("session key"). RektBull never holds user funds and can never withdraw.*
 

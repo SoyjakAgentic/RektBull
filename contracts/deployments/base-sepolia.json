@@ -1,0 +1,24 @@
+{
+  "chainId": 84532,
+  "deployedAt": "2026-11-01T19:58:05.668Z",
+  "deployer": "0xD0F880E1CCa485d7fD4F76498Eda2e11c4b49914",
+  "feeWallet": "0xD0F880E1CCa485d7fD4F76498Eda2e11c4b49914",
+  "metamaskDelegationFramework": "1.3.0",
+  "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+  "eip7702Delegator": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+  "contracts": {
+    "router": "0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68",
+    "testUSDC": "0x852ceD5643c06F4CbEc5403D2dbb92113e6ca2A8",
+    "testWETH": "0x113540DB537cB7B3131A528281bDAdd4708D1806",
+    "usdcFeed": "0xAA7825CA93110aB001BcdDDE084657E52cEDC73c",
+    "wethFeed": "0xEb151Dd2F0cA70821Aa90418a47a9F55522306B6",
+    "mockVenue": "0x58539F66f95C8A88289247Ba9c881Ede6d666CF1"
+  },
+  "demo": {
+    "user": "0xbD32E9a67812375E3dCf0fcA98BEfBA6A2c4509D",
+    "sessionKey": "0x61bcDCf64BffE33D60D4e9eaA998336E28212764",
+    "upgradeTx": "0x9d184dabed0d053edfd09127b07693e62ca15b09115db629a6224b9d24be006a",
+    "tradeTx": "0x3539ab456d634594d859c9a4d97e783e12c718e8f18298cce2fb948fa1bea33d",
+    "attackRefused": true
+  }
+}
