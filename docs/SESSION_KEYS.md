@@ -37,9 +37,11 @@ on 0x, only back into this wallet, until 8 December. Revoke any time."*
 | Expiry | 7 days | At most 30 |
 | Mode | Approve each | Autonomous is opt-in |
 
-Users set their own limits on the grant screen. A higher limit means a
-bigger worst case, so the screen shows it in dollars before they sign, and
-any limit above the default needs an extra confirmation.
+Users set their own limits on the grant screen, with **no upper ceiling**.
+A higher limit means a bigger worst case, so the screen shows it in dollars
+before they sign, and any limit above the default needs an extra
+confirmation: the user types the daily amount back (for example "5000") to
+confirm they understand that much can be traded in a day.
 
 ## 2. EVM chains (Base first, then Ethereum and Arbitrum)
 
@@ -238,8 +240,7 @@ cost is a few dollars a month in total.
 2. ~~Default limits~~ **Decided:** $1,000 a day and $100 per trade by default; users set their own (section 1).
 3. **Router audit:** an external audit of a small contract like the Trade
    Router typically takes a few weeks; budget for it before mainnet.
-4. **Upper limit:** should RektBull refuse limits above some ceiling (say
-   $25,000 a day), or allow any limit after the extra confirmation?
+4. ~~Upper limit~~ **Decided:** no ceiling. Any limit is allowed after the extra confirmation (section 1).
 5. **Legal:** non-custodial delegated trading is generally treated
    differently from custody, but automatic trading for users can still be
    regulated as investment management or advice in some places. Get advice
