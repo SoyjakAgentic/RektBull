@@ -17,14 +17,14 @@ fully hacked RektBull can't go past them.
 |---|---|---|
 | Only RektBull's session key can use the permission | Onchain (redeemer restriction) | — |
 | It expires (30 days at most) and the user can revoke it any time | Onchain (expiry; user disables the delegation) | Revocation still works: it's the user's own transaction |
-| It can only call the allowed exchange contracts and methods | Onchain (allowed targets and methods) | Can't call anything else |
-| It can't send funds anywhere except back to the user's own wallet | Onchain (no transfer methods allowed; output must arrive in the user's account) | **Can't withdraw or steal** |
+| It can only call the **RektBull Trade Router** (section 2) | Onchain (allowed targets and methods) | Can't call anything else |
+| Bought tokens go only to the user's own wallet; the fee is at most 1% and goes only to RektBull's fixed fee wallet; the price can't be far worse than an onchain reference price | Onchain (the Trade Router's fixed rules; no transfer methods allowed) | **Can't withdraw, and can't route value out through fees or bad prices** |
 | Spending is capped per trade and per day/week, per token | Onchain (period spending limits) | Worst case: bad trades up to the cap |
 | Due diligence, honeypot and tax checks, slippage, approve-each mode | RektBull's trade service (off-chain) | These could be bypassed |
 
 **The remaining risk, stated plainly:** a hacked RektBull could make poor
-trades with the user's own money, inside the cap, and the proceeds would
-still land in the user's wallet. The grant screen shows that worst case in
+trades with the user's own money (buying a token that later goes to zero),
+inside the cap, and the tokens bought would still land in the user's wallet. The grant screen shows that worst case in
 dollars: *"At most $1,000 a day can be traded, at most $100 per trade, only
 on 0x, only back into this wallet, until 8 December. Revoke any time."*
 
@@ -75,21 +75,64 @@ in approve-each mode, where the user signs every trade.
 **Order:** MetaMask (the reference implementation) → Safe → Coinbase Smart
 Wallet → Phantom (with Solana).
 
-**The caveats on every RektBull delegation** (exact enforcer names and
-parameters to be confirmed in the testnet spike, milestone 0):
+### Why a RektBull Trade Router contract is needed
+
+A delegation's caveats are fixed when the user signs, and they can check
+*which* contract is called but not the inside of a swap's calldata. If the
+permission allowed calling 0x directly, a hacked RektBull could build a swap
+whose **fee recipient** is its own address with a very high fee, or whose
+price is deliberately terrible, and drain up to the cap that way. Allowing
+only "the exchange" isn't enough to keep the "can't rug you" promise.
+
+So the only contract a permission may call is a small **RektBull Trade
+Router**: immutable (no admin, no upgrades), open source, and audited before
+launch. It calls 0x (EVM) on the user's behalf and enforces, onchain, on
+every trade:
+- the bought tokens are sent to the **user's own account** (the caller), nowhere else;
+- the fee is **at most 1%** (a constant in the contract), paid only to the
+  **fixed fee wallet** written into the contract;
+- the output is no worse than an **onchain reference price** (a Chainlink
+  feed or a pool TWAP) by more than a fixed slippage bound, so a deliberately
+  bad price can't move value out. Tokens without a reference price fall back
+  to approve-each;
+- the input never exceeds the per-trade limit encoded in the user's grant.
+
+### The caveats on every RektBull delegation
+
+Exact enforcer names and parameters to be confirmed in milestone 0:
 1. **Redeemer:** only RektBull's session-key address may redeem it.
 2. **Timestamp:** valid from now until the expiry the user chose (at most 30 days).
-3. **Allowed targets and methods:** the 0x settlement contract (swaps), and
-   `approve` on the allowed tokens to that contract only.
+3. **Allowed targets and methods:** the Trade Router's swap function, and
+   `approve` on the allowed tokens to the Trade Router only.
 4. **Period spending limits:** per token, per day or week, from the user's caps.
-5. **Balance change:** after each trade, the account's balance of the token
-   being bought must have gone up by at least the quote's minimum. This is
-   what stops swap calldata from sending the output anywhere else.
+5. **Balance change:** the account's balance of the token being bought must
+   go up after each trade (a second check that the output came back).
 6. **Limited calls:** a ceiling on trades per period (optional).
 
 **Why not a plain token approval?** Approving RektBull to spend a token lets
 the spender send it *anywhere*. That would be a withdrawal power, which is
 exactly what this design rules out.
+
+### The 1% fee
+
+- **1% of every trade, buy or sell** (`crypto_swap_fee_bps = 100`, the same
+  as Soyjak), set as a setting so it can be lowered later.
+- **Taken inside the swap**, in the token being sold, and sent straight to
+  the fee wallet by the Trade Router. The user never pays a separate charge
+  and never approves RektBull to take a fee.
+- **Capped onchain at 1%** by the Trade Router, so even a hacked RektBull
+  can't charge more. Lowering it is a setting; raising it above 1% would
+  need a new router and new grants from every user.
+- **Shown before every trade:** "Fee: $1.00 (1%)." In approve-each mode the
+  user sees it on the approval; in autonomous mode it appears in the trade
+  log and the daily summary.
+- **Gas** is paid by RektBull's gas wallet and covered by the fee.
+- **For comparison:** wallet swap features commonly charge just under 1%
+  (MetaMask Swaps and Phantom were around 0.85–0.875% when last checked).
+  1% is in line for a service that also runs the safety checks; check
+  current competitor fees before launch.
+- 0x may charge its own fee on some pairs on its free plan; check before
+  launch, since it adds to the user's cost.
 
 ## 3. Solana (second)
 
@@ -104,8 +147,9 @@ Candidates:
 so it's a withdrawal power.
 
 Before choosing, prove on devnet that the permission can be limited to
-Jupiter swaps whose output returns to the user's own wallet, with per-period
-caps. If neither can enforce "output back to the user" onchain, Solana stays
+swaps through a RektBull Trade Router program (the same rules as on EVM:
+output to the user, fee at most 1% to the fixed fee wallet, a reference-price
+check), with per-period caps. If neither can enforce "output back to the user" onchain, Solana stays
 **approve-each only**: the user signs every trade.
 
 ## 4. Where keys live (Google Cloud KMS)
@@ -172,7 +216,7 @@ cost is a few dollars a month in total.
 |---|---|
 | `swapRules.js`, `tradingCaps` (every check a trade must pass) | Ported into the trade service as the off-chain rules |
 | `tradePositions.js`, position/exit watcher | Ported |
-| `swapTrading.js` | Rewritten: redeem a delegation instead of signing from a custodial wallet |
+| `swapTrading.js` | Rewritten: redeem a delegation through the Trade Router instead of signing from a custodial wallet. The 1% fee (Soyjak §638) moves into the router |
 | `defiCalls.js` (rebalancer calls, built but unsigned) | Later, as delegations to the lending venues |
 | `walletCustody.js`, `userWalletProvisioning.js`, `walletWithdrawals.js` | **Not needed:** users hold their own wallets, so there is nothing to withdraw |
 
@@ -180,7 +224,8 @@ cost is a few dollars a month in total.
 
 | # | Milestone | Done when |
 |---|---|---|
-| 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key |
+| 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key, **set the fee recipient to another address, charge more than 1%, trade far below the reference price** |
+| 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade |
 | 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | One real approve-each trade on Base mainnet with a small cap |
 | 2 | Autonomous mode for MetaMask, rules port, positions and exits | Soyjak's swap checks pass the same test cases here |
 | 3 | Safe, then Coinbase Smart Wallet | Milestone 0's break-it tests pass on each |
@@ -191,9 +236,11 @@ cost is a few dollars a month in total.
 
 1. ~~Wallets~~ **Decided:** MetaMask, Phantom, Coinbase Smart Wallet and Safe (section 2).
 2. ~~Default limits~~ **Decided:** $1,000 a day and $100 per trade by default; users set their own (section 1).
-3. **Upper limit:** should RektBull refuse limits above some ceiling (say
+3. **Router audit:** an external audit of a small contract like the Trade
+   Router typically takes a few weeks; budget for it before mainnet.
+4. **Upper limit:** should RektBull refuse limits above some ceiling (say
    $25,000 a day), or allow any limit after the extra confirmation?
-4. **Legal:** non-custodial delegated trading is generally treated
+5. **Legal:** non-custodial delegated trading is generally treated
    differently from custody, but automatic trading for users can still be
    regulated as investment management or advice in some places. Get advice
    before launch.
