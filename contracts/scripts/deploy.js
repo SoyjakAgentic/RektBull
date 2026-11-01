@@ -66,7 +66,7 @@ async function main() {
   await wait(USDC.connect(user).approve(router.target, ethers.MaxUint256));
   const now = (await ethers.provider.getBlock('latest')).timestamp;
   const expiry = now + 7 * DAY;
-  await wait(router.connect(user).setLimits(100n * 10n ** 8n, 1000n * 10n ** 8n, DAY, expiry));
+  await wait(router.connect(user).setLimits(500n * 10n ** 8n, 10000n * 10n ** 8n, DAY, expiry)); // the defaults: $500 a trade, $10,000 a day
 
   const caveats = [
     { enforcer: MM.RedeemerEnforcer, terms: core.createRedeemerTerms({ redeemers: [session.address] }), args: '0x' },

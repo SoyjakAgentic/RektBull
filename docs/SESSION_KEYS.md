@@ -27,23 +27,29 @@ fully hacked RektBull can't go past them.
 **The remaining risk, stated plainly:** a hacked RektBull could make poor
 trades with the user's own money (buying a token that later goes to zero),
 inside the cap, and the tokens bought would still land in the user's wallet. The grant screen shows that worst case in
-dollars: *"At most $1,000 a day can be traded, at most $100 per trade, only
+dollars: *"At most $10,000 a day can be traded, at most $500 per trade, only
 on 0x, only back into this wallet, until 8 December. Revoke any time."*
 
 ### Default limits (the user can change every one)
 
 | Limit | Default | Notes |
 |---|---|---|
-| Per day | **$1,000** | Enforced onchain as a period spending limit |
-| Per trade | **$100** | Checked by the trade service; onchain where the wallet type supports it |
+| Per day | **$10,000** | Trading volume, not funds: the dollar value of all trades in the day, at the reference price. Enforced onchain by the Trade Router |
+| Per trade | **$500** | Enforced onchain by the Trade Router |
 | Expiry | 7 days | At most 30 |
 | Mode | Approve each | Autonomous is opt-in |
 
 Users set their own limits on the grant screen, with **no upper ceiling**.
 A higher limit means a bigger worst case, so the screen shows it in dollars
 before they sign, and any limit above the default needs an extra
-confirmation: the user types the daily amount back (for example "5000") to
+confirmation: the user types the daily amount back (for example "25000") to
 confirm they understand that much can be traded in a day.
+
+**Where they set them:** on the screen where they turn on automatic trading
+(website, not built yet). Their wallet then signs `setLimits` on the Trade
+Router, so the limits are written onchain by the user's own wallet; RektBull's
+permission can't change them. The contract has no maximum. Changing limits
+later, or "Stop trading" (`revoke`), is the same: one signature from the user.
 
 ## 2. EVM chains (Base first, then Ethereum and Arbitrum)
 
@@ -257,7 +263,7 @@ cost is a few dollars a month in total.
 ## 8. Open questions
 
 1. ~~Wallets~~ **Decided:** MetaMask, Phantom, Coinbase Smart Wallet and Safe (section 2).
-2. ~~Default limits~~ **Decided:** $1,000 a day and $100 per trade by default; users set their own (section 1).
+2. ~~Default limits~~ **Decided:** $10,000 a day and $500 per trade by default; users set their own (section 1).
 3. **Router audit:** an external audit of a small contract like the Trade
    Router typically takes a few weeks; budget for it before mainnet.
 4. ~~Upper limit~~ **Decided:** no ceiling. Any limit is allowed after the extra confirmation (section 1).

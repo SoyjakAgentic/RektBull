@@ -128,11 +128,11 @@ describe('RektBull Trade Router: break-it tests', function () {
     const userCode = await ethers.provider.getCode(user.address);
     assert.equal(userCode.toLowerCase(), ('0xef0100' + MM.EIP7702StatelessDeleGatorImpl.slice(2)).toLowerCase(), 'EIP-7702 upgrade did not take');
 
-    // 2. The user's own setup: USDC, an approval to the router, and their limits ($100 a trade, $1,000 a day, 7 days).
-    await USDC.mint(user.address, usdc(10_000));
+    // 2. The user's own setup: USDC, an approval to the router, and the default limits ($500 a trade, $10,000 a day, 7 days).
+    await USDC.mint(user.address, usdc(50_000));
     await (await USDC.connect(user).approve(router.target, ethers.MaxUint256)).wait();
     const expiry = (await now()) + 7 * DAY;
-    await (await router.connect(user).setLimits(USD(100), USD(1000), DAY, expiry)).wait();
+    await (await router.connect(user).setLimits(USD(500), USD(10_000), DAY, expiry)).wait();
 
     // 3. The user grants RektBull's session key a delegation.
     delegation = await signDelegation({ delegate: session.address, delegator: user.address, caveats: rektbullCaveats({ expiry, redeemer: session.address }), salt: 1n }, user);
@@ -195,16 +195,17 @@ describe('RektBull Trade Router: break-it tests', function () {
   });
 
   describe('limits hold', function () {
-    it('refuses a trade over the per-trade limit ($150 > $100)', async function () {
-      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(150) })), /OverTradeLimit/);
+    it('refuses a trade over the per-trade limit ($600 > $500)', async function () {
+      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(600) })), /OverTradeLimit/);
     });
     it('refuses trades over the daily limit, and allows them again the next day', async function () {
-      // $70 is already spent today by the tests above (50 + 10 + 10).
-      for (let i = 0; i < 9; i++) await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(100) }))).wait();
-      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(100) })), /OverPeriodLimit/);
+      // $70 is already traded today by the tests above (50 + 10 + 10): 19 more $500 trades
+      // bring it to $9,570, so a 20th ($10,070) is over the $10,000 daily volume.
+      for (let i = 0; i < 19; i++) await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) }))).wait();
+      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) })), /OverPeriodLimit/);
       await advance(DAY + 1);
       await usdcFeed.set(100000000n, await now()); await wethFeed.set(300000000000n, await now());
-      await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(100) }))).wait();
+      await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) }))).wait();
     });
     it('refuses to trade on a stale price', async function () {
       await wethFeed.set(300000000000n, (await now()) - 2 * DAY);
