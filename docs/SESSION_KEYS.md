@@ -25,8 +25,21 @@ fully hacked RektBull can't go past them.
 **The remaining risk, stated plainly:** a hacked RektBull could make poor
 trades with the user's own money, inside the cap, and the proceeds would
 still land in the user's wallet. The grant screen shows that worst case in
-dollars: *"At most $200 a day can be traded, only on 0x, only back into this
-wallet, until 1 December. Revoke any time."*
+dollars: *"At most $1,000 a day can be traded, at most $100 per trade, only
+on 0x, only back into this wallet, until 8 December. Revoke any time."*
+
+### Default limits (the user can change every one)
+
+| Limit | Default | Notes |
+|---|---|---|
+| Per day | **$1,000** | Enforced onchain as a period spending limit |
+| Per trade | **$100** | Checked by the trade service; onchain where the wallet type supports it |
+| Expiry | 7 days | At most 30 |
+| Mode | Approve each | Autonomous is opt-in |
+
+Users set their own limits on the grant screen. A higher limit means a
+bigger worst case, so the screen shows it in dollars before they sign, and
+any limit above the default needs an extra confirmation.
 
 ## 2. EVM chains (Base first, then Ethereum and Arbitrum)
 
@@ -44,11 +57,23 @@ wallet, until 1 December. Revoke any time."*
   ERC-7715. Biconomy and Rhinestone offer **Smart Sessions** (ERC-7579 modules)
   for Safe and Kernel accounts.
 
-**Choice for v1:** **ERC-7710 delegations through MetaMask's Delegation
-Framework**, on accounts upgraded with EIP-7702. That reaches the most
-users, its contracts are audited, and caveats cover what section 1 needs.
-Smart Sessions (for Safe users) come second, behind the same internal
-interface.
+### Wallets supported
+
+Each wallet type grants permissions differently, so the trade service has
+one internal "permission" interface with an adapter per wallet type. The
+rule is the same for all of them: **a wallet is only offered for automatic
+trading once milestone 0's break-it tests pass on it.** Until then it works
+in approve-each mode, where the user signs every trade.
+
+| Wallet | Chains | How the permission works | What to prove first |
+|---|---|---|---|
+| **MetaMask** | EVM | ERC-7710 delegation with caveat enforcers, on an account upgraded with EIP-7702 (MetaMask Delegation Framework; ERC-7715 "Advanced Permissions" prompt) | All six caveats below |
+| **Coinbase Smart Wallet** | EVM (Base first) | Already a smart account. Coinbase's own **Spend Permissions** let a spender *pull tokens to itself*, which is a withdrawal power, so they are **not** used. It qualifies only through a permission that can call a swap contract and require the output back in the wallet (ERC-7715 support, if available) | That such a permission exists and enforces "output back to the wallet" |
+| **Safe** | EVM | **Smart Sessions** module (Rhinestone/Biconomy, ERC-7579) through the Safe7579 adapter; the Safe's owners install it in one Safe transaction | Same six guarantees with Smart Sessions policies |
+| **Phantom** | Solana (and EVM) | On Solana: a smart wallet (Squads Smart Account or Swig) controlled by the user's Phantom key, with a session-key role (section 3). On EVM: only if Phantom supports EIP-7702 upgrades or ERC-7715; otherwise approve-each | Section 3's devnet proof |
+
+**Order:** MetaMask (the reference implementation) → Safe → Coinbase Smart
+Wallet → Phantom (with Solana).
 
 **The caveats on every RektBull delegation** (exact enforcer names and
 parameters to be confirmed in the testnet spike, milestone 0):
@@ -155,19 +180,20 @@ cost is a few dollars a month in total.
 
 | # | Milestone | Done when |
 |---|---|---|
-| 0 | **Testnet spike (Base Sepolia)** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key |
-| 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base | One real approve-each trade on Base mainnet with a small cap |
-| 2 | Autonomous mode, rules port, positions and exits | Soyjak's swap checks pass the same test cases here |
-| 3 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
-| 4 | Solana (Squads Smart Account or Swig) | The devnet proof in section 3 |
+| 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key |
+| 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | One real approve-each trade on Base mainnet with a small cap |
+| 2 | Autonomous mode for MetaMask, rules port, positions and exits | Soyjak's swap checks pass the same test cases here |
+| 3 | Safe, then Coinbase Smart Wallet | Milestone 0's break-it tests pass on each |
+| 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
+| 5 | Solana with Phantom (Squads Smart Account or Swig) | The devnet proof in section 3 |
 
 ## 8. Open questions
 
-1. **Wallets for v1:** MetaMask first (best ERC-7710/7715 support). Coinbase
-   Smart Wallet and Safe (via Smart Sessions) next?
-2. **Default limits** on the grant screen: suggest $100/day, $25 per trade,
-   7 days, approve-each on by default?
-3. **Legal:** non-custodial delegated trading is generally treated
+1. ~~Wallets~~ **Decided:** MetaMask, Phantom, Coinbase Smart Wallet and Safe (section 2).
+2. ~~Default limits~~ **Decided:** $1,000 a day and $100 per trade by default; users set their own (section 1).
+3. **Upper limit:** should RektBull refuse limits above some ceiling (say
+   $25,000 a day), or allow any limit after the extra confirmation?
+4. **Legal:** non-custodial delegated trading is generally treated
    differently from custody, but automatic trading for users can still be
    regulated as investment management or advice in some places. Get advice
    before launch.
