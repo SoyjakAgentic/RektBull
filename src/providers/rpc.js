@@ -23,7 +23,11 @@ async function call(chain, method, params, { timeout = 12000 } = {}) {
         const { data } = await axios.post(url, { jsonrpc: '2.0', id: 1, method, params }, { timeout });
         return data;
       });
-      if (data?.error) throw Object.assign(new RpcError(data.error.message || `${method} failed`), { fromNode: true });
+      if (data?.error) {
+        // Keep the revert data, so callers can decode a contract's custom error.
+        const revert = typeof data.error.data === 'string' ? data.error.data : data.error.data?.data;
+        throw Object.assign(new RpcError(data.error.message || `${method} failed`), { fromNode: true, data: revert || undefined });
+      }
       return data.result;
     } catch (err) {
       if (err.fromNode) throw err;

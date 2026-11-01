@@ -31,6 +31,8 @@ payments.
 | `POST /v1/trading/proposals`, `…/:id/approve`, `…/:id/submitted` | Approve-each trading on Base: RektBull checks the trade and builds it, the user's wallet signs it |
 | `GET/PUT /v1/trading/settings`, `GET /v1/trading/positions`, `GET /v1/trading/limits` | Safety settings, positions from RektBull trades, onchain router limits |
 | `POST/GET /v1/trading/permissions` | Register an automatic-trading permission (checked in full before it's stored) |
+| `GET /v1/trading/auto/delegation`, `GET /v1/trading/auto/allowances` | The exact permission to sign, and the approvals the router needs |
+| `POST/GET /v1/trading/auto/intents` | Automatic trades (Base Sepolia until the audit): simulated, then sent by RektBull's session key through the user's permission |
 
 Token checks cover Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and
 Solana. Example:
@@ -93,6 +95,10 @@ Etherscan or Blockscout key, and reports need `ANTHROPIC_API_KEY`.
 npm test                                                            # unit tests
 TEST_DATABASE_URL=postgres://user:pass@localhost/rektbull_test npm test   # + end-to-end
 ```
+
+The autonomous end-to-end test (`TEST_DATABASE_URL=… node --test test/autonomous.e2e.js`,
+after `cd contracts && npm install && npx hardhat compile`) runs automatic
+trading on a local copy of Base Sepolia against MetaMask's real contracts.
 
 The browser test drives the trading page in Chromium with a stand-in wallet
 (`TEST_DATABASE_URL=… node test/browser/tradePage.js`); it isn't part of

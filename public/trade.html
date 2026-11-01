@@ -59,28 +59,56 @@
         <label>Refuse tokens taxing over (%)<input id="s-tax" type="number" min="0" max="50" step="0.5"></label>
         <label>Refuse if selling back loses over (%)<input id="s-loss" type="number" min="1" max="100"></label>
         <label>Slippage (%)<input id="s-slip" type="number" min="0.1" max="10" step="0.1"></label>
+        <label>Automatic exits: sell if down (%)<input id="s-stop" type="number" min="1" max="95"></label>
+        <label>Automatic exits: sell if up (%)<input id="s-tp" type="number" min="1" max="10000"></label>
+        <label>Automatic exits<select id="s-auto"><option value="true">On</option><option value="false">Off</option></select></label>
       </div>
       <button id="s-save">Save settings</button>
       <p id="settings-msg" class="msg"></p>
     </section>
 
     <section class="card" id="limits-card" hidden>
-      <h2>Automatic trading limits <span class="tag">Base Sepolia test network</span></h2>
-      <p class="muted">These limits are written into the RektBull Trade Router by your own wallet. RektBull can never change them, and can never withdraw: trades only go back into your wallet. The daily limit is trading volume, not your balance. The router isn't audited yet, so this runs on the test network only.</p>
-      <div id="limits-now" class="limits-now"></div>
+      <h2>Automatic trading <span class="tag">Base Sepolia test network</span></h2>
+      <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. The router isn't audited yet, so this runs on the test network only, with test tokens. Only tokens the router has a reference price for can be traded automatically.</p>
+      <ol class="steps">
+        <li id="step-smart"><strong>A MetaMask smart account.</strong> <span id="smart-status" class="muted">Checking…</span>
+          <div class="muted small">In MetaMask, switch this account to a smart account (it keeps the same address), then <button class="link" id="smart-refresh">check again</button>.</div></li>
+        <li><strong>Your limits</strong>
+          <div id="limits-now" class="limits-now"></div>
+          <div class="grid">
+            <label>Most per trade (USD)<input id="l-trade" type="number" min="1" value="500"></label>
+            <label>Most per day (USD)<input id="l-day" type="number" min="1" value="10000"></label>
+            <label>Valid for (days)<input id="l-days" type="number" min="1" max="30" value="7"></label>
+          </div>
+          <div id="worst" class="worst"></div>
+          <div id="confirm-wrap" hidden>
+            <label class="wide">These are above the defaults. Type the daily amount to confirm
+              <input id="l-confirm" placeholder="e.g. 25000" autocomplete="off">
+            </label>
+          </div>
+          <button id="l-save" class="primary">Save limits from my wallet</button>
+        </li>
+        <li><strong>Test tokens, and let the router trade them</strong>
+          <div class="row">
+            <button id="faucet">Get 1,000 test tUSDC</button>
+            <button id="allow">Let the router trade my test tokens</button>
+          </div>
+          <div id="allow-status" class="muted small"></div>
+        </li>
+        <li><strong>Give RektBull permission</strong>
+          <div class="muted small">Your wallet shows exactly what you're allowing: only RektBull's key, only the Trade Router's swap, until your limits expire. Nothing else.</div>
+          <button id="grant" class="primary">Sign the permission</button>
+          <div id="perm-status" class="muted small"></div>
+        </li>
+      </ol>
+      <h3>Place an automatic trade</h3>
       <div class="grid">
-        <label>Most per trade (USD)<input id="l-trade" type="number" min="1" value="500"></label>
-        <label>Most per day (USD)<input id="l-day" type="number" min="1" value="10000"></label>
-        <label>Valid for (days)<input id="l-days" type="number" min="1" max="30" value="7"></label>
+        <label>Buy<select id="a-token"></select></label>
+        <label>Amount (USD)<input id="a-amount" type="number" min="1" value="50"></label>
       </div>
-      <div id="worst" class="worst"></div>
-      <div id="confirm-wrap" hidden>
-        <label class="wide">These are above the defaults. Type the daily amount to confirm
-          <input id="l-confirm" placeholder="e.g. 25000" autocomplete="off">
-        </label>
-      </div>
+      <button id="a-buy">Queue it</button>
+      <table><thead><tr><th>When</th><th>Trade</th><th>Status</th></tr></thead><tbody id="auto-history"></tbody></table>
       <div class="row">
-        <button id="l-save" class="primary">Save limits from my wallet</button>
         <button id="l-revoke" class="danger">Stop all automatic trading</button>
       </div>
       <p id="limits-msg" class="msg"></p>

@@ -217,19 +217,24 @@
   async function loadSettings() {
     const s = await api('GET', '/v1/trading/settings');
     $('s-max').value = s.max_trade_usd; $('s-tax').value = s.max_tax_bps / 100; $('s-loss').value = s.max_round_trip_loss_pct; $('s-slip').value = s.slippage_bps / 100;
+    $('s-stop').value = s.stop_loss_pct; $('s-tp').value = s.take_profit_pct; $('s-auto').value = String(s.auto_exit);
   }
   $('s-save').addEventListener('click', async () => {
     try {
       await api('PUT', '/v1/trading/settings', {
         max_trade_usd: Number($('s-max').value), max_tax_bps: Math.round(Number($('s-tax').value) * 100),
         max_round_trip_loss_pct: Number($('s-loss').value), slippage_bps: Math.round(Number($('s-slip').value) * 100),
+        stop_loss_pct: Number($('s-stop').value), take_profit_pct: Number($('s-tp').value), auto_exit: $('s-auto').value === 'true',
       });
       say('settings-msg', 'Saved.', 'ok');
     } catch (err) { say('settings-msg', err.message, 'bad'); }
   });
 
   /* ── automatic trading limits (written onchain by the user's wallet) ── */
-  const router = () => state.config?.automatic_trading?.routers?.['84532'];
+  const AUTO_CHAIN = '84532';
+  const net = () => state.config?.automatic_trading?.networks?.[AUTO_CHAIN];
+  const router = () => net()?.router;
+  const ERC20 = ['function approve(address spender, uint256 amount)', 'function mint(address to, uint256 amount)'];
 
   function updateWorst() {
     const trade = Number($('l-trade').value), day = Number($('l-day').value), days = Number($('l-days').value);
@@ -244,10 +249,76 @@
     if (!router()) { $('limits-now').textContent = 'Automatic trading isn\'t set up on this server yet.'; return; }
     try {
       const l = await api('GET', '/v1/trading/limits?chain_id=84532');
+      $('smart-status').textContent = l.smart_account ? '✓ This wallet is a MetaMask smart account on the test network.' : 'Not yet: this wallet is a plain account on the test network.';
       $('limits-now').textContent = l.active
         ? `Now: $${l.per_trade_usd.toLocaleString()} per trade, $${l.per_day_usd.toLocaleString()} per day, until ${new Date(l.valid_until * 1000).toLocaleString()}.`
         : 'No limits set: automatic trading is off for this wallet.';
     } catch { $('limits-now').textContent = 'Couldn\'t read your current limits from the test network.'; }
+    await loadAuto();
+  }
+  $('smart-refresh').addEventListener('click', () => loadLimits());
+
+  async function sendTo(to, data, label) {
+    await switchChain(BASE_SEPOLIA);
+    const hash = await req('eth_sendTransaction', [{ from: state.address, to, data }]);
+    say('limits-msg', `${label}: sent ${short(hash)}…`);
+    await waitFor(hash);
+    return hash;
+  }
+
+  $('faucet').addEventListener('click', async () => {
+    try {
+      const t = net().tokens.tUSDC;
+      await sendTo(t.address, new ethers.Interface(ERC20).encodeFunctionData('mint', [state.address, 1000n * 10n ** BigInt(t.decimals)]), 'Test tokens');
+      say('limits-msg', 'You have 1,000 more test tUSDC.', 'ok');
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  $('allow').addEventListener('click', async () => {
+    try {
+      const a = await api('GET', '/v1/trading/auto/allowances?chain_id=' + AUTO_CHAIN);
+      if (!(a.covers_usd > 0)) throw new Error('Save your limits first: the approvals are sized to them.');
+      for (const t of a.tokens) {
+        if (!t.amount) continue;
+        await sendTo(t.address, new ethers.Interface(ERC20).encodeFunctionData('approve', [a.router, BigInt(t.amount)]), `Allow ${t.symbol}`);
+      }
+      $('allow-status').textContent = `The router may trade up to $${a.covers_usd.toLocaleString()} of each test token: your daily limit times the days left. It still enforces your limits on every trade.`;
+      say('limits-msg', 'Approvals done.', 'ok');
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  $('grant').addEventListener('click', async () => {
+    try {
+      const tpl = await api('GET', '/v1/trading/auto/delegation?chain_id=' + AUTO_CHAIN);
+      await switchChain(BASE_SEPOLIA);
+      say('limits-msg', 'Check the permission in your wallet, then sign…');
+      const signature = await req('eth_signTypedData_v4', [state.address, JSON.stringify(tpl.typed_data)]);
+      const out = await api('POST', '/v1/trading/permissions', { chain_id: Number(AUTO_CHAIN), wallet_type: 'metamask', delegation: { ...tpl.delegation, signature } });
+      say('limits-msg', `Permission granted until ${new Date(out.expires_at).toLocaleString()}.`, 'ok');
+      await loadAuto();
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  $('a-buy').addEventListener('click', async () => {
+    try {
+      await api('POST', '/v1/trading/auto/intents', { chain_id: Number(AUTO_CHAIN), side: 'buy', token: $('a-token').value, amount_usd: Number($('a-amount').value) });
+      say('limits-msg', 'Queued: RektBull will make this trade shortly, within your limits.', 'ok');
+      await loadAuto();
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  async function loadAuto() {
+    if (!net()) return;
+    const tokens = Object.keys(net().tokens).filter(k => k !== net().default_base);
+    if (!$('a-token').options.length) $('a-token').replaceChildren(...tokens.map(k => el('option', { value: k }, k)));
+    const [{ permissions }, { intents }] = await Promise.all([api('GET', '/v1/trading/permissions'), api('GET', '/v1/trading/auto/intents')]);
+    const active = permissions.find(p => p.status === 'active' && String(p.chain_id) === AUTO_CHAIN);
+    $('perm-status').textContent = active ? `✓ Granted, until ${new Date(active.expires_at).toLocaleString()}.` : 'Not granted.';
+    const symbol = addr => Object.entries(net().tokens).find(([, t]) => t.address.toLowerCase() === String(addr).toLowerCase())?.[0] || short(addr);
+    $('auto-history').replaceChildren(...intents.map(i => el('tr', {},
+      el('td', {}, new Date(i.created_at).toLocaleString()),
+      el('td', {}, i.side === 'buy' ? `Buy $${i.amount_usd} of ${symbol(i.token)}` : `Sell ${symbol(i.token)}${i.reason ? ' — ' + i.reason : ''}`),
+      el('td', {}, i.status + (i.error ? `: ${i.error}` : ''), i.result?.explorer ? el('a', { href: i.result.explorer, target: '_blank', rel: 'noopener' }, ' ↗') : ''))));
   }
 
   async function routerTx(data) {
@@ -275,6 +346,8 @@
 
   $('l-revoke').addEventListener('click', async () => {
     try {
+      const { permissions } = await api('GET', '/v1/trading/permissions');
+      for (const p of permissions.filter(x => x.status === 'active')) await api('POST', `/v1/trading/permissions/${p.id}/revoke`);
       await routerTx(new ethers.Interface(ROUTER_ABI).encodeFunctionData('revoke', []));
       say('limits-msg', 'Automatic trading stopped for this wallet.', 'ok');
     } catch (err) { say('limits-msg', err.message, 'bad'); }

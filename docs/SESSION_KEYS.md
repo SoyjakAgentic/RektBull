@@ -262,7 +262,7 @@ cost is a few dollars a month in total.
 | 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key, **set the fee recipient to another address, charge more than 1%, trade far below the reference price** |
 | 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade |
 | 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | ✅ Built (see below). Remaining: one real approve-each trade on Base mainnet with a small cap, which needs a 0x API key and your wallet |
-| 2 | Autonomous mode for MetaMask, rules port, positions and exits | Soyjak's swap checks pass the same test cases here |
+| 2 | Autonomous mode for MetaMask, rules port, positions and exits | ✅ Built (see below). Soyjak's swap checks pass here (`test/soyjakParity.test.js`) |
 | 3 | Safe, then Coinbase Smart Wallet | Milestone 0's break-it tests pass on each |
 | 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
 | 5 | Solana with Phantom (Squads Smart Account or Swig) | The devnet proof in section 3 |
@@ -296,6 +296,41 @@ cost is a few dollars a month in total.
   risks, approve and sign; safety settings; and the limits screen, which
   writes `setLimits` from the user's own wallet on Base Sepolia, with the
   typed confirmation above the defaults.
+
+### Milestone 2, as built
+
+- **The grant flow** (`/trade`, Base Sepolia): the page checks the wallet is a
+  MetaMask smart account, the user saves limits on the router from their
+  wallet, gets test tokens and approves the router for them (sized to their
+  limits), then signs the delegation RektBull offers
+  (`GET /v1/trading/auto/delegation`: exactly the four caveats, expiring with
+  their limits). The registry checks it in full before storing it.
+- **Autonomous trades** (`src/trade/autonomous.js`): queued by the user (or by
+  the exit watcher), then the trade service builds the router swap, wraps it
+  in a redemption of the user's delegation, **simulates it first** (anything
+  the router or MetaMask's rules would refuse fails here, in plain words, and
+  nothing is signed or sent), logs the signature, signs with the session key
+  and sends. It confirms from the router's own `Swapped` event. One sender at a
+  time (advisory lock); the hash is recorded before broadcasting.
+- **Exits** (`src/trade/exits.js`, from Soyjak's position watcher): each
+  automatic position is valued at the router's reference price and sold in
+  full at the user's stop-loss (default 20%) or take-profit (default 50%).
+  The sale is exempt from the limits onchain. Users can change both or turn
+  exits off.
+- **Only tokens the router has a reference price for** can be traded
+  automatically. Meme coins have none, so they stay approve-each: that's what
+  keeps "a bad price can't move value out" true.
+- **Gas:** MetaMask's Redeemer rule means the session key must send the
+  transaction itself, so it pays the gas (covered by the fee). Fund it with a
+  little ETH; there is no separate gas key.
+- **Tests:** `test/autonomous.e2e.js` runs it all on a local copy of Base
+  Sepolia against MetaMask's real contracts: grant, a $100 buy (1% fee, tokens
+  in the user's wallet, signature logged), a trade over the onchain limit and
+  one on a stale price both refused before sending, a take-profit exit selling
+  everything without counting toward the limits, and "Stop trading".
+- **Not yet tested with a real MetaMask:** the smart-account switch and
+  MetaMask showing and signing the delegation. The browser test uses a
+  stand-in wallet.
 
 ## 8. Open questions
 

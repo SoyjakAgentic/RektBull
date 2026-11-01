@@ -2,8 +2,8 @@
  * One image, several roles:
  *   web    - the HTTP API
  *   worker - the deposit watcher and housekeeping
- *   trade  - the trade service: confirms trades, and (milestone 2) is the only
- *            role allowed to sign with RektBull's KMS keys
+ *   trade  - the trade service: confirms trades, runs exits, and sends
+ *            automatic trades; the only role allowed to sign with RektBull's KMS key
  *   all    - all three (local development)
  */
 const env = require('./config/env');
@@ -32,7 +32,11 @@ async function main() {
     setInterval(async () => {
       if (busy) return;
       busy = true;
-      try { await tradePositions.tick(); } catch (err) { logger.error('trade tick failed', { error: err.message }); } finally { busy = false; }
+      try {
+        await tradePositions.tick(); // approve-each trades the user's wallet sent
+        await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
+        await require('./trade/autonomous').tick(); // send and confirm automatic trades
+      } catch (err) { logger.error('trade tick failed', { error: err.message }); } finally { busy = false; }
     }, env.tradeTickMs);
     logger.info('trade service started');
   }

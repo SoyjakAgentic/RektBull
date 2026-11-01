@@ -44,8 +44,9 @@ Migrations run on start.
 
 ## RektBull's own keys in Google Cloud KMS
 
-Only RektBull's own few keys live in KMS: the session key that uses users'
-trading permissions, and a gas wallet. **Never user keys**; users sign with
+Only RektBull's own key lives in KMS: the session key that uses users'
+trading permissions. It also pays the gas for the trades it sends (MetaMask's
+Redeemer rule means it must send them itself), so keep a little ETH on it. **Never user keys**; users sign with
 their own wallets. The fee wallet and treasury are receive-only and stay cold
 (a Safe or hardware wallet), outside KMS.
 
@@ -53,25 +54,21 @@ their own wallets. The fee wallet and treasury are receive-only and stay cold
 gcloud kms keyrings create rektbull --location=us-central1
 gcloud kms keys create session-key --keyring=rektbull --location=us-central1 \
   --purpose=asymmetric-signing --default-algorithm=ec-sign-secp256k1-sha256 --protection-level=hsm
-gcloud kms keys create gas-wallet --keyring=rektbull --location=us-central1 \
-  --purpose=asymmetric-signing --default-algorithm=ec-sign-secp256k1-sha256 --protection-level=hsm
 
 gcloud iam service-accounts create rektbull-trade
-for KEY in session-key gas-wallet; do
-  gcloud kms keys add-iam-policy-binding $KEY --keyring=rektbull --location=us-central1 \
-    --member=serviceAccount:rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com \
-    --role=roles/cloudkms.signerVerifier
-done
+gcloud kms keys add-iam-policy-binding session-key --keyring=rektbull --location=us-central1 \
+  --member=serviceAccount:rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/cloudkms.signerVerifier
 ```
 
-- Grant the signer role **on these two keys only**, and **only** to
+- Grant the signer role **on this key only**, and **only** to
   `rektbull-trade`. The API and worker services must have no KMS role.
-- Set `KMS_SESSION_KEY_VERSION` and `KMS_GAS_KEY_VERSION` on the trade service
+- Set `KMS_SESSION_KEY_VERSION` on the trade service
   (full `…/cryptoKeyVersions/1` names). Put the session key's public address in
   `SESSION_KEY_ADDRESS` on the API (it only needs the address); the trade
   service derives it from KMS and the two must match.
 - Turn on **Data Access audit logs** for Cloud KMS. Every signature is then
-  logged; milestone 2 matches each one against a trade and alerts on any that
-  doesn't match.
+  logged. RektBull writes each signature it asks for to `key_signatures` first
+  (digest and purpose), so any KMS signature without a matching row is an alarm.
 - Emergency stop: remove `rektbull-trade`'s binding on `session-key`. Automatic
   trading stops at once; no user funds are at risk either way.

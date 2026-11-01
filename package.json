@@ -18,6 +18,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@google-cloud/kms": "^6.3.0",
+    "@metamask/delegation-abis": "^2.0.0",
     "@metamask/delegation-core": "^3.0.0",
     "@metamask/delegation-deployments": "^2.1.0",
     "axios": "^1.7.2",

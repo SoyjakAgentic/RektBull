@@ -29,26 +29,33 @@ const dd = require('../services/dueDiligence');
 const { TradeBlocked } = zeroex;
 const MAX_FEE_BPS = 100;
 
-const DEFAULT_SETTINGS = { max_trade_usd: 500, max_tax_bps: 1000, max_round_trip_loss_pct: 30, slippage_bps: 100 };
+const DEFAULT_SETTINGS = { max_trade_usd: 500, max_tax_bps: 1000, max_round_trip_loss_pct: 30, slippage_bps: 100, stop_loss_pct: 20, take_profit_pct: 50, auto_exit: true };
 
 async function settingsFor(accountId) {
-  const { rows } = await db.query('SELECT max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps FROM trade_settings WHERE account_id = $1', [accountId]);
+  const { rows } = await db.query('SELECT * FROM trade_settings WHERE account_id = $1', [accountId]);
   if (!rows.length) return { ...DEFAULT_SETTINGS };
   const r = rows[0];
-  return { max_trade_usd: Number(r.max_trade_usd), max_tax_bps: r.max_tax_bps, max_round_trip_loss_pct: Number(r.max_round_trip_loss_pct), slippage_bps: r.slippage_bps };
+  return {
+    max_trade_usd: Number(r.max_trade_usd), max_tax_bps: r.max_tax_bps, max_round_trip_loss_pct: Number(r.max_round_trip_loss_pct), slippage_bps: r.slippage_bps,
+    stop_loss_pct: Number(r.stop_loss_pct ?? 20), take_profit_pct: Number(r.take_profit_pct ?? 50), auto_exit: r.auto_exit ?? true,
+  };
 }
 
 async function saveSettings(accountId, s) {
   const cur = await settingsFor(accountId);
-  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS)) };
+  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS).filter(k => k !== 'auto_exit')), ...(s?.auto_exit !== undefined ? { auto_exit: !!s.auto_exit } : {}) };
+  if (!(next.stop_loss_pct >= 1 && next.stop_loss_pct <= 95)) throw Object.assign(new Error('stop_loss_pct must be 1 to 95'), { status: 400 });
+  if (!(next.take_profit_pct >= 1 && next.take_profit_pct <= 10000)) throw Object.assign(new Error('take_profit_pct must be 1 to 10000'), { status: 400 });
   if (!(next.max_trade_usd > 0)) throw Object.assign(new Error('max_trade_usd must be above 0'), { status: 400 });
   if (!(next.max_tax_bps >= 0 && next.max_tax_bps <= 5000)) throw Object.assign(new Error('max_tax_bps must be 0 to 5000'), { status: 400 });
   if (!(next.max_round_trip_loss_pct > 0 && next.max_round_trip_loss_pct <= 100)) throw Object.assign(new Error('max_round_trip_loss_pct must be above 0 and at most 100'), { status: 400 });
   if (!(next.slippage_bps >= 10 && next.slippage_bps <= 1000)) throw Object.assign(new Error('slippage_bps must be 10 to 1000'), { status: 400 });
   await db.query(
-    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (account_id) DO UPDATE SET max_trade_usd = $2, max_tax_bps = $3, max_round_trip_loss_pct = $4, slippage_bps = $5, updated_at = now()`,
-    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps],
+    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps, stop_loss_pct, take_profit_pct, auto_exit)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (account_id) DO UPDATE SET max_trade_usd = $2, max_tax_bps = $3, max_round_trip_loss_pct = $4, slippage_bps = $5,
+       stop_loss_pct = $6, take_profit_pct = $7, auto_exit = $8, updated_at = now()`,
+    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps, next.stop_loss_pct, next.take_profit_pct, next.auto_exit],
   );
   return next;
 }

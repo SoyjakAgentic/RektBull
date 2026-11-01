@@ -21,25 +21,20 @@ const { ethers } = require('ethers');
 const core = require('@metamask/delegation-core');
 const { DELEGATOR_CONTRACTS } = require('@metamask/delegation-deployments');
 const db = require('../config/db');
-const env = require('../config/env');
 const { evmRpc } = require('../providers/rpc');
+const networks = require('./networks');
 
 const MM_VERSION = '1.3.0';
 const MAX_DAYS = 30;
 const SWAP_SELECTOR = ethers.id('swap((address,address,uint256,uint256,address,address,bytes,uint256))').slice(0, 10);
 const ROUTER = new ethers.Interface(['function limits(address) view returns (uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)']);
 
-/** chainId -> RPC chain name, for the chains with a deployed Trade Router. */
-const CHAIN_NAMES = { 84532: 'base-sepolia', 8453: 'base' };
-
 class PermissionRefused extends Error {
   constructor(message) { super(message); this.status = 422; }
 }
 
 function routerFor(chainId) {
-  const router = env.tradeRouters[String(chainId)];
-  if (!router) throw new PermissionRefused(`automatic trading isn't available on chain ${chainId} yet`);
-  return router.toLowerCase();
+  try { return networks.network(chainId).router; } catch { throw new PermissionRefused(`automatic trading isn't available on chain ${chainId} yet`); }
 }
 
 function mmContracts(chainId) {
@@ -47,6 +42,8 @@ function mmContracts(chainId) {
   if (!c) throw new PermissionRefused(`MetaMask's delegation contracts aren't deployed on chain ${chainId}`);
   return c;
 }
+
+const chainName = chainId => networks.network(chainId).name;
 
 const eq = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
 
@@ -101,7 +98,7 @@ function checkDelegation({ delegation: d, chainId, wallet, sessionKey, now = Mat
 
 /** Onchain: the wallet is a MetaMask EIP-7702 account and has live limits on the router. */
 async function checkOnchain({ chainId, wallet, router, delegatorImpl, now = Math.floor(Date.now() / 1000) }) {
-  const chain = CHAIN_NAMES[chainId];
+  const chain = chainName(chainId);
   const code = String(await evmRpc(chain, 'eth_getCode', [wallet, 'latest'])).toLowerCase();
   if (code !== ('0xef0100' + delegatorImpl.slice(2)).toLowerCase()) {
     throw new PermissionRefused('your wallet is not yet a MetaMask smart account on this chain: switch it on in MetaMask first');
@@ -147,4 +144,4 @@ async function revoke(account, id) {
   return present(rows[0]);
 }
 
-module.exports = { checkDelegation, checkOnchain, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, CHAIN_NAMES };
+module.exports = { checkDelegation, checkOnchain, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, chainName, ROUTER };

@@ -15,7 +15,7 @@ if (!DB) { console.error('set TEST_DATABASE_URL'); process.exit(1); }
 const AH = '0x0000000000001ff3684f28c67538d4d072c22734';
 const TOKEN = '0x' + '7a'.repeat(20);
 
-Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABLED: 'true', SWAP_FEE_WALLET_EVM: '0x' + 'fe'.repeat(20), ZEROEX_API_KEY: 'test', TRADE_ROUTERS: JSON.stringify({ 84532: '0x9307067d6a5fc22d1085a2fb16b1385dcc0e6b68' }) });
+Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABLED: 'true', SWAP_FEE_WALLET_EVM: '0x' + 'fe'.repeat(20), ZEROEX_API_KEY: 'test', SESSION_KEY_ADDRESS: '0x' + '5e'.repeat(20) });
 
 (async () => {
   const db = require('../../src/config/db');
@@ -46,6 +46,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
         if (method === 'eth_chainId') return chainId;
         if (method === 'wallet_switchEthereumChain') { chainId = params[0].chainId; return null; }
         if (method === 'personal_sign') return window.__sign(params[0]);
+        if (method === 'eth_signTypedData_v4') return '0x' + '00'.repeat(65);
         if (method === 'wallet_sendCalls') throw Object.assign(new Error('Method not supported'), { code: 4200 });
         if (method === 'eth_sendTransaction') return window.__sent(params[0]);
         if (method === 'eth_getTransactionReceipt') return { status: '0x1' };
@@ -102,6 +103,19 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     assert.equal(call[0], 500n * 10n ** 8n);
     assert.equal(call[1], 25000n * 10n ** 8n);
     console.log('✔ limits: $25,000/day needs the typed confirmation, then the wallet is asked to sign setLimits on the router');
+
+    // Automatic trading: test tokens, and the steps that need limits first.
+    await page.getByRole('button', { name: 'Get 1,000 test tUSDC' }).click();
+    await page.getByText('1,000 more test tUSDC').waitFor();
+    assert.equal(sent.length, 4);
+    assert.equal(sent[3].to.toLowerCase(), '0x852ced5643c06f4cbec5403d2dbb92113e6ca2a8', 'mint on the test tUSDC');
+    await page.getByRole('button', { name: 'Let the router trade my test tokens' }).click();
+    await page.getByText('Save your limits first').waitFor();
+    await page.getByRole('button', { name: 'Sign the permission' }).click();
+    await page.getByText('Set your trading limits on the router first').waitFor();
+    assert.equal(sent.length, 4, 'nothing approved or signed without limits onchain');
+    assert.match(await page.textContent('#smart-status'), /plain account/);
+    console.log('✔ automatic trading: test tokens; approvals and the permission wait for limits onchain');
 
     await page.setViewportSize({ width: 375, height: 800 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
