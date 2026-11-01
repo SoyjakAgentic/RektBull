@@ -214,6 +214,51 @@ describe('RektBull Trade Router: break-it tests', function () {
     });
   });
 
+  describe('selling what RektBull bought is never blocked by the limits', function () {
+    // tWETH (18 dec) -> tUSDC (6 dec) at $3,000/ETH.
+    const sellRate = (pct = 100) => 3000n * 10n ** 6n * BigInt(pct) / 100n;
+    const sellCall = async (amountIn, rate = sellRate()) => swapCall({ amountIn, tokenIn: WETH, tokenOut: USDC, rate });
+
+    it('after the daily limit is used up, the bought tokens can still be sold, in one trade over $500', async function () {
+      // Use up today's $10,000 of buys ($500 is already traded today).
+      for (let i = 0; i < 19; i++) await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) }))).wait();
+      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) })), /OverPeriodLimit/);
+      const spent = await router.spentThisPeriodUsd(user.address);
+
+      await (await WETH.connect(user).approve(router.target, ethers.MaxUint256)).wait(); // the user approves selling tWETH
+      const bought = await router.boughtByRouter(user.address, WETH.target);
+      assert.ok(await router.valueUsd(WETH.target, bought) > USD(500), 'what was bought is worth more than one trade\'s limit');
+      const usdcBefore = await USDC.balanceOf(user.address);
+      await (await redeem(delegation, router.target, await sellCall(bought))).wait();
+      assert.ok((await USDC.balanceOf(user.address)) > usdcBefore, 'the sale paid the user');
+      assert.equal(await router.spentThisPeriodUsd(user.address), spent, 'the exempt sale counted nothing');
+      assert.equal(await router.boughtByRouter(user.address, WETH.target), 0n);
+    });
+
+    it('tokens the user already had, that RektBull did not buy, still count toward the limits', async function () {
+      await WETH.mint(user.address, ethers.parseEther('1')); // the user's own tWETH
+      assert.equal(await router.boughtByRouter(user.address, WETH.target), 0n);
+      await fails(redeem(delegation, router.target, await sellCall(ethers.parseEther('0.1'))), /OverPeriodLimit/);
+    });
+
+    it('an exempt sale still has to meet the reference price', async function () {
+      // Buy a little tomorrow, then try to dump it 10% below the price.
+      await advance(DAY + 1);
+      await usdcFeed.set(100000000n, await now()); await wethFeed.set(300000000000n, await now());
+      await (await redeem(delegation, router.target, await swapCall({ amountIn: usdc(300) }))).wait();
+      const bought = await router.boughtByRouter(user.address, WETH.target);
+      await fails(redeem(delegation, router.target, await sellCall(bought, sellRate(90))), /BelowMinimum/);
+    });
+
+    it('revoking stops exempt sales too', async function () {
+      const bought = await router.boughtByRouter(user.address, WETH.target);
+      await (await router.connect(user).revoke()).wait();
+      await fails(redeem(delegation, router.target, await sellCall(bought)), /LimitsOff/);
+      const expiry = (await now()) + 7 * DAY; // turn trading back on for the tests after this
+      await (await router.connect(user).setLimits(USD(500), USD(10_000), DAY, expiry)).wait();
+    });
+  });
+
   describe('prices it can trust', function () {
     it('refuses to trade while the Base sequencer is down, or just after it restarts', async function () {
       const Feed = await ethers.getContractFactory('MockFeed');

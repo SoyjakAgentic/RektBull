@@ -12,6 +12,9 @@ On every trade it enforces onchain:
 - the trade fits the caller's own limits (per trade and per period in USD,
   plus an expiry), which only the caller can set or revoke;
 - prices are fresh, and on L2s the sequencer has been up for at least an hour.
+- selling tokens the router bought for the user, up to the amount bought,
+  doesn't count toward the limits, so an exit is never blocked; everything
+  else does.
 
 No owner, no admin, no upgrades: venues, tokens, price feeds, the fee and the
 fee wallet are fixed at deployment. Funds are only pulled from `msg.sender`.

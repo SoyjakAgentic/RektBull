@@ -1,7 +1,7 @@
 # Automatic trading with session keys: Design
 
 *Status: milestone 0 built. The Trade Router and its break-it tests are in
-`contracts/` (23 tests, all passing, against MetaMask's real deployed
+`contracts/` (27 tests, all passing, against MetaMask's real deployed
 contracts on a copy of Base Sepolia). Not audited; not on mainnet. Decided: users keep their own wallets,
 and RektBull trades for them through a limited, revocable permission
 ("session key"). RektBull never holds user funds and can never withdraw.*
@@ -154,6 +154,12 @@ exactly what this design rules out.
 - **Caveats used:** Redeemer, Timestamp, AllowedTargets (router only),
   AllowedMethods (`swap` only). Spending-limit enforcers and the
   balance-change check weren't needed: the router does both, with prices.
+- **Selling what RektBull bought is exempt from the limits.** The router
+  records, per user and token, how much it bought for them; selling up to
+  that amount doesn't count toward the per-trade or daily limit, so an exit is
+  never blocked. Tokens the user had before still count. Revoke and the price
+  check still apply to exempt sells. Because buys are capped, what can be sold
+  freely is capped too.
 - **The worst case of a bad price is bounded:** a hacked RektBull could take
   at most the price bound (2%) on each trade, within the limits. Lower the bound
   for liquid pairs if that's too much.

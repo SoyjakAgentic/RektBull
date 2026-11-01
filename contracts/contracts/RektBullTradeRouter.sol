@@ -25,7 +25,9 @@ interface IPriceFeed {
  *           - the output is no worse than the Chainlink reference price by
  *             more than MAX_SLIPPAGE_BPS, so a bad price can't move value out;
  *           - the trade fits the caller's own limits (per trade, per period,
- *             expiry), which only the caller can set.
+ *             expiry), which only the caller can set. Selling tokens this
+ *             router bought for the caller doesn't count toward the limits
+ *             (up to the amount bought), so an exit is never blocked by them.
  *
  *         There is no owner, no admin and no upgrade path: every setting is
  *         fixed at deployment. Funds are only ever pulled from msg.sender, so
@@ -66,6 +68,9 @@ contract RektBullTradeRouter is ReentrancyGuard {
     mapping(address => Limits) public limits;
     mapping(address => uint256) public periodStartedAt;
     mapping(address => uint256) public spentThisPeriodUsd;
+    /// @notice account => token => how much of it this router has bought for the account and
+    ///         not yet sold. Selling up to this amount is exempt from the limits.
+    mapping(address => mapping(address => uint256)) public boughtByRouter;
 
     struct SwapParams {
         address tokenIn;
@@ -87,7 +92,8 @@ contract RektBullTradeRouter is ReentrancyGuard {
         uint256 amountIn,
         uint256 fee,
         uint256 amountOut,
-        uint256 valueUsd
+        uint256 valueUsd,
+        uint256 countedUsd
     );
 
     error BadConfig();
@@ -194,9 +200,14 @@ contract RektBullTradeRouter is ReentrancyGuard {
         if (block.timestamp > p.deadline) revert Expired();
         if (!isVenue[p.venue] || !isVenue[p.spender] || p.tokenIn == p.tokenOut) revert NotAllowed();
 
-        // 1. The caller's limits, valued at the reference price.
+        // 1. The caller's limits, valued at the reference price. Selling what this router
+        //    bought for the caller is exempt, up to the amount bought; the rest counts.
         uint256 usdIn = valueUsd(p.tokenIn, p.amountIn);
-        _spend(msg.sender, usdIn);
+        uint256 bought = boughtByRouter[msg.sender][p.tokenIn];
+        uint256 exempt = p.amountIn < bought ? p.amountIn : bought;
+        boughtByRouter[msg.sender][p.tokenIn] = bought - exempt;
+        uint256 countedUsd = exempt == p.amountIn ? 0 : valueUsd(p.tokenIn, p.amountIn - exempt);
+        _spend(msg.sender, countedUsd);
 
         // 2. Take the input from the caller (only ever the caller), and the fee.
         IERC20 tokenIn = IERC20(p.tokenIn);
@@ -223,16 +234,20 @@ contract RektBullTradeRouter is ReentrancyGuard {
         if (amountOut < minimum) revert BelowMinimum(amountOut, minimum);
 
         // 5. Everything goes back to the caller: the output, and any input the venue didn't use.
+        boughtByRouter[msg.sender][p.tokenOut] += amountOut;
         tokenOut.safeTransfer(msg.sender, amountOut);
         uint256 leftover = tokenIn.balanceOf(address(this)) - inBefore;
         if (leftover > 0) tokenIn.safeTransfer(msg.sender, leftover);
 
-        emit Swapped(msg.sender, p.tokenIn, p.tokenOut, p.amountIn, fee, amountOut, usdIn);
+        emit Swapped(msg.sender, p.tokenIn, p.tokenOut, p.amountIn, fee, amountOut, usdIn, countedUsd);
     }
 
+    /// @dev Checks the limits are on (even for an exempt sell: revoke stops everything),
+    ///      then counts usd toward them.
     function _spend(address account, uint256 usd) internal {
         Limits memory l = limits[account];
         if (l.validUntil == 0 || block.timestamp > l.validUntil) revert LimitsOff();
+        if (usd == 0) return;
         if (usd > l.perTradeUsd) revert OverTradeLimit(usd, l.perTradeUsd);
         if (block.timestamp >= periodStartedAt[account] + l.periodSeconds) {
             periodStartedAt[account] = block.timestamp;
