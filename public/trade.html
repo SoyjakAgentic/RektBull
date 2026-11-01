@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Trading</title>
+  <link rel="stylesheet" href="/trade.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <div id="who" class="who">Not connected</div>
+  </header>
+
+  <main>
+    <section class="card" id="connect-card">
+      <h2>1. Connect your wallet</h2>
+      <p class="muted">Your funds stay in your wallet. RektBull checks each trade and builds it; your wallet shows it and you sign it.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" class="primary" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="trade-card" hidden>
+      <h2>2. Trade on Base</h2>
+      <div class="grid">
+        <label>Side
+          <select id="side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
+        </label>
+        <label>Pay with / receive
+          <select id="base"><option>USDC</option><option>ETH</option><option>WETH</option></select>
+        </label>
+        <label class="wide">Token address
+          <input id="token" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+        <label id="amount-wrap">Amount (USD)
+          <input id="amount" type="number" min="1" step="1" value="100">
+        </label>
+        <label id="fraction-wrap" hidden>Share of your holding to sell (%)
+          <input id="fraction" type="number" min="1" max="100" step="1" value="100">
+        </label>
+      </div>
+      <button id="check" class="primary">Check this trade</button>
+      <div id="plan" class="plan" hidden></div>
+      <p id="trade-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="history-card" hidden>
+      <h2>Your trades</h2>
+      <table><thead><tr><th>When</th><th>Trade</th><th>Status</th></tr></thead><tbody id="history"></tbody></table>
+      <h3>Positions from RektBull trades</h3>
+      <table><thead><tr><th>Token</th><th>Amount (raw)</th><th>Cost</th></tr></thead><tbody id="positions"></tbody></table>
+    </section>
+
+    <section class="card" id="settings-card" hidden>
+      <h2>Safety settings for trades RektBull proposes</h2>
+      <div class="grid">
+        <label>Most per trade (USD)<input id="s-max" type="number" min="1"></label>
+        <label>Refuse tokens taxing over (%)<input id="s-tax" type="number" min="0" max="50" step="0.5"></label>
+        <label>Refuse if selling back loses over (%)<input id="s-loss" type="number" min="1" max="100"></label>
+        <label>Slippage (%)<input id="s-slip" type="number" min="0.1" max="10" step="0.1"></label>
+      </div>
+      <button id="s-save">Save settings</button>
+      <p id="settings-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="limits-card" hidden>
+      <h2>Automatic trading limits <span class="tag">Base Sepolia test network</span></h2>
+      <p class="muted">These limits are written into the RektBull Trade Router by your own wallet. RektBull can never change them, and can never withdraw: trades only go back into your wallet. The daily limit is trading volume, not your balance. The router isn't audited yet, so this runs on the test network only.</p>
+      <div id="limits-now" class="limits-now"></div>
+      <div class="grid">
+        <label>Most per trade (USD)<input id="l-trade" type="number" min="1" value="500"></label>
+        <label>Most per day (USD)<input id="l-day" type="number" min="1" value="10000"></label>
+        <label>Valid for (days)<input id="l-days" type="number" min="1" max="30" value="7"></label>
+      </div>
+      <div id="worst" class="worst"></div>
+      <div id="confirm-wrap" hidden>
+        <label class="wide">These are above the defaults. Type the daily amount to confirm
+          <input id="l-confirm" placeholder="e.g. 25000" autocomplete="off">
+        </label>
+      </div>
+      <div class="row">
+        <button id="l-save" class="primary">Save limits from my wallet</button>
+        <button id="l-revoke" class="danger">Stop all automatic trading</button>
+      </div>
+      <p id="limits-msg" class="msg"></p>
+    </section>
+  </main>
+
+  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety.</footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/trade.js"></script>
+</body>
+</html>

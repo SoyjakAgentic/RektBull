@@ -27,6 +27,10 @@ payments.
 | `POST /v1/tokens/quick-check` | Token contract risk scan ($0.25; 5 free a day when signed in) |
 | `POST /v1/tokens/report` | Scan + market data + plain-English AI report ($3) |
 | `GET /v1/admin/provider-usage` | Calls per data provider per day, against their limits |
+| `GET /trade` | The trading page: connect a wallet, sign in, check and sign trades, set automatic-trading limits |
+| `POST /v1/trading/proposals`, `…/:id/approve`, `…/:id/submitted` | Approve-each trading on Base: RektBull checks the trade and builds it, the user's wallet signs it |
+| `GET/PUT /v1/trading/settings`, `GET /v1/trading/positions`, `GET /v1/trading/limits` | Safety settings, positions from RektBull trades, onchain router limits |
+| `POST/GET /v1/trading/permissions` | Register an automatic-trading permission (checked in full before it's stored) |
 
 Token checks cover Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and
 Solana. Example:
@@ -59,6 +63,10 @@ Etherscan or Blockscout key, and reports need `ANTHROPIC_API_KEY`.
 npm test                                                            # unit tests
 TEST_DATABASE_URL=postgres://user:pass@localhost/rektbull_test npm test   # + end-to-end
 ```
+
+The browser test drives the trading page in Chromium with a stand-in wallet
+(`TEST_DATABASE_URL=… node test/browser/tradePage.js`); it isn't part of
+`npm test`. Contract tests are in `contracts/` (`cd contracts && npm test`).
 
 The end-to-end test drops and recreates the schema in that database, runs a
 fake Base node, and covers sign-in, the free allowance, credits, refunds on

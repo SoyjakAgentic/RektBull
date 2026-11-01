@@ -1,8 +1,10 @@
 /**
- * One image, two roles:
+ * One image, several roles:
  *   web    - the HTTP API
  *   worker - the deposit watcher and housekeeping
- *   all    - both (local development)
+ *   trade  - the trade service: confirms trades, and (milestone 2) is the only
+ *            role allowed to sign with RektBull's KMS keys
+ *   all    - all three (local development)
  */
 const env = require('./config/env');
 const logger = require('./config/logger');
@@ -10,6 +12,7 @@ const { migrate } = require('./config/migrate');
 const { createApp } = require('./app');
 const watcher = require('./payments/watcher');
 const { purgeExpired } = require('./lib/cache');
+const tradePositions = require('./trade/positions');
 
 async function main() {
   if (env.databaseUrl) await migrate();
@@ -23,10 +26,19 @@ async function main() {
     watcher.start();
     setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);
     logger.info('worker started: deposit watcher on', { chains: env.paymentChains });
-    if (role === 'worker') {
-      // Cloud Run needs something listening on PORT even for a worker.
-      require('http').createServer((_q, r) => { r.writeHead(200); r.end('ok'); }).listen(env.port);
-    }
+  }
+  if ((role === 'trade' || role === 'all') && env.databaseUrl) {
+    let busy = false;
+    setInterval(async () => {
+      if (busy) return;
+      busy = true;
+      try { await tradePositions.tick(); } catch (err) { logger.error('trade tick failed', { error: err.message }); } finally { busy = false; }
+    }, env.tradeTickMs);
+    logger.info('trade service started');
+  }
+  if (role === 'worker' || role === 'trade') {
+    // Cloud Run needs something listening on PORT even for a background service.
+    require('http').createServer((_q, r) => { r.writeHead(200); r.end('ok'); }).listen(env.port);
   }
 }
 

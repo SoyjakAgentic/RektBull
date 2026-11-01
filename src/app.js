@@ -1,4 +1,5 @@
 require('express-async-errors');
+const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -14,6 +15,12 @@ function createApp() {
   app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false }));
   app.use(optionalAuth);
   app.use(routes);
+
+  // The trading page and its files (the wallet signs everything; the page holds no key).
+  const pub = path.join(__dirname, '..', 'public');
+  app.get('/trade', (_req, res) => res.sendFile(path.join(pub, 'trade.html')));
+  app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
+  app.use(express.static(pub, { index: false }));
 
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use(errorHandler);

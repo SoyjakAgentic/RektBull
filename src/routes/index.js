@@ -82,6 +82,8 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
   run: dd.fullReport,
 }));
 
+router.use(require('./trading'));
+
 // ── Admin ───────────────────────────────────────────────────────────────────
 router.get('/v1/admin/provider-usage', requireAuth, requireAdmin, async (_req, res) => res.json({ usage: await usage.report() }));
 

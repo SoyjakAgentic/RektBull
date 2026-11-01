@@ -14,7 +14,7 @@ function json(name, fallback) {
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: int(process.env.PORT, 8080),
-  serviceRole: process.env.SERVICE_ROLE || 'all', // web | worker | all
+  serviceRole: process.env.SERVICE_ROLE || 'all', // web | worker | trade | all
   databaseUrl: process.env.DATABASE_URL || '',
 
   // Sign in with your wallet
@@ -35,6 +35,18 @@ const env = {
   jupiterApiKey: process.env.JUPITER_API_KEY || '',
   // {"goplus": 2000, "etherscan": 90000, ...}: calls per UTC day before a provider is skipped.
   providerDailyLimits: json('PROVIDER_DAILY_LIMITS', {}),
+
+  // Trading (approve-each now; automatic trading with session keys in milestone 2)
+  tradingEnabled: process.env.TRADING_ENABLED === 'true',
+  swapFeeBps: int(process.env.SWAP_FEE_BPS, 100), // 1%; the Trade Router caps it at 1% onchain
+  swapFeeWalletEvm: (process.env.SWAP_FEE_WALLET_EVM || '').toLowerCase(),
+  // {"84532": "0x…"}: the Trade Router per chain id (Base Sepolia only until the audit).
+  tradeRouters: json('TRADE_ROUTERS', {}),
+  // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
+  sessionKeyAddress: (process.env.SESSION_KEY_ADDRESS || '').toLowerCase(),
+  kmsSessionKeyVersion: process.env.KMS_SESSION_KEY_VERSION || '',
+  kmsGasKeyVersion: process.env.KMS_GAS_KEY_VERSION || '',
+  tradeTickMs: int(process.env.TRADE_TICK_MS, 15000),
 
   // Payments: x402 (pay per call in USDC on Base)
   x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),

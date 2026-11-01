@@ -1,6 +1,8 @@
-# Builds one image and deploys it as two Cloud Run services:
-#   rektbull-api     SERVICE_ROLE=web     (scales with traffic)
+# Builds one image and deploys it as three Cloud Run services:
+#   rektbull-api     SERVICE_ROLE=web     (scales with traffic; no KMS access)
 #   rektbull-worker  SERVICE_ROLE=worker  (one always-on instance: the deposit watcher)
+#   rektbull-trade   SERVICE_ROLE=trade   (one always-on instance, its own service account:
+#                                          the only identity allowed to sign with RektBull's KMS keys)
 # Secrets come from Secret Manager; see docs/DEPLOY.md.
 substitutions:
   _REGION: us-central1
@@ -34,6 +36,21 @@ steps:
       - --max-instances=1
       - --no-cpu-throttling
       - --set-env-vars=SERVICE_ROLE=worker
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rektbull-trade
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA
+      - --region=${_REGION}
+      - --no-allow-unauthenticated
+      - --min-instances=1
+      - --max-instances=1
+      - --no-cpu-throttling
+      - --service-account=rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-env-vars=SERVICE_ROLE=trade
       - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA'

@@ -1,11 +1,12 @@
 # Deploying
 
-One Docker image, two Cloud Run services (`cloudbuild.yaml`):
+One Docker image, three Cloud Run services (`cloudbuild.yaml`):
 
 | Service | Role | Scaling |
 |---|---|---|
 | `rektbull-api` | `SERVICE_ROLE=web` | With traffic, public |
 | `rektbull-worker` | `SERVICE_ROLE=worker` | Exactly 1 instance, CPU always on, private (the deposit watcher must run continuously) |
+| `rektbull-trade` | `SERVICE_ROLE=trade` | Exactly 1 instance, private, **its own service account**: the only identity that may sign with RektBull's KMS keys |
 
 Migrations run on start.
 
@@ -40,3 +41,37 @@ Migrations run on start.
   one can send as it.
 - Set `SIWE_DOMAIN` and `SIWE_URI` to the website's real domain, or wallets
   will show a mismatch warning on sign-in.
+
+## RektBull's own keys in Google Cloud KMS
+
+Only RektBull's own few keys live in KMS: the session key that uses users'
+trading permissions, and a gas wallet. **Never user keys**; users sign with
+their own wallets. The fee wallet and treasury are receive-only and stay cold
+(a Safe or hardware wallet), outside KMS.
+
+```bash
+gcloud kms keyrings create rektbull --location=us-central1
+gcloud kms keys create session-key --keyring=rektbull --location=us-central1 \
+  --purpose=asymmetric-signing --default-algorithm=ec-sign-secp256k1-sha256 --protection-level=hsm
+gcloud kms keys create gas-wallet --keyring=rektbull --location=us-central1 \
+  --purpose=asymmetric-signing --default-algorithm=ec-sign-secp256k1-sha256 --protection-level=hsm
+
+gcloud iam service-accounts create rektbull-trade
+for KEY in session-key gas-wallet; do
+  gcloud kms keys add-iam-policy-binding $KEY --keyring=rektbull --location=us-central1 \
+    --member=serviceAccount:rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com \
+    --role=roles/cloudkms.signerVerifier
+done
+```
+
+- Grant the signer role **on these two keys only**, and **only** to
+  `rektbull-trade`. The API and worker services must have no KMS role.
+- Set `KMS_SESSION_KEY_VERSION` and `KMS_GAS_KEY_VERSION` on the trade service
+  (full `…/cryptoKeyVersions/1` names). Put the session key's public address in
+  `SESSION_KEY_ADDRESS` on the API (it only needs the address); the trade
+  service derives it from KMS and the two must match.
+- Turn on **Data Access audit logs** for Cloud KMS. Every signature is then
+  logged; milestone 2 matches each one against a trade and alerts on any that
+  doesn't match.
+- Emergency stop: remove `rektbull-trade`'s binding on `session-key`. Automatic
+  trading stops at once; no user funds are at risk either way.

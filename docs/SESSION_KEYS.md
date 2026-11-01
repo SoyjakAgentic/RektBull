@@ -261,11 +261,41 @@ cost is a few dollars a month in total.
 |---|---|---|
 | 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key, **set the fee recipient to another address, charge more than 1%, trade far below the reference price** |
 | 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade |
-| 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | One real approve-each trade on Base mainnet with a small cap |
+| 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | ✅ Built (see below). Remaining: one real approve-each trade on Base mainnet with a small cap, which needs a 0x API key and your wallet |
 | 2 | Autonomous mode for MetaMask, rules port, positions and exits | Soyjak's swap checks pass the same test cases here |
 | 3 | Safe, then Coinbase Smart Wallet | Milestone 0's break-it tests pass on each |
 | 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
 | 5 | Solana with Phantom (Squads Smart Account or Swig) | The devnet proof in section 3 |
+
+### Milestone 1, as built
+
+- **Approve-each trading on Base** (`src/trade/`): propose (all checks run),
+  approve (every check runs again on a fresh quote, then the wallet calls are
+  built and checked: only 0x's AllowanceHolder, approvals only to it and only
+  for the trade), the user's wallet signs and sends, and the trade service
+  confirms it onchain: only if the receipt moved the token for this wallet.
+  Works with any EVM wallet (MetaMask, Coinbase Smart Wallet, Safe, Phantom's
+  EVM side), as one batch where the wallet supports EIP-5792.
+- **Checks** (ported from Soyjak): RektBull's token check (critical refused,
+  high risks need the user's acknowledgement), the user's per-trade amount,
+  taxes, and a sell-back test for honeypots. Sells skip them.
+- **The 1% fee** is taken by 0x inside the swap, in the base asset.
+- **KMS signer** (`src/trade/kmsSigner.js`): signs transactions, messages and
+  typed data with a secp256k1 HSM key, converting KMS's DER signatures to
+  Ethereum's form (low-s, recovered v). Tested with a stand-in KMS; not yet
+  run against real Google Cloud KMS.
+- **Permissions registry**: a delegation is stored only if it's from the
+  signed-in wallet, to RektBull's session key, with exactly the four caveats
+  (only RektBull's key, at most 30 days, only the router, only `swap`), signed
+  by the wallet, and the wallet is a MetaMask smart account with limits set on
+  the router. MetaMask only for now; mainnet refused until the router is
+  deployed there after the audit.
+- **Trade service** (`SERVICE_ROLE=trade`): its own Cloud Run service and
+  service account, the only identity with KMS signing rights.
+- **Trading page** (`/trade`): connect (EIP-6963), sign in, check, acknowledge
+  risks, approve and sign; safety settings; and the limits screen, which
+  writes `setLimits` from the user's own wallet on Base Sepolia, with the
+  typed confirmation above the defaults.
 
 ## 8. Open questions
 

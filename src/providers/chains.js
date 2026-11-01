@@ -18,9 +18,12 @@ const SOLANA = { dexscreener: 'solana', publicRpc: 'https://api.mainnet-beta.sol
 
 const ALL = [...Object.keys(EVM), 'solana'];
 
+// Chains read only for trading permissions (not token checks): testnets.
+const EXTRA_RPC = { 'base-sepolia': 'https://sepolia.base.org' };
+
 function rpcUrls(chain) {
-  const own = String(process.env[`RPC_URLS_${chain.toUpperCase()}`] || '').split(',').map(s => s.trim()).filter(Boolean);
-  const pub = chain === 'solana' ? SOLANA.publicRpc : EVM[chain]?.publicRpc;
+  const own = String(process.env[`RPC_URLS_${chain.toUpperCase().replace(/-/g, '_')}`] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const pub = chain === 'solana' ? SOLANA.publicRpc : EVM[chain]?.publicRpc || EXTRA_RPC[chain];
   return [...own, ...(pub ? [pub] : [])];
 }
 
