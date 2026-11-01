@@ -1,0 +1,56 @@
+/**
+ * Every setting RektBull reads, in one place, with its default.
+ * See .env.example for what each one means.
+ */
+const list = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+const int = (v, d) => (v === undefined || v === '' ? d : Number.parseInt(v, 10));
+
+function json(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { throw new Error(`${name} is not valid JSON`); }
+}
+
+const env = {
+  nodeEnv: process.env.NODE_ENV || 'development',
+  port: int(process.env.PORT, 8080),
+  serviceRole: process.env.SERVICE_ROLE || 'all', // web | worker | all
+  databaseUrl: process.env.DATABASE_URL || '',
+
+  // Sign in with your wallet
+  jwtSecret: process.env.JWT_SECRET || '',
+  siweDomain: process.env.SIWE_DOMAIN || 'rektbull.com',
+  siweUri: process.env.SIWE_URI || 'https://rektbull.com',
+  adminWallets: list(process.env.ADMIN_WALLETS).map(a => a.toLowerCase()),
+
+  // AI. The model is a setting, so changing it never needs a code change.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  reportModel: process.env.REPORT_MODEL || 'claude-opus-5-5',
+  reportEffort: process.env.REPORT_EFFORT || 'medium',
+
+  // Data providers (all have free plans; see docs/FREE_TIER.md)
+  etherscanApiKey: process.env.ETHERSCAN_API_KEY || '',
+  blockscoutApiKey: process.env.BLOCKSCOUT_API_KEY || '',
+  zeroExApiKey: process.env.ZEROEX_API_KEY || '',
+  jupiterApiKey: process.env.JUPITER_API_KEY || '',
+  // {"goplus": 2000, "etherscan": 90000, ...}: calls per UTC day before a provider is skipped.
+  providerDailyLimits: json('PROVIDER_DAILY_LIMITS', {}),
+
+  // Payments: x402 (pay per call in USDC on Base)
+  x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),
+  x402Network: process.env.X402_NETWORK || 'base',
+  cdpApiKeyId: process.env.CDP_API_KEY_ID || '',
+  cdpApiKeySecret: process.env.CDP_API_KEY_SECRET || '',
+
+  // Payments: stablecoin deposits (credits top-ups)
+  depositXpub: process.env.CRYPTO_DEPOSIT_XPUB || '',
+  paymentChains: list(process.env.PAYMENT_CHAINS || 'ethereum,bsc,base'),
+  invoiceExpiryMinutes: int(process.env.INVOICE_EXPIRY_MINUTES, 60),
+  minTopUpCents: int(process.env.MIN_TOP_UP_CENTS, 500),
+  watcherIntervalMs: int(process.env.WATCHER_INTERVAL_MS, 20000),
+  watcherMaxBlockRange: int(process.env.WATCHER_MAX_BLOCK_RANGE, 500),
+  // How long after an invoice a deposit address keeps being watched.
+  watchAddressDays: int(process.env.WATCH_ADDRESS_DAYS, 30),
+};
+
+module.exports = env;

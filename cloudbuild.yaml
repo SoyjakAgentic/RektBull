@@ -1,0 +1,39 @@
+# Builds one image and deploys it as two Cloud Run services:
+#   rektbull-api     SERVICE_ROLE=web     (scales with traffic)
+#   rektbull-worker  SERVICE_ROLE=worker  (one always-on instance: the deposit watcher)
+# Secrets come from Secret Manager; see docs/DEPLOY.md.
+substitutions:
+  _REGION: us-central1
+  _REPO: rektbull
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA', '.']
+  - name: gcr.io/cloud-builders/docker
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA']
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rektbull-api
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA
+      - --region=${_REGION}
+      - --allow-unauthenticated
+      - --set-env-vars=SERVICE_ROLE=web
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ANTHROPIC_API_KEY=rektbull-anthropic-api-key:latest,CDP_API_KEY_ID=rektbull-cdp-api-key-id:latest,CDP_API_KEY_SECRET=rektbull-cdp-api-key-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rektbull-worker
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA
+      - --region=${_REGION}
+      - --no-allow-unauthenticated
+      - --min-instances=1
+      - --max-instances=1
+      - --no-cpu-throttling
+      - --set-env-vars=SERVICE_ROLE=worker
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA'

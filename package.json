@@ -1,0 +1,29 @@
+{
+  "name": "rektbull",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RektBull: crypto discovery, safety checks and paid agent runs. Crypto payments only.",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "start:web": "SERVICE_ROLE=web node src/server.js",
+    "start:worker": "SERVICE_ROLE=worker node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:migrate": "node src/config/migrate.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "axios": "^1.7.2",
+    "ethers": "^6.13.1",
+    "express": "^4.19.2",
+    "express-async-errors": "^3.1.1",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0"
+  }
+}

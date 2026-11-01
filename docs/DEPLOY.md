@@ -1,0 +1,42 @@
+# Deploying
+
+One Docker image, two Cloud Run services (`cloudbuild.yaml`):
+
+| Service | Role | Scaling |
+|---|---|---|
+| `rektbull-api` | `SERVICE_ROLE=web` | With traffic, public |
+| `rektbull-worker` | `SERVICE_ROLE=worker` | Exactly 1 instance, CPU always on, private (the deposit watcher must run continuously) |
+
+Migrations run on start.
+
+## One-time setup
+
+1. **A separate Google Cloud project** for RektBull, so its secrets, database
+   and billing are apart from Soyjak's.
+2. **Postgres**: Cloud SQL (small instance) or a free Neon/Supabase plan to start.
+3. **Artifact Registry** repository named `rektbull` in the region in `cloudbuild.yaml`.
+4. **Secrets** in Secret Manager, named as in `cloudbuild.yaml`:
+   `rektbull-database-url`, `rektbull-jwt-secret`,
+   `rektbull-anthropic-api-key`, `rektbull-cdp-api-key-id`,
+   `rektbull-cdp-api-key-secret`, `rektbull-etherscan-api-key`,
+   `rektbull-blockscout-api-key`. The worker only needs the database URL and
+   JWT secret.
+5. Non-secret settings (`X402_PAY_TO`, `CRYPTO_DEPOSIT_XPUB`,
+   `PAYMENT_CHAINS`, `RPC_URLS_*`, `PROVIDER_DAILY_LIMITS`, `ADMIN_WALLETS`)
+   as environment variables on the services. `RPC_URLS_*` hold API keys in
+   their URLs, so treat those as secrets too. The worker needs
+   `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` and `RPC_URLS_*`.
+6. A Cloud Build trigger on pushes to `main`.
+
+## Domain: rektbull.com
+
+- Map `api.rektbull.com` to `rektbull-api` (Cloud Run domain mapping, or a
+  load balancer), and keep `rektbull.com` for the website.
+- Register `rektbull.app` and redirect it to `rektbull.com`.
+- **Email authentication before any alert email goes out:** SPF, DKIM and
+  DMARC records for `rektbull.com` (start DMARC at `p=quarantine`). For a
+  safety brand, spoofed email from your domain would do real damage. If the
+  domain sends no mail yet, publish `v=spf1 -all` and `p=reject` now so no
+  one can send as it.
+- Set `SIWE_DOMAIN` and `SIWE_URI` to the website's real domain, or wallets
+  will show a mismatch warning on sign-in.
