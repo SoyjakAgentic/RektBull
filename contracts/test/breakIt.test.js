@@ -21,6 +21,8 @@ import * as core from '@metamask/delegation-core';
 const { ethers } = await network.create();
 
 const MM = DELEGATOR_CONTRACTS['1.3.0'][84532];
+// Coinbase's Spend Permission Manager on Base Sepolia (from @base-org/account).
+const SPM = '0xf85210B21cC50302F477BA56686d2019dC9b67Ad';
 const DAY = 24 * 60 * 60;
 const USD = n => BigInt(Math.round(n * 1e8)); // 8-decimal USD
 const usdc = n => ethers.parseUnits(String(n), 6);
@@ -119,7 +121,7 @@ describe('RektBull Trade Router: break-it tests', function () {
     wethFeed = await Feed.deploy(8, 300000000000n); // $3,000
     venue = await (await ethers.getContractFactory('MockVenue')).deploy();
     router = await (await ethers.getContractFactory('RektBullTradeRouter')).deploy(
-      feeWallet, 100, 200, ethers.ZeroAddress,
+      feeWallet, 100, 200, ethers.ZeroAddress, SPM,
       [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY],
     );
     dm = new ethers.Contract(MM.DelegationManager, abis.DelegationManager, ethers.provider);
@@ -187,13 +189,13 @@ describe('RektBull Trade Router: break-it tests', function () {
     it('the fee is fixed in the contract and paid only to the fee wallet', async function () {
       assert.equal(await router.FEE_BPS(), 100n);
       assert.equal(await router.FEE_WALLET(), feeWallet);
-      // The only functions that change anything: a user's own limits, their revoke, and a swap.
+      // The only functions that change anything: an account's own limits, operator and revoke, and the two ways to swap.
       const writes = router.interface.fragments.filter(f => f.type === 'function' && !['view', 'pure'].includes(f.stateMutability)).map(f => f.name).sort();
-      assert.deepEqual(writes, ['revoke', 'setLimits', 'swap'], 'no function can change the fee, venues or price feeds');
+      assert.deepEqual(writes, ['revoke', 'setLimits', 'setOperator', 'swap', 'swapWithSpendPermission'], 'no function can change the fee, venues or price feeds');
     });
     it('a router with a fee above 1% cannot be deployed', async function () {
       const F = await ethers.getContractFactory('RektBullTradeRouter');
-      await fails(F.deploy(feeWallet, 101, 200, ethers.ZeroAddress, [venue.target], [USDC.target], [usdcFeed.target], [DAY]), /BadConfig/);
+      await fails(F.deploy(feeWallet, 101, 200, ethers.ZeroAddress, SPM, [venue.target], [USDC.target], [usdcFeed.target], [DAY]), /BadConfig/);
     });
   });
 
@@ -267,7 +269,7 @@ describe('RektBull Trade Router: break-it tests', function () {
       const Feed = await ethers.getContractFactory('MockFeed');
       const seq = await Feed.deploy(0, 0n); // 0 = up
       const r = await (await ethers.getContractFactory('RektBullTradeRouter')).deploy(
-        feeWallet, 100, 200, seq.target, [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY]);
+        feeWallet, 100, 200, seq.target, SPM, [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY]);
       await seq.setStartedAt((await now()) - 7200);
       await usdcFeed.set(100000000n, await now()); await wethFeed.set(300000000000n, await now());
       assert.ok((await r.valueUsd(USDC.target, usdc(1))) > 0n, 'works while the sequencer is up');

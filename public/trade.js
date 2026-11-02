@@ -307,13 +307,69 @@
     } catch (err) { say('limits-msg', err.message, 'bad'); }
   });
 
+  // ── Wallet type: MetaMask, Safe or Coinbase Smart Wallet ──
+  const walletType = () => $('w-type').value;
+  function showWalletType() {
+    for (const t of ['metamask', 'safe', 'coinbase']) {
+      for (const e of document.querySelectorAll('.only-' + t)) e.hidden = walletType() !== t;
+    }
+  }
+  $('w-type').addEventListener('change', showWalletType);
+  showWalletType();
+  const limitsQuery = () => `per_trade_usd=${Number($('l-trade').value)}&per_day_usd=${Number($('l-day').value)}&days=${Number($('l-days').value)}`;
+  function checkTypedConfirmation() {
+    const trade = Number($('l-trade').value), day = Number($('l-day').value);
+    if ((trade > DEFAULT_LIMITS.trade || day > DEFAULT_LIMITS.day) && Number($('l-confirm').value) !== day) {
+      throw new Error(`Type ${day} in the box to confirm you understand that much can be traded in a day.`);
+    }
+  }
+
+  $('safe-setup').addEventListener('click', async () => {
+    try {
+      checkTypedConfirmation();
+      const safe = $('safe-addr').value.trim();
+      const r = await api('GET', `/v1/trading/auto/setup?chain_id=${AUTO_CHAIN}&wallet_type=safe&safe=${encodeURIComponent(safe)}&${limitsQuery()}`);
+      $('safe-calls').replaceChildren(...r.calls.map(c => el('li', {}, el('strong', {}, c.step), el('br', {}), 'to ', el('code', {}, c.to), el('br', {}), 'data ', el('code', { class: 'data' }, c.data))));
+      say('limits-msg', 'Submit these from your Safe, in this order, then press "Link my Safe".', 'ok');
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  $('safe-link').addEventListener('click', async () => {
+    try {
+      const out = await api('POST', '/v1/trading/permissions', { chain_id: Number(AUTO_CHAIN), wallet_type: 'safe', safe: $('safe-addr').value.trim() });
+      say('limits-msg', `Safe linked: RektBull may trade for it until ${new Date(out.expires_at).toLocaleString()}.`, 'ok');
+      await loadAuto();
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  let cbSetup = null;
+  $('cb-setup').addEventListener('click', async () => {
+    try {
+      checkTypedConfirmation();
+      cbSetup = await api('GET', `/v1/trading/auto/setup?chain_id=${AUTO_CHAIN}&wallet_type=coinbase&${limitsQuery()}`);
+      await switchChain(BASE_SEPOLIA);
+      say('limits-msg', 'Confirm the setup in your wallet…');
+      await sendCalls({ chainId: BASE_SEPOLIA, calls: cbSetup.calls });
+      say('limits-msg', 'Setup sent. Now press "Link my wallet".', 'ok');
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
+  $('cb-link').addEventListener('click', async () => {
+    try {
+      if (!cbSetup) throw new Error('Run "Set up from my wallet" first.');
+      const out = await api('POST', '/v1/trading/permissions', { chain_id: Number(AUTO_CHAIN), wallet_type: 'coinbase', spend_permissions: cbSetup.spend_permissions });
+      say('limits-msg', `Linked: RektBull may trade for this wallet until ${new Date(out.expires_at).toLocaleString()}.`, 'ok');
+      await loadAuto();
+    } catch (err) { say('limits-msg', err.message, 'bad'); }
+  });
+
   async function loadAuto() {
     if (!net()) return;
     const tokens = Object.keys(net().tokens).filter(k => k !== net().default_base);
     if (!$('a-token').options.length) $('a-token').replaceChildren(...tokens.map(k => el('option', { value: k }, k)));
     const [{ permissions }, { intents }] = await Promise.all([api('GET', '/v1/trading/permissions'), api('GET', '/v1/trading/auto/intents')]);
     const active = permissions.find(p => p.status === 'active' && String(p.chain_id) === AUTO_CHAIN);
-    $('perm-status').textContent = active ? `✓ Granted, until ${new Date(active.expires_at).toLocaleString()}.` : 'Not granted.';
+    $('perm-status').textContent = active ? `✓ Granted (${active.wallet_type}), until ${new Date(active.expires_at).toLocaleString()}.` : 'Not granted.';
     const symbol = addr => Object.entries(net().tokens).find(([, t]) => t.address.toLowerCase() === String(addr).toLowerCase())?.[0] || short(addr);
     $('auto-history').replaceChildren(...intents.map(i => el('tr', {},
       el('td', {}, new Date(i.created_at).toLocaleString()),

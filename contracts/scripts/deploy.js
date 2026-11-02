@@ -24,6 +24,10 @@ const { ethers } = await network.create();
 const CHAIN_ID = 84532;
 const MM = DELEGATOR_CONTRACTS['1.3.0'][CHAIN_ID];
 const DAY = 86400;
+// The test price feeds here are stand-ins that never update, so the router must accept their prices
+// for a long time, or every test trade fails a day after deployment. Mainnet uses real Chainlink
+// feeds and their own heartbeat (minutes to a day), never this.
+const TEST_FEED_MAX_AGE = 365 * DAY;
 
 async function main() {
   const net = await ethers.provider.getNetwork();
@@ -50,9 +54,10 @@ async function main() {
   const wethFeed = await deploy('MockFeed', [8, 300000000000n]);
   const venue = await deploy('MockVenue');
   const router = await deploy('RektBullTradeRouter', [
-    feeWallet, 100, 200, ethers.ZeroAddress,
-    [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY],
+    feeWallet, 100, 200, ethers.ZeroAddress, '0xf85210B21cC50302F477BA56686d2019dC9b67Ad', // Coinbase's Spend Permission Manager
+    [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [TEST_FEED_MAX_AGE, TEST_FEED_MAX_AGE],
   ]);
+  const safeModule = await deploy('RektBullSafeModule', [router.target]);
 
   // ── A test user upgrades to a MetaMask smart account (EIP-7702), sets limits, grants a delegation ──
   const user = ethers.Wallet.createRandom().connect(ethers.provider);
@@ -112,7 +117,7 @@ async function main() {
   const out = {
     chainId: CHAIN_ID, deployedAt: new Date().toISOString(), deployer: deployer.address, feeWallet,
     metamaskDelegationFramework: '1.3.0', delegationManager: MM.DelegationManager, eip7702Delegator: MM.EIP7702StatelessDeleGatorImpl,
-    contracts: { router: router.target, testUSDC: USDC.target, testWETH: WETH.target, usdcFeed: usdcFeed.target, wethFeed: wethFeed.target, mockVenue: venue.target },
+    contracts: { router: router.target, safeModule: safeModule.target, spendPermissionManager: '0xf85210B21cC50302F477BA56686d2019dC9b67Ad', testUSDC: USDC.target, testWETH: WETH.target, usdcFeed: usdcFeed.target, wethFeed: wethFeed.target, mockVenue: venue.target },
     demo: { user: user.address, sessionKey: session.address, upgradeTx: upgrade.hash, tradeTx: trade.hash, attackRefused: !!refused },
   };
   const file = path.join(import.meta.dirname, '..', 'deployments', process.env.DEPLOY_OUT || 'base-sepolia.json');

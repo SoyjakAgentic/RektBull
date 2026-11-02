@@ -33,6 +33,7 @@ const { sessionSigner, logSignature, TESTNETS } = require('./signers');
 
 const ROUTER = new ethers.Interface([
   'function swap((address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, address venue, address spender, bytes venueCalldata, uint256 deadline) p) returns (uint256)',
+  'function swapWithSpendPermission((address account, address spender, address token, uint160 allowance, uint48 period, uint48 start, uint48 end, uint256 salt, bytes extraData) sp, (address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, address venue, address spender, bytes venueCalldata, uint256 deadline) p) returns (uint256)',
   'function FEE_BPS() view returns (uint16)',
   'function boughtByRouter(address account, address token) view returns (uint256)',
   'event Swapped(address indexed account, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 fee, uint256 amountOut, uint256 valueUsd, uint256 countedUsd)',
@@ -41,6 +42,14 @@ const ROUTER = new ethers.Interface([
   'error SequencerDown()', 'error Expired()', 'error BelowMinimum(uint256 amountOut, uint256 minimum)', 'error VenueFailed(bytes reason)',
 ]);
 const DM = new ethers.Interface(abis.DelegationManager);
+const SWAP_TUPLE = '(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, address venue, address spender, bytes venueCalldata, uint256 deadline)';
+// Coinbase's Spend Permission Manager errors a spend can hit.
+const SPEND_PERMISSIONS = new ethers.Interface([
+  'error BeforeSpendPermissionStart(uint48 currentTimestamp, uint48 start)', 'error AfterSpendPermissionEnd(uint48 currentTimestamp, uint48 end)',
+  'error ExceededSpendPermission(uint256 value, uint256 allowance)', 'error UnauthorizedSpendPermission()', 'error InvalidSender(address sender, address expected)',
+]);
+const SAFE_MODULE = new ethers.Interface([`function swap(address safe, ${SWAP_TUPLE} p) returns (uint256)`,
+  'error BadSession()', 'error NotSessionKey()', 'error SessionExpired()', 'error SafeCallFailed(bytes reason)']);
 const DELEGATOR = new ethers.Interface(abis.EIP7702StatelessDeleGator);
 const SINGLE_DEFAULT_MODE = ethers.ZeroHash;
 const NOT_SEEN_MINUTES = 30;
@@ -53,11 +62,12 @@ function revertReason(err) {
   let data = err?.data || err?.info?.error?.data || err?.error?.data;
   if (data && typeof data === 'object') data = data.data;
   if (typeof data === 'string' && data.length >= 10) {
-    for (const iface of [ROUTER, DM, DELEGATOR]) {
+    for (const iface of [ROUTER, SAFE_MODULE, SPEND_PERMISSIONS, DM, DELEGATOR]) {
       try { const e = iface.parseError(data); if (e) return humanError(e); } catch { /* not this one */ }
     }
     try { return ethers.AbiCoder.defaultAbiCoder().decode(['string'], '0x' + data.slice(10))[0]; } catch { /* not a string */ }
   }
+  if (typeof data === 'string' && /^0x[0-9a-f]{8}/i.test(data)) return `the transaction would revert (error ${data.slice(0, 10)})`;
   // Some nodes give only the error's name in the message.
   const named = /custom error '(\w+)\(/.exec(String(err?.message || ''));
   if (named) return humanError({ name: named[1], args: [] });
@@ -65,6 +75,14 @@ function revertReason(err) {
 }
 
 function humanError(e) {
+  if (e.name === 'SafeCallFailed' && e.args?.[0] && e.args[0] !== '0x') return revertReason({ data: e.args[0] });
+  if (e.name === 'NotSessionKey') return 'the Safe\'s session on the RektBull module doesn\'t name RektBull\'s key';
+  if (e.name === 'SessionExpired') return 'the Safe\'s session on the RektBull module has expired';
+  if (e.name === 'BeforeSpendPermissionStart') return 'the Coinbase spend permission hasn\'t started yet';
+  if (e.name === 'AfterSpendPermissionEnd') return 'the Coinbase spend permission has ended: grant a new one';
+  if (e.name === 'ExceededSpendPermission') return 'over the Coinbase spend permission\'s allowance for this period';
+  if (e.name === 'UnauthorizedSpendPermission') return 'the Coinbase spend permission isn\'t approved, or was revoked';
+  if (e.name === 'NotAllowed') return 'the router refused: the wallet hasn\'t named RektBull\'s key as operator, or the permission doesn\'t fit this trade';
   const usd = v => `$${(Number(v) / 1e8).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
   switch (e.name) {
     case 'Error': return String(e.args?.[0] ?? 'the trade was refused'); // a plain revert message, e.g. a MetaMask enforcer's
@@ -140,7 +158,7 @@ async function queue(account, input, { source = 'user', reason = null } = {}) {
   const { rows } = await db.query(
     `INSERT INTO trade_intents (id, account_id, wallet, chain_id, permission_id, side, token, base, amount_usd, sell_amount, source, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [id, account.id, account.wallet, net.chainId, perm.id, side, token.address, base.address, amountUsd, sellAmount === null ? null : sellAmount.toString(), source, reason],
+    [id, account.id, perm.wallet, net.chainId, perm.id, side, token.address, base.address, amountUsd, sellAmount === null ? null : sellAmount.toString(), source, reason],
   );
   return present(rows[0]);
 }
@@ -158,6 +176,36 @@ async function fail(intent, message) {
   await db.query(`UPDATE trade_intents SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [intent.id, message]);
   if (intent.source === 'exit') await db.query('UPDATE positions SET exit_intent_id = NULL WHERE exit_intent_id = $1', [intent.id]);
   logger.info('autonomous trade refused', { intent: intent.id, reason: message });
+}
+
+/**
+ * The transaction RektBull's session key sends for one trade, by wallet type.
+ * Each goes through the router's swap, and each wallet's own rules apply on
+ * top: MetaMask's caveats, the Safe module's session, Coinbase's spend permission.
+ */
+function tradeCall(net, perm, params) {
+  const d = perm.delegation;
+  if (perm.wallet_type === 'metamask') {
+    return {
+      to: net.delegationManager,
+      data: DM.encodeFunctionData('redeemDelegations', [
+        [core.encodeDelegations([{ ...d, salt: BigInt(d.salt), caveats: d.caveats.map(c => ({ ...c, args: c.args || '0x' })) }])],
+        [SINGLE_DEFAULT_MODE],
+        [ethers.solidityPacked(['address', 'uint256', 'bytes'], [net.router, 0, ROUTER.encodeFunctionData('swap', [params])])],
+      ]),
+    };
+  }
+  if (perm.wallet_type === 'safe') {
+    if (!net.safeModule) throw new Error('Safe trading isn\'t set up on this network');
+    return { to: net.safeModule, data: SAFE_MODULE.encodeFunctionData('swap', [d.safe, params]) };
+  }
+  if (perm.wallet_type === 'coinbase') {
+    const sp = (d.spend_permissions || []).find(x => String(x.token).toLowerCase() === String(params.tokenIn).toLowerCase());
+    if (!sp) throw new Error('there is no Coinbase spend permission for the token being sold: grant one for it first');
+    const tuple = [sp.account, sp.spender, sp.token, BigInt(sp.allowance), Number(sp.period), Number(sp.start), Number(sp.end), BigInt(sp.salt), sp.extraData || '0x'];
+    return { to: net.router, data: ROUTER.encodeFunctionData('swapWithSpendPermission', [tuple, params]) };
+  }
+  throw new Error(`automatic trading isn't available for ${perm.wallet_type} wallets`);
 }
 
 /** Builds, simulates, signs and sends one queued trade. */
@@ -193,22 +241,22 @@ async function execute(intent) {
     tokenIn, tokenOut, amountIn, minAmountOut: v.expectedOut * BigInt(10000 - settings.slippage_bps) / 10000n,
     venue: v.venue, spender: v.spender, venueCalldata: v.venueCalldata, deadline: Math.floor(Date.now() / 1000) + 300,
   };
-  const delegation = perm.delegation;
-  const redeem = DM.encodeFunctionData('redeemDelegations', [
-    [core.encodeDelegations([{ ...delegation, salt: BigInt(delegation.salt), caveats: delegation.caveats.map(c => ({ ...c, args: c.args || '0x' })) }])],
-    [SINGLE_DEFAULT_MODE],
-    [ethers.solidityPacked(['address', 'uint256', 'bytes'], [net.router, 0, ROUTER.encodeFunctionData('swap', [params])])],
-  ]);
+  let call;
+  try {
+    call = tradeCall(net, perm, params);
+  } catch (err) {
+    return fail(intent, err.message);
+  }
 
   const p = provider(net);
   const signer = await sessionSigner(net.chainId, p);
   const from = await signer.getAddress();
   try {
-    await p.call({ from, to: net.delegationManager, data: redeem });
+    await p.call({ from, ...call });
   } catch (err) {
     return fail(intent, `refused before sending: ${revertReason(err)}`);
   }
-  const tx = await signer.populateTransaction({ to: net.delegationManager, data: redeem });
+  const tx = await signer.populateTransaction(call);
   tx.gasLimit = (BigInt(tx.gasLimit) * 13n) / 10n;
   const unsigned = ethers.Transaction.from({ ...tx, from: undefined });
   await logSignature(from, unsigned.unsignedHash, `redeem:${intent.id}`);

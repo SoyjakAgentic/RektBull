@@ -9,7 +9,9 @@
 - **Automatic trading uses session keys only** (docs/SESSION_KEYS.md): a
   limited, expiring, revocable permission the user signs. Its limits must be
   enforced onchain; no permission may allow transfers to any address but the
-  user's own. RektBull's own keys live in Google Cloud KMS, used only by the
+  user's own, except to the audited Trade Router contract, which must return
+  the result to the user in the same transaction (Coinbase spend permissions).
+  Never to any address RektBull controls. RektBull's own keys live in Google Cloud KMS, used only by the
   trade service.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and

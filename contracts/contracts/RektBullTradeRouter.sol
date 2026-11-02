@@ -15,6 +15,24 @@ interface IPriceFeed {
         returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
 }
 
+/// @dev Coinbase's Spend Permission Manager, the part used here (Coinbase Smart Wallet).
+interface ISpendPermissionManager {
+    struct SpendPermission {
+        address account;
+        address spender;
+        address token;
+        uint160 allowance;
+        uint48 period;
+        uint48 start;
+        uint48 end;
+        uint256 salt;
+        bytes extraData;
+    }
+
+    /// @dev Moves `value` of the permission's token from its account to its spender (msg.sender).
+    function spend(SpendPermission calldata spendPermission, uint160 value) external;
+}
+
 /**
  * @title RektBull Trade Router
  * @notice The only contract a RektBull trading permission may call. It makes
@@ -30,11 +48,21 @@ interface IPriceFeed {
  *             (up to the amount bought), so an exit is never blocked by them.
  *
  *         There is no owner, no admin and no upgrade path: every setting is
- *         fixed at deployment. Funds are only ever pulled from msg.sender, so
- *         one user's approval can never be used for another user's trade.
+ *         fixed at deployment.
  *
- * @dev    Called through a MetaMask delegation, msg.sender is the user's
- *         EIP-7702 account (the delegator), not RektBull's session key.
+ *         Two ways in, one set of rules:
+ *           - swap(): the trading account is msg.sender, and funds are pulled
+ *             only from it. Used by a MetaMask smart account (through a
+ *             delegation, so msg.sender is the user's EIP-7702 account) and by
+ *             a Safe (through the RektBull Safe Module).
+ *           - swapWithSpendPermission(): for a Coinbase Smart Wallet. The
+ *             wallet has granted this router (not RektBull) a Coinbase spend
+ *             permission, and has named an operator allowed to start trades
+ *             for it. The router pulls the input through the permission and
+ *             sends the output back to the wallet in the same transaction.
+ *         Either way, funds only ever leave the trading account to come back
+ *         to it, and one account's approval or permission can never be used
+ *         for another account's trade.
  */
 contract RektBullTradeRouter is ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -51,6 +79,8 @@ contract RektBullTradeRouter is ReentrancyGuard {
     uint16 public immutable MAX_SLIPPAGE_BPS;
     /// @notice Chainlink L2 sequencer uptime feed, or address(0) on L1.
     IPriceFeed public immutable SEQUENCER_UPTIME_FEED;
+    /// @notice Coinbase's Spend Permission Manager, or address(0) where it isn't used.
+    ISpendPermissionManager public immutable SPEND_PERMISSION_MANAGER;
 
     mapping(address => bool) public isVenue; // exchange contracts a swap may call or approve
     mapping(address => IPriceFeed) public priceFeed; // token => Chainlink TOKEN/USD feed
@@ -71,6 +101,9 @@ contract RektBullTradeRouter is ReentrancyGuard {
     /// @notice account => token => how much of it this router has bought for the account and
     ///         not yet sold. Selling up to this amount is exempt from the limits.
     mapping(address => mapping(address => uint256)) public boughtByRouter;
+    /// @notice account => who may start trades for it through swapWithSpendPermission.
+    ///         Set only by the account itself; cleared by revoke().
+    mapping(address => address) public operatorOf;
 
     struct SwapParams {
         address tokenIn;
@@ -85,6 +118,7 @@ contract RektBullTradeRouter is ReentrancyGuard {
 
     event LimitsSet(address indexed account, uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil);
     event Revoked(address indexed account);
+    event OperatorSet(address indexed account, address indexed operator);
     event Swapped(
         address indexed account,
         address indexed tokenIn,
@@ -113,6 +147,7 @@ contract RektBullTradeRouter is ReentrancyGuard {
         uint16 feeBps,
         uint16 maxSlippageBps,
         address sequencerUptimeFeed,
+        address spendPermissionManager,
         address[] memory venues,
         address[] memory tokens,
         address[] memory feeds,
@@ -125,6 +160,7 @@ contract RektBullTradeRouter is ReentrancyGuard {
         FEE_BPS = feeBps;
         MAX_SLIPPAGE_BPS = maxSlippageBps;
         SEQUENCER_UPTIME_FEED = IPriceFeed(sequencerUptimeFeed);
+        SPEND_PERMISSION_MANAGER = ISpendPermissionManager(spendPermissionManager);
         for (uint256 i; i < venues.length; ++i) {
             if (venues[i] == address(0)) revert BadConfig();
             isVenue[venues[i]] = true;
@@ -147,9 +183,16 @@ contract RektBullTradeRouter is ReentrancyGuard {
         emit LimitsSet(msg.sender, perTradeUsd, perPeriodUsd, periodSeconds, validUntil);
     }
 
+    /// @notice Names who may start trades for the caller through swapWithSpendPermission.
+    function setOperator(address operator) external {
+        operatorOf[msg.sender] = operator;
+        emit OperatorSet(msg.sender, operator);
+    }
+
     /// @notice Stops all trading for the caller at once.
     function revoke() external {
         delete limits[msg.sender];
+        delete operatorOf[msg.sender];
         emit Revoked(msg.sender);
     }
 
@@ -196,30 +239,56 @@ contract RektBullTradeRouter is ReentrancyGuard {
 
     // ── The swap ──────────────────────────────────────────────────────────
 
+    /// @notice One swap for msg.sender, which is the trading account.
     function swap(SwapParams calldata p) external nonReentrant returns (uint256 amountOut) {
+        address account = msg.sender;
+        uint256 counted = _check(account, p);
+        uint256 inBefore = IERC20(p.tokenIn).balanceOf(address(this));
+        IERC20(p.tokenIn).safeTransferFrom(account, address(this), p.amountIn);
+        return _trade(account, p, inBefore, counted);
+    }
+
+    /// @notice One swap for a Coinbase Smart Wallet, paid through its spend permission to this router.
+    function swapWithSpendPermission(ISpendPermissionManager.SpendPermission calldata sp, SwapParams calldata p)
+        external
+        nonReentrant
+        returns (uint256 amountOut)
+    {
+        address account = sp.account;
+        if (address(SPEND_PERMISSION_MANAGER) == address(0)) revert NotAllowed();
+        address operator = operatorOf[account];
+        if (operator == address(0) || msg.sender != operator) revert NotAllowed();
+        if (sp.spender != address(this) || sp.token != p.tokenIn || p.amountIn > type(uint160).max) revert NotAllowed();
+        uint256 counted = _check(account, p);
+        uint256 inBefore = IERC20(p.tokenIn).balanceOf(address(this));
+        SPEND_PERMISSION_MANAGER.spend(sp, uint160(p.amountIn));
+        return _trade(account, p, inBefore, counted);
+    }
+
+    /// @dev Everything checked before any funds move: deadline, venue, and the account's limits.
+    function _check(address account, SwapParams calldata p) internal returns (uint256 countedUsd) {
         if (block.timestamp > p.deadline) revert Expired();
         if (!isVenue[p.venue] || !isVenue[p.spender] || p.tokenIn == p.tokenOut) revert NotAllowed();
 
-        // 1. The caller's limits, valued at the reference price. Selling what this router
-        //    bought for the caller is exempt, up to the amount bought; the rest counts.
-        uint256 usdIn = valueUsd(p.tokenIn, p.amountIn);
-        uint256 bought = boughtByRouter[msg.sender][p.tokenIn];
+        // The account's limits, valued at the reference price. Selling what this router
+        // bought for the account is exempt, up to the amount bought; the rest counts.
+        uint256 bought = boughtByRouter[account][p.tokenIn];
         uint256 exempt = p.amountIn < bought ? p.amountIn : bought;
-        boughtByRouter[msg.sender][p.tokenIn] = bought - exempt;
-        uint256 countedUsd = exempt == p.amountIn ? 0 : valueUsd(p.tokenIn, p.amountIn - exempt);
-        _spend(msg.sender, countedUsd);
+        boughtByRouter[account][p.tokenIn] = bought - exempt;
+        countedUsd = exempt == p.amountIn ? 0 : valueUsd(p.tokenIn, p.amountIn - exempt);
+        _spend(account, countedUsd);
+    }
 
-        // 2. Take the input from the caller (only ever the caller), and the fee.
+    /// @dev The input has arrived; take the fee, trade, check the price, pay the account.
+    function _trade(address account, SwapParams calldata p, uint256 inBefore, uint256 countedUsd) internal returns (uint256 amountOut) {
         IERC20 tokenIn = IERC20(p.tokenIn);
         IERC20 tokenOut = IERC20(p.tokenOut);
-        uint256 inBefore = tokenIn.balanceOf(address(this));
-        tokenIn.safeTransferFrom(msg.sender, address(this), p.amountIn);
         uint256 received = tokenIn.balanceOf(address(this)) - inBefore;
         uint256 fee = received * FEE_BPS / 10_000;
         if (fee > 0) tokenIn.safeTransfer(FEE_WALLET, fee);
         uint256 toTrade = received - fee;
 
-        // 3. Trade through the allowed venue, with an approval for exactly this trade.
+        // Trade through the allowed venue, with an approval for exactly this trade.
         uint256 outBefore = tokenOut.balanceOf(address(this));
         tokenIn.forceApprove(p.spender, toTrade);
         (bool ok, bytes memory reason) = p.venue.call(p.venueCalldata);
@@ -227,23 +296,21 @@ contract RektBullTradeRouter is ReentrancyGuard {
         tokenIn.forceApprove(p.spender, 0);
         amountOut = tokenOut.balanceOf(address(this)) - outBefore;
 
-        // 4. The output must be near the reference price, and at least the quote's minimum.
+        // The output must be near the reference price, and at least the quote's minimum.
         uint256 fair = amountForUsd(p.tokenOut, valueUsd(p.tokenIn, toTrade));
         uint256 minimum = fair * (10_000 - MAX_SLIPPAGE_BPS) / 10_000;
         if (p.minAmountOut > minimum) minimum = p.minAmountOut;
         if (amountOut < minimum) revert BelowMinimum(amountOut, minimum);
 
-        // 5. Everything goes back to the caller: the output, and any input the venue didn't use.
-        boughtByRouter[msg.sender][p.tokenOut] += amountOut;
-        tokenOut.safeTransfer(msg.sender, amountOut);
+        // Everything goes back to the account: the output, and any input the venue didn't use.
+        boughtByRouter[account][p.tokenOut] += amountOut;
+        tokenOut.safeTransfer(account, amountOut);
         uint256 leftover = tokenIn.balanceOf(address(this)) - inBefore;
-        if (leftover > 0) tokenIn.safeTransfer(msg.sender, leftover);
+        if (leftover > 0) tokenIn.safeTransfer(account, leftover);
 
-        emit Swapped(msg.sender, p.tokenIn, p.tokenOut, p.amountIn, fee, amountOut, usdIn, countedUsd);
+        emit Swapped(account, p.tokenIn, p.tokenOut, p.amountIn, fee, amountOut, valueUsd(p.tokenIn, p.amountIn), countedUsd);
     }
 
-    /// @dev Checks the limits are on (even for an exempt sell: revoke stops everything),
-    ///      then counts usd toward them.
     function _spend(address account, uint256 usd) internal {
         Limits memory l = limits[account];
         if (l.validUntil == 0 || block.timestamp > l.validUntil) revert LimitsOff();
