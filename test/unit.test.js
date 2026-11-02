@@ -22,11 +22,18 @@ test('stablecoin amounts convert to whole cents, rounding down', () => {
   assert.throws(() => stablecoin('base', 'USDT'), /not accepted/);
 });
 
-test('catalog: runs try pass, free, credits, then x402; passes are credits only', () => {
-  assert.deepEqual(catalog.rails(catalog.product('token_quick_check')), ['pass', 'free', 'credits', 'x402']);
-  assert.deepEqual(catalog.rails(catalog.product('token_report')), ['pass', 'credits', 'x402']);
+test('catalog: runs try Safety Pro, points, credits, then x402; reports take no points; passes are credits only', () => {
+  assert.deepEqual(catalog.rails(catalog.product('token_quick_check')), ['pass', 'points', 'credits', 'x402']);
+  assert.deepEqual(catalog.rails(catalog.product('approval_cleanup')), ['pass', 'points', 'credits', 'x402']);
+  assert.deepEqual(catalog.rails(catalog.product('token_report')), ['pass', 'credits', 'x402'], 'each report costs real AI money: no points');
   assert.deepEqual(catalog.rails(catalog.product('pro_30d')), ['credits']);
-  assert.ok(catalog.product('token_quick_check').price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, 'quick check must work with default x402 clients');
+  for (const id of ['token_quick_check', 'approval_cleanup']) assert.ok(catalog.product(id).price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, `${id} must work with default x402 clients`);
+  const pro = catalog.product('pro_30d');
+  assert.deepEqual(pro.covers.sort(), ['approval_cleanup', 'token_quick_check', 'token_report']);
+  assert.equal(pro.included_per_month.token_report, 5);
+  assert.equal(catalog.product('token_quick_check').points, 1);
+  assert.equal(catalog.product('approval_cleanup').points, 5);
+  assert.equal(catalog.FREE_POINTS.per_month, 30);
   const report = catalog.publicCatalog().find(p => p.id === 'token_report');
   assert.match(report.x402_note, /\$1 default/);
 });
@@ -169,6 +176,34 @@ test('approval cleanup: input checks, and known contracts rate low even when unl
   const unknown = approvals.rate({ kind: 'erc20', unlimited: true }, { address: '0x' + '12'.repeat(20), wallet: false, risk: { not_checked: 'GoPlus: timeout' } });
   assert.equal(unknown.severity, 'medium', 'when we couldn\'t check who it is, it is never rated low');
   assert.ok(unknown.reasons.some(x => /Couldn't check who it is: GoPlus: timeout/.test(x.text)));
+});
+
+test('free points: a wallet with no transactions anywhere checked is new; a failed check never punishes the user', async () => {
+  const points = require('../src/payments/points');
+  const rpc = require('../src/providers/rpc');
+  const real = rpc.evmRpc;
+  const prev = process.env.NEW_WALLET_CHECK_CHAINS;
+  process.env.NEW_WALLET_CHECK_CHAINS = 'ethereum,base';
+  const w = '0x' + '12'.repeat(20);
+  try {
+    rpc.evmRpc = async (chain, method) => (method === 'eth_getTransactionCount' ? '0x0' : '0x');
+    assert.equal(await points.isNewWallet(w), true);
+    rpc.evmRpc = async (chain, method) => (method === 'eth_getTransactionCount' ? (chain === 'base' ? '0x3' : '0x0') : '0x');
+    assert.equal(await points.isNewWallet(w), false, 'transactions on any chain checked');
+    rpc.evmRpc = async (chain, method) => (method === 'eth_getCode' ? '0x6000' : '0x0');
+    assert.equal(await points.isNewWallet(w), false, 'a deployed smart wallet is not new');
+    rpc.evmRpc = async () => { throw new Error('rpc down'); };
+    assert.equal(await points.isNewWallet(w), null, 'could not tell: the caller gives the full allowance');
+  } finally {
+    rpc.evmRpc = real;
+    if (prev === undefined) delete process.env.NEW_WALLET_CHECK_CHAINS; else process.env.NEW_WALLET_CHECK_CHAINS = prev;
+  }
+});
+
+test('AI cost estimate: list prices per million tokens; unknown models are recorded without a guess', () => {
+  const claude = require('../src/ai/claude');
+  assert.equal(claude.estimateUsd('claude-opus-5-5', { input_tokens: 5000, output_tokens: 2500 }), 0.07, '5K in + 2.5K out on Opus 5.5 is 7 cents');
+  assert.equal(claude.estimateUsd('some-future-model', { input_tokens: 1, output_tokens: 1 }), null);
 });
 
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {

@@ -79,17 +79,20 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
   await send(asOwner(tB).approve(old, 0n));                                    // taken back: closed
 
   // The service, pointed at the local node.
-  Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', APPROVAL_CHAINS: 'base-sepolia', RPC_URLS_BASE_SEPOLIA: `http://127.0.0.1:${PORT}` });
+  Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', APPROVAL_CHAINS: 'base-sepolia', RPC_URLS_BASE_SEPOLIA: `http://127.0.0.1:${PORT}`, NEW_WALLET_CHECK_CHAINS: 'base-sepolia' });
   require('../src/providers/chains').EVM['base-sepolia'] = { chainId: 84532 };
   // The explorer: the node's own logs since the fork, in the explorer's shape.
+  let explorerDown = false;
   require('../src/providers/explorer').explorerLogs = async (chain, { address, topic0, topic1 }) => {
     assert.equal(chain, 'base-sepolia');
+    if (explorerDown) throw new Error('explorer: rate limited');
     const logs = await provider.send('eth_getLogs', [{ fromBlock: ethers.toQuantity(forkBlock + 1), toBlock: 'latest', ...(address ? { address } : {}), topics: [topic0 || null, topic1 || null] }]);
     return { logs, complete: true };
   };
   const goplus = require('../src/providers/goplus');
   const ghost = ethers.Wallet.createRandom().address.toLowerCase();
-  goplus.approvalsOf = async () => ({ source: 'GoPlus', approvals: [{ kind: 'erc20', token: A, spender: drainer }, { kind: 'erc20', token: B, spender: ghost }] });
+  let goplusAsked = 0;
+  goplus.approvalsOf = async () => { goplusAsked++; return { source: 'GoPlus', approvals: [{ kind: 'erc20', token: A, spender: drainer }, { kind: 'erc20', token: B, spender: ghost }] }; };
   goplus.addressRisk = async (chain, a) => (a === drainer ? { source: 'GoPlus (data from SlowMist)', flags: ['phishing', 'theft'] } : { source: 'GoPlus', flags: [] });
   goplus.contractRisk = async (chain, a) => (a === PERMIT2.toLowerCase() ? { source: 'GoPlus', known: true, open_source: true, trusted: true, name: 'Permit2', malicious: [] }
     : a === V ? { source: 'GoPlus', known: true, open_source: false, trusted: false, malicious: [] } : { source: 'GoPlus', known: false });
@@ -102,7 +105,7 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
   const approvals = require('../src/services/approvals');
 
   let chainResult;
-  await t.test('finds every open approval, and only open ones, from both sources', async () => {
+  await t.test('finds every open approval, and only open ones, from the explorer; GoPlus is not asked', async () => {
     const s = await approvals.scan(owner.address, { refresh: true });
     chainResult = s.chains[0];
     assert.equal(chainResult.read, true, chainResult.reason);
@@ -111,9 +114,24 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
       `erc20:${A}:${drainer}`, `erc20:${A}:${PERMIT2.toLowerCase()}`, `erc20:${B}:${V}`, `nft_all:${N}:${nftDrainer}`, `permit2:${A}:${p2Spender}`,
     ].sort());
     assert.ok(!keys.some(k => k.includes(old)), 'an approval set back to 0 is closed');
-    assert.ok(!keys.some(k => k.includes(ghost)), 'what GoPlus lists but the chain says is closed is left out');
-    const byDrainer = chainResult.approvals.find(a => a.spender.address === drainer);
-    assert.deepEqual(byDrainer.found_by.sort(), ['GoPlus', 'explorer logs']);
+    assert.equal(goplusAsked, 0, 'the explorer read the whole history, so GoPlus\'s allowance is saved');
+    assert.ok(chainResult.approvals.every(a => a.found_by.join() === 'explorer logs'));
+  });
+
+  await t.test('when the explorer fails, GoPlus is the fallback, and the chain still decides what is open', async () => {
+    explorerDown = true;
+    try {
+      const s = await approvals.scan(owner.address, { refresh: true });
+      const c = s.chains[0];
+      assert.equal(goplusAsked, 1);
+      assert.equal(c.read, true);
+      assert.deepEqual(c.approvals.map(a => a.spender.address), [drainer], 'only what GoPlus knows of, and still open onchain');
+      assert.deepEqual(c.approvals[0].found_by, ['GoPlus']);
+      assert.ok(!JSON.stringify(c).includes(ghost), 'what GoPlus lists but the chain says is closed is left out');
+      assert.ok(c.not_checked.some(n => /explorer: rate limited/.test(n.reason)), 'the explorer\'s failure is reported');
+    } finally {
+      explorerDown = false;
+    }
   });
 
   await t.test('rates each one with reasons that name their sources, and values what is at risk', () => {
@@ -174,7 +192,7 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
     assert.deepEqual(again.chains[0].approvals.map(a => a.spender.label), ['Uniswap Permit2']);
   });
 
-  await t.test('the API: a free preview that names nothing, then the paid cleanup', async () => {
+  await t.test('the API: a free preview that names nothing, then the cleanup for 5 points or $1', async () => {
     const credits = require('../src/payments/credits');
     const { issueToken } = require('../src/auth/siwe');
     const { createApp } = require('../src/app');
@@ -201,24 +219,41 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
 
     const unpaid = await call('POST', '/v1/approvals/cleanup', { wallet: victim.address });
     assert.equal(unpaid.status, 402);
-    assert.match(unpaid.body.message, /Approval cleanup costs \$5\.00/);
+    assert.match(unpaid.body.message, /Approval cleanup costs \$1\.00/);
+    assert.match(unpaid.body.pay_with.points, /30 free points a month/);
 
     const { rows } = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [victim.address.toLowerCase()]);
     const token = issueToken(rows[0]);
-    await credits.add(rows[0].id, 1000, 'adjustment', 'test:grant');
+    const pts = async () => (await call('GET', '/v1/me', null, token)).body.points;
+    assert.equal((await pts()).allowance, 30, 'the victim has sent a transaction: not a new wallet');
+
     const paid = await call('POST', '/v1/approvals/cleanup', { wallet: victim.address }, token);
     assert.equal(paid.status, 200, JSON.stringify(paid.body));
-    assert.equal(paid.body.run.paid_with, 'credits');
+    assert.equal(paid.body.run.paid_with, 'points');
+    assert.equal(paid.body.run.points, 5);
     assert.equal(paid.body.chains[0].approvals[0].spender.address, drainer);
     assert.equal(paid.body.chains[0].revoke_calls.length, 1);
-    assert.equal(await credits.balance(rows[0].id), 500);
+    assert.equal((await pts()).left, 25);
 
-    // A wallet with nothing open: no charge.
+    // A wallet with nothing open: no charge, the points come back.
     const clean = ethers.Wallet.createRandom().address;
     const none = await call('POST', '/v1/approvals/cleanup', { wallet: clean }, token);
     assert.equal(none.status, 422);
     assert.match(none.body.message, /nothing to clean up, and you weren't charged/);
-    assert.equal(await credits.balance(rows[0].id), 500, 'refunded');
+    assert.equal((await pts()).left, 25, 'points given back');
+
+    // Out of points: $1 from credits.
+    await db.query(`UPDATE period_usage SET used = allowance WHERE subject = $1 AND key = 'points'`, [`account:${rows[0].id}`]);
+    await credits.add(rows[0].id, 1000, 'adjustment', 'test:grant');
+    const byCredits = await call('POST', '/v1/approvals/cleanup', { wallet: victim.address }, token);
+    assert.equal(byCredits.body.run.paid_with, 'credits');
+    assert.equal(await credits.balance(rows[0].id), 900);
+
+    // A brand-new wallet gets the smaller allowance.
+    const fresh = ethers.Wallet.createRandom().address.toLowerCase();
+    const f = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [fresh]);
+    const freshPts = (await call('GET', '/v1/me', null, issueToken(f.rows[0]))).body.points;
+    assert.deepEqual([freshPts.allowance, freshPts.new_wallet], [10, true]);
 
     for (let i = 0; i < 2; i++) await call('POST', '/v1/approvals/preview', { wallet: clean });
     const capped = await call('POST', '/v1/approvals/preview', { wallet: clean });

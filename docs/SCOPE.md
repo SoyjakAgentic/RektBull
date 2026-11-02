@@ -51,20 +51,22 @@ finds or saves**, and show that figure in the result.
 
 | Group | Service | Price idea | Status |
 |---|---|---|---|
-| Protect | **Token quick check** (sellability, taxes, owner powers, holders) | $0.25, 5 free a day | ✅ built, on `/safety` |
-| Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3 | ✅ built, on `/safety` |
+| Protect | **Token quick check** (sellability, taxes, owner powers, holders) | 1 point or $0.25 | ✅ built, on `/safety` |
+| Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3; 5 a month with Safety Pro | ✅ built, on `/safety` |
 | Protect | Pre-sign check (simulate a transaction before signing) | $0.25–1 | next |
-| Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | $5, free preview | ✅ built, on `/safety` |
-| Protect | Position risk monitor (exploits, admin changes, depegs, liquidation) | pass, $9–19 / 30 days | later |
+| Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
+| Protect | Position risk monitor (new risky approvals, flagged spenders, exploits, admin changes, depegs) | in Safety Pro | next |
 | Find | Airdrop and unclaimed-funds finder (check free, pay to prepare claims) | $5–15 | later |
 | Find | Yield proposals (agent proposes, user approves) | pass | later |
 | Save | Tax and profit report | $29–99 / year | after paid data |
 | Save | Governance assistant | pass | later |
 | Business | Sybil filtering for airdrops, team reports, contract monitoring, pre-audit check | $49–5k | after paid data |
 
-**Free:** rankings, safety-score summaries, the airdrop eligibility check, and
-a few quick checks a day. Users pay for acting, monitoring, deep reports and
-volume.
+**Free:** rankings, safety-score summaries, the airdrop eligibility check,
+approval previews, and **30 points a month** for signed-in wallets (a quick
+check is 1, an approval cleanup 5). **Safety Pro** ($9 for 30 days, $79 a
+year) covers every Safety desk check, 5 AI reports a month and the risk
+monitor. Users pay for monitoring, deep reports and volume.
 
 ## 4. How people pay
 
@@ -99,7 +101,7 @@ comes first, one PR per step:
 
 1. ✅ Safety pages for what's built: token quick check and report, with
    sign-in, credits, top-ups and passes (`/safety`).
-2. ✅ Approval cleanup ($5, with a free preview).
+2. ✅ Approval cleanup (5 points or $1, with a free preview), free points and Safety Pro.
 3. Pre-sign check ($0.25–1, also for bots over x402).
 4. Airdrop and unclaimed-funds finder (ported from Soyjak).
 

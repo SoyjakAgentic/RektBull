@@ -51,7 +51,7 @@
 
     <section class="card" id="account-card">
       <h2>Your account</h2>
-      <p class="muted">Sign in with your wallet to get free quick checks every day and to pay from credits. Signing in costs nothing and moves no funds.</p>
+      <p class="muted">Sign in with your wallet for 30 free points a month: a quick check is 1 point, an approval cleanup 5. Signing in costs nothing and moves no funds.</p>
       <div id="wallets" class="row"></div>
       <button id="signin" class="primary" disabled>Sign in with this wallet</button>
       <p id="connect-msg" class="msg"></p>
@@ -59,9 +59,10 @@
       <div id="account" hidden>
         <div class="facts">
           <div>Credits<strong id="balance">–</strong></div>
-          <div>Free quick checks left today<strong id="free-left">–</strong></div>
-          <div>Pass<strong id="pass">none</strong></div>
+          <div>Free points left this month<strong id="points-left">–</strong></div>
+          <div>Safety Pro<strong id="pass">none</strong></div>
         </div>
+        <p id="points-note" class="small muted"></p>
 
         <h3>Top up credits with USDT or USDC</h3>
         <p class="muted small">You're charged only when a check succeeds; a run that fails is given back. Credits don't expire.</p>
@@ -75,8 +76,11 @@
         <div id="invoice" hidden></div>
         <p id="topup-msg" class="msg"></p>
 
-        <h3>Passes</h3>
-        <p class="muted small">Prepaid from your credits. Nothing renews automatically.</p>
+      </div>
+      <div id="pro-card">
+        <h3>Safety Pro</h3>
+        <p id="pro-what" class="small"></p>
+        <p class="muted small">Bought from your credits. Nothing renews automatically, and buying again extends it.</p>
         <div id="passes" class="row"></div>
         <p id="pass-msg" class="msg"></p>
       </div>

@@ -4,9 +4,9 @@
  * wallet's owner signs those; RektBull sends nothing and holds nothing.
  *
  * Per EVM chain:
- *   1. Find candidates from two sources: the explorer's logs (Approval,
- *      ApprovalForAll, and Permit2's Approval/Permit) and GoPlus's approval
- *      index. Either may be missing; each gap is reported.
+ *   1. Find candidates from the explorer's logs (Approval, ApprovalForAll,
+ *      and Permit2's Approval/Permit). When the explorer can't give the whole
+ *      history, GoPlus's approval index is asked as well. Each gap is reported.
  *   2. Read the current state onchain (RPC, batched through Multicall3):
  *      only approvals still open count. Logs say what was approved once;
  *      the chain says what is approved now.
@@ -47,7 +47,7 @@ const KNOWN = {
 const UNLIMITED_ERC20 = 2n ** 255n;
 const UNLIMITED_PERMIT2 = 2n ** 159n;
 const MAX_SPENDERS = 40;
-const SCAN_TTL = 120;
+const SCAN_TTL = 15 * 60; // a fresh scan is asked for after revoking (refresh)
 const DAY = 86400;
 
 const ERC20 = new ethers.Interface([
@@ -94,12 +94,14 @@ async function discover(chain, owner) {
   const ownerTopic = ethers.zeroPadValue(owner, 32).toLowerCase();
   const when = l => (l.timeStamp ? new Date(Number(l.timeStamp) * 1000).toISOString() : null);
 
-  const [erc, nft, p2, gp] = await Promise.allSettled([
+  const [erc, nft, p2] = await Promise.allSettled([
     explorer.explorerLogs(chain, { topic0: TOPIC.approval, topic1: ownerTopic }),
     explorer.explorerLogs(chain, { topic0: TOPIC.approvalForAll, topic1: ownerTopic }),
     explorer.explorerLogs(chain, { address: PERMIT2, topic1: ownerTopic }),
-    goplus.approvalsOf(chain, owner),
   ]);
+  // GoPlus is the fallback: asked only when the explorer couldn't give the whole history (it saves GoPlus's free allowance).
+  const explorerComplete = [erc, nft, p2].every(r => r.status === 'fulfilled' && r.value.complete);
+  const gp = explorerComplete ? null : (await Promise.allSettled([goplus.approvalsOf(chain, owner)]))[0];
   let logsRead = 0;
   if (erc.status === 'fulfilled') {
     logsRead++;
@@ -121,7 +123,7 @@ async function discover(chain, owner) {
     }
   } else notChecked.push({ check: 'Permit2 approvals (explorer logs)', reason: p2.reason.message });
   let goplusRead = false;
-  if (gp.status === 'fulfilled' && !gp.value.not_checked) {
+  if (!gp) { /* not needed: the explorer read everything */ } else if (gp.status === 'fulfilled' && !gp.value.not_checked) {
     goplusRead = true;
     for (const a of gp.value.approvals) add(a.kind, a.token, a.spender, 'GoPlus', null);
     if (gp.value.partial) notChecked.push({ check: 'GoPlus approvals', reason: gp.value.partial });

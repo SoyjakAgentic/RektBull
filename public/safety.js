@@ -17,12 +17,11 @@
   /* ── start: chains, prices, payment options ── */
   (async () => {
     try {
-      const [{ chains }, { products }] = await Promise.all([api('GET', '/v1/tokens/chains'), api('GET', '/v1/catalog')]);
+      const [{ chains }] = await Promise.all([api('GET', '/v1/tokens/chains'), window.RB.catalog.ready]);
       $('chain').replaceChildren(...chains.map(c => el('option', { value: c }, CHAIN_NAMES[c] || c)));
-      for (const p of products) catalog[p.id] = p;
-      const q = catalog.token_quick_check, r = catalog.token_report;
-      if (q) $('quick-price').textContent = ` · ${q.price_usd}${q.free_per_day ? ` · ${q.free_per_day} free a day` : ''}`;
-      if (r) $('report-price').textContent = ` · ${r.price_usd}`;
+      Object.assign(catalog, window.RB.catalog.products);
+      $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
+      $('report-price').textContent = window.RB.priceLabel(catalog.token_report);
       renderPasses();
     } catch (err) { say('check-msg', 'Could not load the page\'s settings: ' + err.message, 'bad'); }
   })();
@@ -52,15 +51,7 @@
 
   function explain(err, productId) {
     const p = catalog[productId] || {};
-    if (err.status === 402) {
-      if (!window.RB.signedIn()) {
-        return p.free_per_day
-          ? `Sign in with your wallet below (free) to get ${p.free_per_day} quick checks a day, or pay from credits.`
-          : `${p.title || 'This'} costs ${p.price_usd || ''}. Sign in below and top up credits with USDT or USDC.`;
-      }
-      const bal = err.data?.credits_balance_cents;
-      return `${p.title || 'This'} costs ${p.price_usd || ''}${bal !== undefined ? `; you have ${usd(bal)} in credits` : ''}. Top up below. You weren't charged.`;
-    }
+    if (err.status === 402) return window.RB.paymentMessage(p, err);
     if (err.status >= 500) return 'The check failed on our side, and you weren\'t charged. Try again in a minute.';
     return err.message + ' You weren\'t charged.';
   }
@@ -92,8 +83,7 @@
     }
     if (r.note) parts.push(el('p', { class: 'muted small' }, r.note));
     const run = r.run || {};
-    const paid = { free: 'a free check', pass: 'your pass', credits: `${usd(run.price_cents || 0)} from credits`, x402: `${usd(run.price_cents || 0)} by x402` }[run.paid_with] || run.paid_with;
-    parts.push(el('p', { class: 'paid' }, `Checked ${r.checked_at ? new Date(r.checked_at).toLocaleString() : ''}`, paid ? ` · Paid with ${paid}, charged because it completed` : '', r.written_by ? ` · Written by ${r.written_by} from these results only` : ''));
+    parts.push(el('p', { class: 'paid' }, `Checked ${r.checked_at ? new Date(r.checked_at).toLocaleString() : ''}`, window.RB.paidLabel(run), r.written_by ? ` · Written by ${r.written_by} from these results only` : ''));
     box.replaceChildren(...parts);
     box.hidden = false;
   }
@@ -143,7 +133,8 @@
     return out;
   }
 
-  /* ── account: credits, free uses, passes ── */
+  /* ── account: credits, free points, Safety Pro ── */
+  document.addEventListener('rb:account-changed', () => { if (window.RB.signedIn()) loadAccount(); });
   window.RB.onSignedIn(async () => {
     $('account').hidden = false;
     await Promise.all([loadAccount(), loadPaymentMethods()]);
@@ -153,10 +144,12 @@
     try {
       const me = await api('GET', '/v1/me');
       $('balance').textContent = usd(me.credits_cents);
-      const f = me.free_today?.token_quick_check;
-      $('free-left').textContent = f ? `${f.left} of ${f.per_day}` : '–';
+      const pt = me.points;
+      $('points-left').textContent = pt ? `${pt.left} of ${pt.allowance}` : '–';
+      $('points-note').textContent = pt ? `Back to ${pt.allowance} on ${new Date(pt.resets_at).toLocaleDateString()}.${pt.new_wallet ? ' New wallets start with fewer; a wallet with transactions gets more next month.' : ''}` : '';
       const pass = me.passes?.[0];
-      $('pass').textContent = pass ? `${catalog[pass.product]?.title || pass.product}, until ${new Date(pass.ends_at).toLocaleDateString()}` : 'none';
+      const reports = me.pass_included?.token_report;
+      $('pass').textContent = pass ? `Until ${new Date(pass.ends_at).toLocaleDateString()}${reports ? ` · ${reports.left} of ${reports.allowance} reports left this month` : ''}` : 'none';
     } catch (err) { if (err.status !== 401) say('topup-msg', err.message, 'bad'); }
   }
 
@@ -223,7 +216,8 @@
 
   function renderPasses() {
     const passes = Object.values(catalog).filter(p => p.kind === 'pass');
-    $('passes').replaceChildren(...passes.map(p => el('button', { onclick: () => buyPass(p) }, `${p.title}: ${p.price_usd}`)));
+    if (passes[0]) $('pro-what').textContent = passes[0].description;
+    $('passes').replaceChildren(...passes.map(p => el('button', { class: p.days === 30 ? 'primary' : '', onclick: () => buyPass(p) }, `${p.title}: ${p.price_usd}`)));
   }
   async function buyPass(p) {
     if (!window.RB.signedIn()) return say('pass-msg', 'Sign in first.', 'bad');

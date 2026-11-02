@@ -102,8 +102,50 @@
     if (state.token) notify();
   });
 
+  /* What things cost, and what to say when a run needs paying for. */
+  const catalog = { products: {}, free_points: null, ready: null };
+  catalog.ready = api('GET', '/v1/catalog').then(c => {
+    for (const p of c.products) catalog.products[p.id] = p;
+    catalog.free_points = c.free_points;
+    return catalog;
+  }).catch(() => catalog);
+
+  /** " · 1 point or $0.25", " · $3.00 (5 a month with Safety Pro)" */
+  function priceLabel(p) {
+    if (!p) return '';
+    const pro = catalog.products.pro_30d;
+    const included = pro?.included_per_month?.[p.id];
+    return ` · ${p.points ? `${p.points} point${p.points === 1 ? '' : 's'} or ` : ''}${p.price_usd}${included ? ` (${included} a month with Safety Pro)` : ''}`;
+  }
+
+  /** The message for a 402: how to pay, and the Safety Pro nudge. */
+  function paymentMessage(p, err) {
+    const per = catalog.free_points?.per_month || 30;
+    const pro = catalog.products.pro_30d;
+    const proText = pro ? ` Safety Pro covers it, and every other Safety desk check, for ${pro.price_usd} for 30 days.` : '';
+    if (!state.token) {
+      return p.points
+        ? `Sign in with your wallet below (free): you get ${per} free points a month, and this costs ${p.points}.`
+        : `${p.title} costs ${p.price_usd}. Sign in below, then top up credits or get Safety Pro.`;
+    }
+    const bal = err?.data?.credits_balance_cents;
+    const credits = `${p.price_usd} from credits${bal !== undefined ? ` (you have ${usd(bal)})` : ''}`;
+    if (p.points) return `You've used this month's free points.${proText} Or pay ${credits}. You weren't charged.`;
+    return `${p.title} costs ${credits}.${pro?.included_per_month?.[p.id] ? ` Safety Pro includes ${pro.included_per_month[p.id]} a month.` : proText} You weren't charged.`;
+  }
+
+  /** "Paid with 5 free points", "Paid with your Safety Pro pass", ... */
+  function paidLabel(run) {
+    if (!run?.paid_with) return '';
+    const how = {
+      points: `${run.points} free point${run.points === 1 ? '' : 's'}`, pass: 'your Safety Pro pass',
+      credits: `${usd(run.price_cents || 0)} from credits`, x402: `${usd(run.price_cents || 0)} by x402`, free: 'a free check',
+    }[run.paid_with] || run.paid_with;
+    return ` · Paid with ${how}, charged because it completed`;
+  }
+
   window.RB = {
-    state, el, say, api, short, usd, request, switchChain,
+    state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,
   };

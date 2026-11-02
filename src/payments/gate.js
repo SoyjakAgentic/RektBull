@@ -4,16 +4,18 @@
  *   router.post('/v1/tokens/report', paidRoute('token_report', { validate, run }))
  *
  * It tries, in order: an x402 payment in X-PAYMENT; then, for a signed-in
- * wallet, an active pass that covers the product, the daily free allowance,
- * and credits. If none applies it answers 402 with every way to pay.
+ * wallet, an active Safety Pro pass that covers the product (within its fair
+ * use, or what it includes a month), the month's free points, and credits.
+ * If none applies it answers 402 with every way to pay.
  *
- * Nothing is kept unless the run succeeds: free uses and credits are given
- * back, and an x402 payment is never settled, when the run throws.
+ * Nothing is kept unless the run succeeds: pass uses, points and credits are
+ * given back, and an x402 payment is never settled, when the run throws.
  */
 const crypto = require('crypto');
 const db = require('../config/db');
 const logger = require('../config/logger');
-const { product, rails, usd } = require('./catalog');
+const { product, rails, usd, FREE_POINTS } = require('./catalog');
+const points = require('./points');
 const credits = require('./credits');
 const passes = require('./passes');
 const x402 = require('./x402');
@@ -45,6 +47,8 @@ function paymentRequired(p, req, extra = {}) {
     pay_with: {
       x402: accepts.length ? 'Retry with an X-PAYMENT header (USDC on Base).' : null,
       credits: req.account ? 'Top up with USDT or USDC: POST /v1/invoices.' : 'Sign in with your wallet (POST /v1/auth/nonce), then top up with USDT or USDC.',
+      ...(p.points ? { points: req.account ? `This month's free points are used up (it costs ${p.points}).` : `Sign in with your wallet for ${FREE_POINTS.per_month} free points a month (this costs ${p.points}).` } : {}),
+      safety_pro: 'Safety Pro covers it: POST /v1/passes/pro_30d ($9 for 30 days).',
     },
     ...extra,
   };
@@ -65,12 +69,21 @@ async function acquire(p, req, runId) {
   for (const rail of rails(p)) {
     if (rail === 'pass') {
       const pass = await passes.covering(acct.id, p.id);
-      if (pass && await takeAllowance(subject, `${p.id}:pass`, pass.fair_use_per_day)) {
+      if (pass?.included_per_month) {
+        if (await points.takeIncluded(acct.id, p.id, pass.included_per_month)) {
+          return { method: 'pass', commit: async () => {}, rollback: () => points.giveBackIncluded(acct.id, p.id) };
+        }
+      } else if (pass && pass.fair_use_per_day && await takeAllowance(subject, `${p.id}:pass`, pass.fair_use_per_day)) {
         return { method: 'pass', commit: async () => {}, rollback: () => giveBackAllowance(subject, `${p.id}:pass`) };
       }
-    } else if (rail === 'free') {
-      if (await takeAllowance(subject, p.id, p.free_per_day)) {
-        return { method: 'free', commit: async () => {}, rollback: () => giveBackAllowance(subject, p.id) };
+    } else if (rail === 'points') {
+      // A cap per IP address too, so many new wallets from one place can't farm points.
+      const ipKey = 'points_ip';
+      if (await takeAllowance(`ip:${req.ip}`, ipKey, FREE_POINTS.per_ip_per_day)) {
+        if (await points.spend(acct, p.points)) {
+          return { method: 'points', points: p.points, commit: async () => {}, rollback: async () => { await points.refund(acct, p.points); await giveBackAllowance(`ip:${req.ip}`, ipKey); } };
+        }
+        await giveBackAllowance(`ip:${req.ip}`, ipKey);
       }
     } else if (rail === 'credits') {
       try {
@@ -105,7 +118,7 @@ function paidRoute(productId, { validate, run }) {
 
     await db.query(
       'INSERT INTO runs (id, account_id, product, payment_method, price_cents, input, x402_payer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [runId, req.account?.id || null, p.id, charge.method, charge.method === 'free' || charge.method === 'pass' ? 0 : p.price_cents, JSON.stringify(input), charge.payer || null],
+      [runId, req.account?.id || null, p.id, charge.method, charge.method === 'credits' || charge.method === 'x402' ? p.price_cents : 0, JSON.stringify(input), charge.payer || null],
     );
 
     let result;
@@ -126,17 +139,8 @@ function paidRoute(productId, { validate, run }) {
     }
     await db.query(`UPDATE runs SET status = 'succeeded', x402_tx = $2, finished_at = now() WHERE id = $1`, [runId, settled?.txHash || null]);
     if (settled?.header) res.set('X-PAYMENT-RESPONSE', settled.header);
-    res.json({ ...result, run: { id: runId, paid_with: charge.method, ...(charge.method === 'credits' || charge.method === 'x402' ? { price_cents: p.price_cents } : {}) } });
+    res.json({ ...result, run: { id: runId, paid_with: charge.method, ...(charge.method === 'credits' || charge.method === 'x402' ? { price_cents: p.price_cents } : {}), ...(charge.points ? { points: charge.points } : {}) } });
   };
 }
 
-/** How much of today's free allowance a signed-in account has left, per product that has one. */
-async function freeLeft(accountId) {
-  const { PRODUCTS } = require('./catalog');
-  const ids = Object.keys(PRODUCTS).filter(id => PRODUCTS[id].kind === 'run' && PRODUCTS[id].free_per_day > 0);
-  const { rows } = await db.query('SELECT product, count FROM free_usage WHERE subject = $1 AND day = $2 AND product = ANY($3)', [`account:${accountId}`, today(), ids]);
-  const used = Object.fromEntries(rows.map(r => [r.product, r.count]));
-  return Object.fromEntries(ids.map(id => [id, { per_day: PRODUCTS[id].free_per_day, left: Math.max(PRODUCTS[id].free_per_day - (used[id] || 0), 0) }]));
-}
-
-module.exports = { paidRoute, acquire, paymentRequired, freeLeft, takeAllowance };
+module.exports = { paidRoute, acquire, paymentRequired, takeAllowance };

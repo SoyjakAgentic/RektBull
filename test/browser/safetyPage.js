@@ -17,7 +17,7 @@ const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 const MNEMONIC = ethers.Mnemonic.fromPhrase('test test test test test test test test test test test junk');
 
 Object.assign(process.env, {
-  DATABASE_URL: DB, JWT_SECRET: 'test', PAYMENT_CHAINS: 'base',
+  DATABASE_URL: DB, JWT_SECRET: 'test', PAYMENT_CHAINS: 'base', NEW_WALLET_CHECK_CHAINS: '',
   CRYPTO_DEPOSIT_XPUB: ethers.HDNodeWallet.fromMnemonic(MNEMONIC, "m/44'/60'/0'/0").neuter().extendedKey,
 });
 
@@ -117,23 +117,24 @@ Object.assign(process.env, {
   try {
     await page.goto(url + '/');
     assert.match(page.url(), /\/safety$/, 'the home page is the Safety page for now');
-    await page.getByText('· $0.25 · 5 free a day').waitFor();
-    await page.getByText('· $3.00').waitFor();
+    await page.getByText('· 1 point or $0.25').waitFor();
+    await page.getByText('· $3.00 (5 a month with Safety Pro)').waitFor();
+    await page.getByText('· 5 points or $1.00').waitFor();
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.card')).borderTopWidth), '1px', 'the stylesheet loaded and parsed');
 
     // Not signed in: no free checks, and the page says how to get them.
     await page.selectOption('#chain', 'base');
     await page.fill('#token', TOKEN);
     await page.getByRole('button', { name: /Quick check/ }).click();
-    await page.locator('#check-msg', { hasText: 'Sign in with your wallet below (free) to get 5 quick checks a day' }).waitFor();
+    await page.locator('#check-msg', { hasText: 'Sign in with your wallet below (free): you get 30 free points a month, and this costs 1.' }).waitFor();
     console.log('✔ signed out: prices shown; a check asks to sign in for the free ones');
 
     await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
     await page.getByRole('button', { name: 'Sign in with this wallet' }).click();
     await page.getByText('Signed in.').waitFor();
-    await page.locator('#free-left', { hasText: '5 of 5' }).waitFor();
+    await page.locator('#points-left', { hasText: '30 of 30' }).waitFor();
     assert.equal(await page.textContent('#balance'), '$0.00');
-    console.log('✔ sign in: credits $0.00, 5 of 5 free checks');
+    console.log('✔ sign in: credits $0.00, 30 of 30 free points');
 
     await page.getByRole('button', { name: /Quick check/ }).click();
     await page.getByText('What we found', { exact: true }).waitFor();
@@ -143,18 +144,26 @@ Object.assign(process.env, {
     assert.match(result, /The owner can create new tokens.*Source: verified ABI/s);
     assert.match(result, /Where sources disagree.*The sell tax differs/s);
     assert.match(result, /What we couldn't check.*goplus: GoPlus: timeout/s);
-    assert.match(result, /Paid with a free check, charged because it completed/);
-    await page.locator('#free-left', { hasText: '4 of 5' }).waitFor();
+    assert.match(result, /Paid with 1 free point, charged because it completed/);
+    await page.locator('#points-left', { hasText: '29 of 30' }).waitFor();
     console.log('✔ quick check: verdict, every flag with its source, disagreements, what couldn\'t be checked; one free use spent');
 
     failNext = true;
     await page.getByRole('button', { name: /Quick check/ }).click();
     await page.locator('#check-msg', { hasText: 'you weren\'t charged' }).waitFor();
-    await page.locator('#free-left', { hasText: '4 of 5' }).waitFor();
-    console.log('✔ a failed check: "you weren\'t charged", and the free use is given back');
+    await page.locator('#points-left', { hasText: '29 of 30' }).waitFor();
+    console.log('✔ a failed check: "you weren\'t charged", and the point is given back');
+
+    // Out of free points: the nudge to Safety Pro.
+    const acct = (await db.query('SELECT id FROM accounts WHERE wallet = $1', [wallet.address.toLowerCase()])).rows[0];
+    await db.query(`UPDATE period_usage SET used = allowance WHERE subject = $1 AND key = 'points'`, [`account:${acct.id}`]);
+    await page.getByRole('button', { name: /Quick check/ }).click();
+    await page.locator('#check-msg', { hasText: "You've used this month's free points. Safety Pro covers it, and every other Safety desk check, for $9.00 for 30 days. Or pay $0.25 from credits (you have $0.00)." }).waitFor();
+    await db.query(`UPDATE period_usage SET used = 1 WHERE subject = $1 AND key = 'points'`, [`account:${acct.id}`]);
+    console.log('✔ out of free points: the message offers Safety Pro, or paying from credits');
 
     await page.getByRole('button', { name: /Full report/ }).click();
-    await page.locator('#check-msg', { hasText: 'Token due diligence report costs $3.00; you have $0.00 in credits. Top up below.' }).waitFor();
+    await page.locator('#check-msg', { hasText: 'Token due diligence report costs $3.00 from credits (you have $0.00). Safety Pro includes 5 a month.' }).waitFor();
     console.log('✔ report without credits: says what it costs and what you have');
 
     // Top up: a deposit address, sent from the wallet as a USDC transfer on Base.
@@ -190,15 +199,15 @@ Object.assign(process.env, {
     await page.locator('#balance', { hasText: '$7.00' }).waitFor();
     console.log('✔ report: market facts with source, the written report as text only (no HTML), $3.00 from credits');
 
-    await page.getByRole('button', { name: 'RektBull Pro, 30 days: $9.00' }).click();
+    await page.getByRole('button', { name: 'Safety Pro, 30 days: $9.00' }).click();
     await page.locator('#pass-msg', { hasText: 'Not enough credits: it costs $9.00, you have $7.00' }).waitFor();
     await credits.add(rows[0].id, 200, 'adjustment', 'test:topup2');
-    await page.getByRole('button', { name: 'RektBull Pro, 30 days: $9.00' }).click();
+    await page.getByRole('button', { name: 'Safety Pro, 30 days: $9.00' }).click();
     await page.locator('#pass-msg', { hasText: 'is active' }).waitFor();
-    await page.locator('#pass', { hasText: 'RektBull Pro, 30 days, until' }).waitFor();
+    await page.locator('#pass', { hasText: /Until .* 5 of 5 reports left this month/ }).waitFor();
     await page.getByRole('button', { name: /Quick check/ }).click();
-    await page.getByText('Paid with your pass').waitFor();
-    console.log('✔ passes: refused without enough credits; bought from credits; then checks use the pass');
+    await page.getByText('Paid with your Safety Pro pass').first().waitFor();
+    console.log('✔ Safety Pro: refused without enough credits; bought from credits; shows the reports left; then checks use the pass');
 
     // Approval cleanup: a free preview, then the paid list, then revoking from the wallet.
     assert.equal((await page.inputValue('#a-wallet')).toLowerCase(), wallet.address.toLowerCase(), 'the signed-in wallet is filled in');
@@ -207,15 +216,12 @@ Object.assign(process.env, {
     assert.match(await page.textContent('#a-summary'), /Couldn't read: Ethereum \(Neither the explorer nor GoPlus answered\)/);
     assert.ok(!(await page.textContent('#a-summary')).includes('dddd'), 'the preview names no spender');
     await page.getByRole('button', { name: /Full cleanup/ }).click();
-    await page.locator('#a-msg', { hasText: 'Approval cleanup costs $5.00; you have $0.00 in credits' }).waitFor();
-    await credits.add(rows[0].id, 500, 'adjustment', 'test:topup3');
-    await page.getByRole('button', { name: /Full cleanup/ }).click();
     await page.getByText('Revoke selected on Base').waitFor();
     const list = await page.textContent('#a-result');
     assert.match(list, /critical.*can spend your unlimited USDC/s);
     assert.match(list, /Flagged for phishing\. \(GoPlus \(data from SlowMist\)\)/);
     assert.match(list, /Couldn't read this chain: Neither the explorer nor GoPlus answered/);
-    assert.match(list, /Paid with \$5\.00 from credits, charged because it completed/);
+    assert.match(list, /Paid with your Safety Pro pass, charged because it completed/);
     const boxes = page.locator('#a-result input[type=checkbox]');
     assert.deepEqual(await boxes.evaluateAll(b => b.map(x => x.checked)), [true, true, true, false], 'the risky ones are ticked, the known one is not');
     await boxes.nth(1).uncheck();

@@ -11,10 +11,10 @@
   let result = null;
   const selected = new Set();
 
-  api('GET', '/v1/catalog').then(({ products }) => {
-    product = products.find(p => p.id === 'approval_cleanup');
-    if (product) $('a-price').textContent = ' · ' + product.price_usd;
-  }).catch(() => {});
+  window.RB.catalog.ready.then(c => {
+    product = c.products.approval_cleanup;
+    $('a-price').textContent = window.RB.priceLabel(product);
+  });
 
   const wallet = () => $('a-wallet').value.trim();
   const fill = () => { if (!wallet() && state.address) $('a-wallet').value = state.address; };
@@ -56,14 +56,13 @@
       show(r);
       say('a-msg', '');
     } catch (err) {
-      const price = product?.price_usd || '$5.00';
       if (err.status === 402) {
-        say('a-msg', window.RB.signedIn() ? `Approval cleanup costs ${price}${err.data?.credits_balance_cents !== undefined ? `; you have ${usd(err.data.credits_balance_cents)} in credits` : ''}. Top up below. You weren't charged.` : `Approval cleanup costs ${price}. Sign in below and top up with USDT or USDC.`, 'bad');
+        say('a-msg', window.RB.paymentMessage(product || { title: 'Approval cleanup', price_usd: '$1.00', points: 5 }, err), 'bad');
         $('account-card').scrollIntoView({ behavior: 'smooth' });
       } else say('a-msg', err.status >= 500 ? 'The cleanup failed on our side, and you weren\'t charged. Try again in a minute.' : err.message, 'bad');
     } finally {
       $('a-cleanup').disabled = false;
-      if (window.RB.signedIn()) $('balance') && api('GET', '/v1/me').then(me => { $('balance').textContent = usd(me.credits_cents); }).catch(() => {});
+      document.dispatchEvent(new Event('rb:account-changed'));
     }
   });
 
@@ -92,7 +91,10 @@
     }
     const run = r.run || {};
     parts.push(el('p', { class: 'small muted' }, r.note));
-    parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, run.paid_with ? ` · Paid with ${run.paid_with === 'credits' ? usd(run.price_cents) + ' from credits' : run.paid_with}, charged because it completed` : ''));
+    parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, window.RB.paidLabel(run)));
+    if (run.paid_with && run.paid_with !== 'pass') {
+      parts.push(el('p', { class: 'small' }, 'New approvals appear every time you use an app. ', el('a', { href: '#pro-card' }, 'Safety Pro'), ' lets you check as often as you like, and will watch this wallet for you when the risk monitor launches.'));
+    }
     $('a-result').replaceChildren(...parts);
     $('a-result').hidden = false;
     $('a-summary').hidden = true;
