@@ -274,4 +274,29 @@ test('autonomous trading, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') 
     assert.ok((await WETH.balanceOf(addr)) > 0n, 'the tokens landed in the Coinbase Smart Wallet');
     assert.equal(await USDC.balanceOf(router.target), 0n, 'the router keeps nothing');
   });
+
+  await t.test('Coinbase Smart Wallet not deployed yet: it signs in with EIP-6492, and nothing is deployed', async () => {
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const factory = new ethers.Contract('0xba5ed110efdba3d005bfc882d75358acbbb85842', ['function createAccount(bytes[],uint256) payable returns (address)', 'function getAddress(bytes[],uint256) view returns (address)'], provider);
+    const owner = ethers.Wallet.createRandom();
+    const owners = [coder.encode(['address'], [owner.address])];
+    const nonce = BigInt(Date.now());
+    const addr = await factory.getFunction('getAddress')(owners, nonce);
+    assert.equal(await provider.getCode(addr), '0x');
+    // What a new Coinbase Smart Wallet sends: its owner's signature of the replay-safe hash, wrapped with the factory call (EIP-6492).
+    const sign6492 = (key, message) => {
+      const digest = ethers.TypedDataEncoder.hash({ name: 'Coinbase Smart Wallet', version: '1', chainId: 84532, verifyingContract: addr }, { CoinbaseSmartWalletMessage: [{ name: 'hash', type: 'bytes32' }] }, { hash: ethers.hashMessage(message) });
+      const inner = coder.encode(['tuple(uint256,bytes)'], [[0, key.signingKey.sign(digest).serialized]]);
+      return coder.encode(['address', 'bytes', 'bytes'], [factory.target, factory.interface.encodeFunctionData('createAccount', [owners, nonce]), inner]) + '6492'.repeat(16);
+    };
+    const anon = apiAs(null);
+    const ch = await anon('POST', '/v1/auth/nonce', { address: addr, chain_id: 84532 });
+    const bad = await anon('POST', '/v1/auth/verify', { challenge_id: ch.body.challenge_id, signature: sign6492(ethers.Wallet.createRandom(), ch.body.message) });
+    assert.equal(bad.status, 401, 'a stranger\'s key is not the wallet\'s owner');
+    const ch2 = await anon('POST', '/v1/auth/nonce', { address: addr, chain_id: 84532 });
+    const ok = await anon('POST', '/v1/auth/verify', { challenge_id: ch2.body.challenge_id, signature: sign6492(owner, ch2.body.message) });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.account.wallet, addr.toLowerCase());
+    assert.equal(await provider.getCode(addr), '0x', 'checking the sign-in deployed nothing');
+  });
 });
