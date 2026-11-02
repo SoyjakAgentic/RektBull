@@ -264,7 +264,7 @@ cost is a few dollars a month in total.
 | 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | ✅ Built (see below). Remaining: one real approve-each trade on Base mainnet with a small cap, which needs a 0x API key and your wallet |
 | 2 | Autonomous mode for MetaMask, rules port, positions and exits | ✅ Built (see below). Soyjak's swap checks pass here (`test/soyjakParity.test.js`) |
 | 3 | Safe, then Coinbase Smart Wallet | ✅ Built (see below): 19 break-it tests pass against a real Safe and a real Coinbase Smart Wallet |
-| 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
+| 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | Paused while the Safety desk is built: [TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md) |
 | 5 | Solana with Phantom (Squads Smart Account or Swig) | The devnet proof in section 3 |
 
 ### Milestone 1, as built

@@ -9,7 +9,7 @@ const credits = require('../payments/credits');
 const invoices = require('../payments/invoices');
 const passes = require('../payments/passes');
 const x402 = require('../payments/x402');
-const { paidRoute } = require('../payments/gate');
+const { paidRoute, freeLeft } = require('../payments/gate');
 const dd = require('../services/dueDiligence');
 const claude = require('../ai/claude');
 const usage = require('../providers/usage');
@@ -47,6 +47,7 @@ router.get('/v1/me', requireAuth, async (req, res) => {
     account: req.account,
     credits_cents: await credits.balance(req.account.id),
     passes: await passes.active(req.account.id),
+    free_today: await freeLeft(req.account.id),
   });
 });
 
@@ -75,11 +76,13 @@ router.post('/v1/passes/:product', requireAuth, async (req, res) => {
 // ── Paid runs: token due diligence ──────────────────────────────────────────
 const target = req => dd.parseTarget(req.body);
 
-router.post('/v1/tokens/quick-check', paidRoute('token_quick_check', { validate: target, run: dd.quickCheck }));
+router.get('/v1/tokens/chains', (_req, res) => res.json({ chains: require('../services/tokenRisk').SCAN_CHAINS }));
+
+router.post('/v1/tokens/quick-check', paidRoute('token_quick_check', { validate: target, run: input => dd.quickCheck(input) }));
 
 router.post('/v1/tokens/report', paidRoute('token_report', {
   validate: req => (claude.available() ? target(req) : { error: 'Reports are not available yet: the AI key is not configured' }),
-  run: dd.fullReport,
+  run: input => dd.fullReport(input),
 }));
 
 router.use(require('./trading'));

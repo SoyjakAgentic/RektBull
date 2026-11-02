@@ -51,8 +51,8 @@ finds or saves**, and show that figure in the result.
 
 | Group | Service | Price idea | Status |
 |---|---|---|---|
-| Protect | **Token quick check** (sellability, taxes, owner powers, holders) | $0.25, 5 free a day | ✅ built |
-| Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3 | ✅ built |
+| Protect | **Token quick check** (sellability, taxes, owner powers, holders) | $0.25, 5 free a day | ✅ built, on `/safety` |
+| Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3 | ✅ built, on `/safety` |
 | Protect | Pre-sign check (simulate a transaction before signing) | $0.25–1 | next |
 | Protect | Approval cleanup (find risky token permissions, prepare one revoke) | $5 | next |
 | Protect | Position risk monitor (exploits, admin changes, depegs, liquidation) | pass, $9–19 / 30 days | later |
@@ -92,6 +92,20 @@ Home
 ```
 
 ## 6. Roadmap
+
+**Order of work (decided 2026-11-02):** the trade desk is paused where
+[TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md) says, and the **Safety desk**
+comes first, one PR per step:
+
+1. ✅ Safety pages for what's built: token quick check and report, with
+   sign-in, credits, top-ups and passes (`/safety`).
+2. Approval cleanup ($5).
+3. Pre-sign check ($0.25–1, also for bots over x402).
+4. Airdrop and unclaimed-funds finder (ported from Soyjak).
+
+Then back to the trade desk (milestone 4), unless the Safety desk shows
+something more worth doing.
+
 
 | Phase | Scope |
 |---|---|

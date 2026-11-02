@@ -39,6 +39,23 @@ async function scan(chain, token) {
   });
 }
 
+/**
+ * Every check that couldn't run, with its reason, so a result never looks
+ * complete when it isn't: [{ check: 'goplus', reason: 'GoPlus does not cover this chain' }].
+ */
+function notChecked(checks = {}, market = null) {
+  const out = [];
+  const walk = (name, v, depth) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+    if (v.not_checked) return out.push({ check: name, reason: v.not_checked });
+    if (typeof v.incomplete === 'string') out.push({ check: name, reason: v.incomplete });
+    if (depth < 2) for (const [k, sub] of Object.entries(v)) walk(`${name}.${k}`, sub, depth + 1);
+  };
+  for (const [k, v] of Object.entries(checks)) walk(k, v, 0);
+  if (market?.not_checked) out.push({ check: 'market', reason: market.not_checked });
+  return out;
+}
+
 async function quickCheck({ chain, token }) {
   const s = await scan(chain, token);
   return {
@@ -46,6 +63,7 @@ async function quickCheck({ chain, token }) {
     ...(s.incomplete ? { incomplete: s.incomplete } : {}),
     flags: s.flags.filter(f => f.severity !== 'info'),
     disagreements: s.disagreements,
+    not_checked: notChecked(s.checks),
     note: s.note,
   };
 }
@@ -73,9 +91,10 @@ async function fullReport({ chain, token }) {
       ...(s.incomplete ? { incomplete: s.incomplete } : {}),
       report_markdown: ai.text,
       flags: s.flags, disagreements: s.disagreements, market: m,
+      not_checked: notChecked(s.checks, m),
       written_by: ai.model,
     };
   });
 }
 
-module.exports = { parseTarget, quickCheck, fullReport };
+module.exports = { parseTarget, quickCheck, fullReport, notChecked };

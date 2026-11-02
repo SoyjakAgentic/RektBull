@@ -60,7 +60,8 @@ docker compose up               # first run builds the app: give it a few minute
 ```
 
 When the terminal shows `RektBull API listening on 8080`, open
-**http://localhost:8080/trade** in the same browser as your wallet. Ctrl+C
+**http://localhost:8080/trade** in the same browser as your wallet (token
+checks are at **http://localhost:8080/safety**). Ctrl+C
 stops it; your trade history is kept until `docker compose down -v`.
 
 Trades are real (Base mainnet), signed by your wallet, from your wallet back to
@@ -100,9 +101,9 @@ The autonomous end-to-end test (`TEST_DATABASE_URL=… node --test test/autonomo
 after `cd contracts && npm install && npx hardhat compile`) runs automatic
 trading on a local copy of Base Sepolia against MetaMask's real contracts.
 
-The browser test drives the trading page in Chromium with a stand-in wallet
-(`TEST_DATABASE_URL=… node test/browser/tradePage.js`); it isn't part of
-`npm test`. Contract tests are in `contracts/` (`cd contracts && npm test`).
+The browser tests drive the pages in Chromium with a stand-in wallet
+(`TEST_DATABASE_URL=… node test/browser/safetyPage.js`, and `tradePage.js`);
+they aren't part of `npm test`. Contract tests are in `contracts/` (`cd contracts && npm test`).
 
 The end-to-end test drops and recreates the schema in that database, runs a
 fake Base node, and covers sign-in, the free allowance, credits, refunds on
@@ -134,6 +135,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
 - [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
+- [docs/TRADE_DESK_STATUS.md](docs/TRADE_DESK_STATUS.md): where the trade desk was paused, and how to pick it back up
 - [docs/AUDIT_BRIEF.md](docs/AUDIT_BRIEF.md): scope, guarantees and questions for the contract audit
 - [docs/REAL_WALLET_TESTING.md](docs/REAL_WALLET_TESTING.md): the checklist for testing MetaMask, Safe and Coinbase by hand
 - [docs/DEPLOY.md](docs/DEPLOY.md): Cloud Run, secrets, and the domain
