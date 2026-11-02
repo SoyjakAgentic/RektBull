@@ -65,6 +65,10 @@ const env = {
   claimFeeWalletEvm: (process.env.CLAIM_FEE_WALLET_EVM || '').toLowerCase(),
   // The 0.1% yield move fee goes here (defaults to the claim fee wallet).
   yieldFeeWalletEvm: (process.env.YIELD_FEE_WALLET_EVM || '').toLowerCase(),
+  // Automatic yield rebalancing (session keys and the Yield Router): built, and off until it's audited and switched on.
+  yieldAutoEnabled: process.env.YIELD_AUTO_ENABLED === 'true',
+  // {"8453": "0x…"}: the deployed Yield Router on each chain (none yet).
+  yieldRouters: json('YIELD_ROUTERS', {}),
 
   // Payments: x402 (pay per call in USDC on Base)
   x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),

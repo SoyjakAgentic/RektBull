@@ -33,6 +33,8 @@ const TABLES = {
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
   yield_moves: 'SELECT wallet, chain, asset, from_protocol, to_protocol, amount_raw, fee_raw, fee_bps, fee_wallet, status, tx_hashes, fee_paid_raw, created_at, confirmed_at FROM yield_moves WHERE account_id = $1 ORDER BY created_at',
+  yield_permissions: 'SELECT wallet, chain_id, router, status, expires_at, created_at, revoked_at FROM yield_permissions WHERE account_id = $1',
+  yield_auto_actions: 'SELECT a.kind, a.from_venue, a.to_venue, a.asset, a.amount_raw, a.reason, a.status, a.tx_hash, a.created_at FROM yield_auto_actions a JOIN yield_permissions p ON p.id = a.permission_id WHERE p.account_id = $1 ORDER BY a.created_at',
   claims: 'SELECT wallet, chain, items, fee_bps, fee_wallet, status, tx_hashes, received, fee_paid, created_at, confirmed_at FROM claims WHERE account_id = $1 ORDER BY created_at',
 };
 
@@ -52,6 +54,8 @@ async function deleteMine(account, { confirm } = {}) {
   if (confirm !== 'DELETE') throw new DataRefused('Type DELETE to confirm.');
   const { rows: active } = await db.query(`SELECT count(*)::int AS n FROM trade_permissions WHERE account_id = $1 AND status = 'active' AND expires_at > now()`, [account.id]);
   if (active[0].n) throw new DataRefused('Stop automatic trading first (on the Trade page, "Stop all automatic trading"), so no permission is left running.', 409);
+  const { rows: yieldActive } = await db.query(`SELECT count(*)::int AS n FROM yield_permissions WHERE account_id = $1 AND status = 'active' AND expires_at > now()`, [account.id]);
+  if (yieldActive[0].n) throw new DataRefused('Stop automatic yield rebalancing first, so no permission is left running.', 409);
   return db.tx(async c => {
     const removed = {};
     const run = async (name, sql) => { removed[name] = (await c.query(sql, [account.id])).rowCount; };

@@ -32,8 +32,9 @@ are built before we deploy. Each is its own PR, in this order unless we change i
    (`POST /v1/admin/airdrops`; Merkl rewards need nothing).
 2. ✅ **Find money: yield proposals** (`/find`, Safety Pro; 0.1% per move).
    At deploy: `YIELD_FEE_WALLET_EVM` (or it uses the claim fee wallet).
-   Needs the legal review in section 7 before it goes live. Next: automatic
-   rebalancing (the Yield Router and session keys), built but switched off.
+   Needs the legal review in section 7 before it goes live. ✅ Automatic
+   rebalancing (the Yield Router and session keys) is built and switched off
+   ([YIELD_ROUTER.md](YIELD_ROUTER.md)).
 3. **Save money: governance assistant.**
 4. **Site desks** from [SCOPE.md](SCOPE.md) section 5: Home, Discover,
    Markets, Opportunities, Portfolio, Research, Agents, Developers.
@@ -138,6 +139,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `REPORT_MODEL`, `REPORT_EFFORT` | ✔ | | The defaults unless we choose otherwise |
 | `NEW_WALLET_CHECK_CHAINS` | ✔ | | Default |
 | `TRADING_ENABLED` | | | **Unset** |
+| `YIELD_AUTO_ENABLED`, `YIELD_ROUTERS` | | | **Unset** (automatic rebalancing stays off) |
 
 ```bash
 gcloud run services update rektbull-api --region=us-central1 \
@@ -279,7 +281,13 @@ revision still works against the newer database.
 - [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md))
       before the trade desk is ever switched on.
 
-## 8. Turning the trade desk on later (not part of this launch)
+## 8. Turning things on later (not part of this launch)
+
+**Automatic yield rebalancing:** [YIELD_ROUTER.md](YIELD_ROUTER.md), "Before
+switching it on": audit and deploy the Yield Router, set `YIELD_ROUTERS`,
+deploy the trade service, then `YIELD_AUTO_ENABLED=true`.
+
+**The trade desk:**
 
 Follow [TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md): audit and deploy the
 Trade Router, create the KMS key and `rektbull-trade` service account

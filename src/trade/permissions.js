@@ -75,9 +75,10 @@ const TYPES = {
  * Checks a delegation's shape, caveats and signature; returns what it
  * allows, or throws PermissionRefused saying what's wrong. No network.
  */
-function checkDelegation({ delegation: d, chainId, wallet, sessionKey, now = Math.floor(Date.now() / 1000) }) {
+function checkDelegation({ delegation: d, chainId, wallet, sessionKey, now = Math.floor(Date.now() / 1000), allow = null }) {
   const mm = mmContracts(chainId);
-  const router = routerFor(chainId);
+  // What it may call: the Trade Router's swap, unless the caller says otherwise (the Yield Router's three calls).
+  const { target: router, selectors: allowedSelectors, what } = allow || { target: routerFor(chainId), selectors: [SWAP_SELECTOR], what: { target: 'the RektBull Trade Router', methods: 'the router\'s swap' } };
   if (!d || typeof d !== 'object') throw new PermissionRefused('delegation is missing');
   if (!eq(d.delegator, wallet)) throw new PermissionRefused('the delegation is not from your signed-in wallet');
   if (!eq(d.delegate, sessionKey)) throw new PermissionRefused('the delegation is not to RektBull\'s session key');
@@ -98,9 +99,10 @@ function checkDelegation({ delegation: d, chainId, wallet, sessionKey, now = Mat
   if (beforeThreshold > now + MAX_DAYS * 86400) throw new PermissionRefused(`the delegation must expire within ${MAX_DAYS} days`);
   if (afterThreshold > now + 3600) throw new PermissionRefused('the delegation must be usable now');
   const targets = core.decodeAllowedTargetsTerms(byEnforcer('AllowedTargetsEnforcer')).targets;
-  if (targets.length !== 1 || !eq(targets[0], router)) throw new PermissionRefused('it may only allow calling the RektBull Trade Router');
-  const selectors = core.decodeAllowedMethodsTerms(byEnforcer('AllowedMethodsEnforcer')).selectors;
-  if (selectors.length !== 1 || !eq(selectors[0], SWAP_SELECTOR)) throw new PermissionRefused('it may only allow the router\'s swap');
+  if (targets.length !== 1 || !eq(targets[0], router)) throw new PermissionRefused(`it may only allow calling ${what.target}`);
+  const selectors = core.decodeAllowedMethodsTerms(byEnforcer('AllowedMethodsEnforcer')).selectors.map(x => String(x).toLowerCase());
+  const want = allowedSelectors.map(x => x.toLowerCase());
+  if (selectors.length !== want.length || !want.every(x => selectors.includes(x))) throw new PermissionRefused(`it may only allow ${what.methods}`);
 
   const domain = { name: 'DelegationManager', version: '1', chainId, verifyingContract: mm.DelegationManager };
   const value = { delegate: d.delegate, delegator: d.delegator, authority: d.authority, caveats: caveats.map(c => ({ enforcer: c.enforcer, terms: c.terms })), salt: BigInt(d.salt) };
@@ -234,4 +236,4 @@ async function revoke(account, id) {
   return present(rows[0]);
 }
 
-module.exports = { checkDelegation, checkOnchain, checkSafe, checkCoinbase, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, chainName, ROUTER };
+module.exports = { checkDelegation, checkOnchain, checkSafe, checkCoinbase, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, chainName, ROUTER, mmContracts };
