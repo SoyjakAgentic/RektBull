@@ -9,7 +9,8 @@
  * Plain wallets (EOAs) sign with their key. Smart-contract wallets that are
  * already deployed (a Coinbase Smart Wallet, a MetaMask smart account) are
  * checked onchain with EIP-1271's isValidSignature, on the chain named in the
- * message. A Safe is linked by one of its owners instead, who signs in with
+ * message; ones not deployed yet (a new Coinbase Smart Wallet) with EIP-6492
+ * (see erc6492.js). A Safe is linked by one of its owners instead, who signs in with
  * their own wallet (trade/permissions.js checks they own the Safe).
  */
 const crypto = require('crypto');
@@ -17,6 +18,7 @@ const { ethers } = require('ethers');
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const db = require('../config/db');
+const erc6492 = require('./erc6492');
 
 const CHALLENGE_MINUTES = 10;
 const SESSION_DAYS = 7;
@@ -51,16 +53,30 @@ const ERC1271_MAGIC = '0x1626ba7e';
 /** Chain ids RektBull can check a smart-wallet signature on, and their RPC names. */
 const SIGNIN_CHAINS = { 1: 'ethereum', 8453: 'base', 84532: 'base-sepolia', 42161: 'arbitrum', 10: 'optimism', 137: 'polygon', 56: 'bsc' };
 
-/** True when the deployed smart wallet accepts signature for message (EIP-1271), on the message's chain. */
+/**
+ * True when the smart wallet accepts signature for message, on the message's
+ * chain: EIP-1271 if it's deployed, EIP-6492 if it isn't yet (a new Coinbase
+ * Smart Wallet). Both are read-only calls.
+ */
 async function signedByContract(message, signature, wallet) {
   const chainId = Number(/\nChain ID: (\d+)\n/.exec(message)?.[1]);
   const chain = SIGNIN_CHAINS[chainId];
   if (!chain) return false;
   const { evmRpc } = require('../providers/rpc');
+  const hash = ethers.hashMessage(message);
+  const wrapped = erc6492.isWrapped(signature) ? erc6492.unwrap(signature) : null;
+  if (erc6492.isWrapped(signature) && !wrapped) return false;
   try {
     const code = await evmRpc(chain, 'eth_getCode', [wallet, 'latest']);
-    if (!code || code === '0x') return false;
-    const raw = await evmRpc(chain, 'eth_call', [{ to: wallet, data: ERC1271.encodeFunctionData('isValidSignature', [ethers.hashMessage(message), signature]) }, 'latest']);
+    const deployed = code && code !== '0x';
+    if (!deployed) {
+      if (!wrapped) return false;
+      const raw = await evmRpc(chain, 'eth_call', [{ data: erc6492.checkCallData(wallet, hash, wrapped) }, 'latest']);
+      return String(raw).toLowerCase() === '0x01';
+    }
+    // Deployed since it signed: its wrapper is no longer needed; check the signature inside.
+    const sig = wrapped ? wrapped.signature : signature;
+    const raw = await evmRpc(chain, 'eth_call', [{ to: wallet, data: ERC1271.encodeFunctionData('isValidSignature', [hash, sig]) }, 'latest']);
     return String(raw).slice(0, 10).toLowerCase() === ERC1271_MAGIC;
   } catch {
     return false;

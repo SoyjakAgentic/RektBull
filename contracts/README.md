@@ -50,6 +50,13 @@ Coinbase Smart Wallet through a Coinbase spend permission granted to the router.
 Their break-it tests are in `test/walletsBreakIt.test.js`; see
 [../docs/SESSION_KEYS.md](../docs/SESSION_KEYS.md), milestone 3.
 
+Also here: **`SignInCheck6492.sol`**, never deployed. The service runs its
+creation code in a read-only `eth_call` to check sign-in from a Coinbase Smart
+Wallet that hasn't been deployed yet (EIP-6492). The service carries a copy of
+the code in `src/auth/signInCheck6492.json`; after changing the contract, run
+`npm run export:signin-check` (`test/signInCheck.test.js` fails if the copy is
+stale).
+
 Built with **Hardhat 3** (ES modules: `"type": "module"`, `hardhat.config.js`
 uses `defineConfig`). The forked copy of Base Sepolia is the `default`
 network; tests and scripts get it with `await network.create()`, and a

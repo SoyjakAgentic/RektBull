@@ -65,7 +65,7 @@ wallet shows against these.
 |---|---|---|---|
 | 1.1 | Connect, then **Sign in with this wallet** | The wallet shows a readable "Sign-In with Ethereum" message for `localhost:8080`, not raw hex | screenshot |
 | 1.2 | Sign | "Signed in." | |
-| 1.3 | Safe and Coinbase only: sign in with the smart wallet itself (Coinbase) or a Safe owner (Safe) | Works once the wallet is deployed onchain (checked with EIP-1271). **Not supported yet:** a Coinbase wallet that has never sent a transaction (not deployed) signs with EIP-6492, which RektBull doesn't check; if sign-in fails, send any small transaction first and record it | deployed before? result: |
+| 1.3 | Safe and Coinbase only: sign in with the smart wallet itself (Coinbase) or a Safe owner (Safe) | Coinbase works both before the wallet is deployed onchain (a brand-new wallet; checked with EIP-6492, and nothing is deployed by signing in) and after (EIP-1271). Try a brand-new Coinbase wallet first, then again after its first transaction | new wallet result: / after first tx result: |
 
 ## 2. MetaMask (EIP-7702 smart account)
 
