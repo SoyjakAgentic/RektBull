@@ -60,6 +60,10 @@ const env = {
   devSessionKey: process.env.DEV_SESSION_KEY || '',
   tradeTickMs: int(process.env.TRADE_TICK_MS, 15000),
 
+  // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
+  // transfer the user signs next to the claim (receive-only wallet; unset = no fee).
+  claimFeeWalletEvm: (process.env.CLAIM_FEE_WALLET_EVM || '').toLowerCase(),
+
   // Payments: x402 (pay per call in USDC on Base)
   x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),
   x402Network: process.env.X402_NETWORK || 'base',

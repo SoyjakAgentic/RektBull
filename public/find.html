@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Find Money</title>
+  <meta name="description" content="Free check for airdrops and rewards your wallet hasn't claimed yet, each verified onchain. Claim from your own wallet.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <nav class="nav"><a href="/safety">Safety</a><a href="/find" aria-current="page">Find money</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
+    <div id="who" class="who">Not signed in</div>
+  </header>
+
+  <main>
+    <section class="card" id="find-card">
+      <h2>Find airdrops and rewards you haven't claimed</h2>
+      <p class="muted">Rewards from Merkl campaigns (Uniswap, Aave, Morpho, Euler and many more) on six chains, and airdrops RektBull has checked. Each one is verified onchain before it's shown: the proof, the distributor's root, and whether it's already claimed.</p>
+      <div class="grid">
+        <label class="wide">Wallet address
+          <input id="f-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button id="f-check" class="primary">Check for free</button></div>
+      <p id="f-msg" class="msg"></p>
+      <div id="f-result" hidden></div>
+    </section>
+
+    <section class="card" id="claim-card" hidden>
+      <h2>Your claim</h2>
+      <div id="c-summary"></div>
+      <div class="row"><button id="c-send" class="primary">Claim with my wallet</button><button id="c-cancel">Cancel</button></div>
+      <p id="c-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="fee-card">
+      <h2>What it costs</h2>
+      <p id="fee-what" class="small">Checking is free.</p>
+      <ul class="small">
+        <li>The fee is a plain transfer of the claimed tokens to RektBull's fee wallet, which your wallet shows next to the claim. No approval is asked for, and RektBull never holds your tokens.</li>
+        <li>Wallets that can bundle calls send the claim and the fee together, so the fee is paid only if the claim works. Other wallets send the claim first.</li>
+        <li>It's a share of what the simulation shows arriving in your wallet, not of what the claim says.</li>
+        <li>No fee when the tokens can't be transferred yet, or when the fee would be worth less than the gas to send it.</li>
+        <li>Claiming on the project's own site is always free. Every result links to it.</li>
+      </ul>
+    </section>
+
+    <section class="card" id="programs-card">
+      <h2>Airdrops RektBull checks</h2>
+      <p class="muted small">Each was checked when it was added: its published tree matches the distributor's root onchain, sample proofs verify, and a claim was simulated.</p>
+      <div id="programs" class="small muted">Loading…</div>
+    </section>
+
+    <section class="card" id="account-card">
+      <h2>Your wallet</h2>
+      <p class="muted small">Connect the wallet you're claiming for, to sign the claim. Sign in (free) for more checks a day, and for the Safety Pro rate if you have it.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small"><code>POST /v1/claims/check</code> with <code>{"wallet"}</code> (free, limited per day); <code>POST /v1/claims/prepare</code> with <code>{"wallet", "chain", "ids"}</code> returns the calls to sign; <code>POST /v1/claims/{id}/confirm</code> with <code>{"tx_hashes"}</code>. The airdrops covered: <a href="/v1/claims/programs"><code>/v1/claims/programs</code></a>.</p>
+    </section>
+  </main>
+
+  <footer class="muted">Found means verified in these sources, not a promise of value. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/find.js"></script>
+</body>
+</html>

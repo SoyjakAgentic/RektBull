@@ -56,17 +56,18 @@ finds or saves**, and show that figure in the result.
 | Protect | **Pre-sign check**: in the RektBull browser extension, every transaction and signature is decoded, simulated and checked (spenders, recipients, permits, Seaport orders, sign-ins, the site) before the wallet shows it | 1 point or $0.10; in Safety Pro | ✅ built (`extension/`, `/extension`) |
 | Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
 | Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs; alerts by Telegram, email and browser notifications | in Safety Pro | ✅ built, on `/safety` |
-| Find | Airdrop and unclaimed-funds finder (check free, pay to prepare claims) | $5–15 | later |
+| Find | **Airdrop and unclaimed-funds finder**: Merkl rewards on six chains and Merkle airdrops RektBull checked, each verified onchain; claims prepared for the wallet to sign | Check free; 5% of what's claimed (3% with Safety Pro), in the claimed tokens | ✅ built, on `/find` |
 | Find | Yield proposals (agent proposes, user approves) | pass | later |
 | Save | Tax and profit report | $29–99 / year | after paid data |
 | Save | Governance assistant | pass | later |
 | Business | Sybil filtering for airdrops, team reports, contract monitoring, pre-audit check | $49–5k | after paid data |
 
-**Free:** rankings, safety-score summaries, the airdrop eligibility check,
+**Free:** rankings, safety-score summaries, the airdrop and rewards check,
 approval previews, and **30 points a month** for signed-in wallets (a quick
 check is 1, an approval cleanup 5). **Safety Pro** ($9 for 30 days, $79 a
 year) covers every Safety desk check, 5 AI reports a month and the risk
-monitor. Users pay for monitoring, deep reports and volume.
+monitor, and lowers the claim fee to 3%. Users pay for monitoring, deep
+reports and volume, and a share of money found when they claim it here.
 
 ## 4. How people pay
 
@@ -103,7 +104,7 @@ comes first, one PR per step:
    sign-in, credits, top-ups and passes (`/safety`).
 2. ✅ Approval cleanup (5 points or $1, with a free preview), free points and Safety Pro.
 3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). ✅ Also as a MetaMask Snap (`snap/`), showing the check in MetaMask's confirmation screen; it needs MetaMask's allowlisting (network access) before regular MetaMask installs it.
-4. Airdrop and unclaimed-funds finder (ported from Soyjak).
+4. ✅ Airdrop and unclaimed-funds finder (`/find`): Merkl rewards and admin-added Merkle airdrops, each verified onchain; free check, 5% claim fee (3% with Safety Pro) as a transfer the user signs with the claim.
 
 **Deployment comes after the planned desks** (decided 2026-11-02): see
 [LAUNCH_PLAN.md](LAUNCH_PLAN.md) for the build order before launch and the

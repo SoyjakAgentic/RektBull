@@ -54,7 +54,7 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 code.data { display: inline-block; max-height: 4.5em; overflow: auto; }
 
 /* navigation */
-.nav { display: flex; gap: 14px; font-size: 14px; }
+.nav { display: flex; gap: 6px 14px; font-size: 14px; flex-wrap: wrap; }
 .nav a { color: var(--muted); text-decoration: none; }
 .nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 a { color: var(--accent); }

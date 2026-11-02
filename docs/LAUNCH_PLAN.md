@@ -25,9 +25,11 @@ we finish from section 1 before the date.
 Decided 2 November 2026: the Safety Pro features and the other planned desks
 are built before we deploy. Each is its own PR, in this order unless we change it:
 
-1. **Find money: airdrop and unclaimed-funds finder.** The check is free.
-   The fee for claims is being decided (5% of the claim was proposed); it has
-   to fit the custody rules: no approvals for billing, nothing held by RektBull.
+1. ✅ **Find money: airdrop and unclaimed-funds finder** (`/find`). The check
+   is free; claims carry 5% of what arrives (3% with Safety Pro), as a
+   transfer the user signs with the claim. At deploy: `CLAIM_FEE_WALLET_EVM`
+   (section 4), and add the live Merkle airdrops worth covering
+   (`POST /v1/admin/airdrops`; Merkl rewards need nothing).
 2. **Find money: yield proposals** (the agent proposes, the user approves and
    signs). Needs the legal review in section 7 before it goes live.
 3. **Save money: governance assistant.**
@@ -84,6 +86,7 @@ Later (section 6): Chrome Web Store ($5 once), Microsoft Partner Center
 | `CRYPTO_DEPOSIT_XPUB` | Extended **public** key; each top-up gets its own address from it | From a hardware wallet account used only for RektBull deposits. Write down its derivation path. Sweeping deposits is done by you, from that wallet |
 | `X402_PAY_TO` | Where x402 USDC on Base arrives | A Safe or hardware-wallet address. Receive-only |
 | `ADMIN_WALLETS` | Wallets that can read `/v1/admin/*` | Your own address(es) |
+| `CLAIM_FEE_WALLET_EVM` | Where claim fees arrive (many different tokens) | A Safe or hardware-wallet address, receive-only; on every EVM chain we cover (a Safe needs deploying on each). Unset = claims carry no fee |
 | `SWAP_FEE_WALLET_EVM`, `SESSION_KEY_ADDRESS` | Trade desk only | Leave unset at launch |
 
 Check before launch: an invoice made by the deployed site shows an address
@@ -123,6 +126,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `OPERATOR_NAME`, `PRIVACY_CONTACT` | ✔ | | The person or company responsible; an address someone reads |
 | `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` | ✔ | ✔ | Section 4; `ethereum,bsc,base` |
 | `X402_PAY_TO` | ✔ | | Section 4 |
+| `CLAIM_FEE_WALLET_EVM` | ✔ | | Section 4 |
 | `ADMIN_WALLETS` | ✔ | | Your address |
 | `RPC_URLS_ETHEREUM`, `_BASE`, `_BSC`, `_ARBITRUM`, `_OPTIMISM`, `_POLYGON`, `_SOLANA` | ✔ | ✔ | Your endpoints. They carry API keys: restrict them to RektBull's use in the provider's dashboard |
 | `PROVIDER_DAILY_LIMITS` | ✔ | ✔ | Just under each free plan's daily limit (see `.env.example`) |
@@ -224,6 +228,8 @@ By hand (you, with a real wallet and small amounts):
       link, check it isn't in spam) and browser push; send a test alert to each.
 - [ ] Load the unpacked extension; link it; on a test site, a signature
       request shows RektBull's verdict.
+- [ ] Find money: check your wallet on `/find`; claim one small Merkl reward
+      or airdrop and see the fee arrive in the fee wallet.
 - [ ] Download your data; delete it; the extension link stops working.
 - [ ] Sweep the $5 deposit with your own wallet, to prove you can reach deposits.
 

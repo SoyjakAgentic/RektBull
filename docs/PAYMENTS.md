@@ -9,6 +9,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **Credits** | Everything; the main rail on the website | Yes (wallet sign-in) | `payments/credits.js`, `invoices.js`, `watcher.js` |
 | **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
+| **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
 
 ## Order a run is paid in
 
@@ -105,12 +106,42 @@ not the user.
 
 Crypto can't safely pull a payment every month, so time is prepaid:
 **Safety Pro**, `pro_30d` ($9) and `pro_365d` ($79), covers every Safety
-desk check (fair use), 5 AI reports a month, and the risk monitor (up to 3
-wallets, checked daily; paused while no pass is active). Buying again while active extends from the current end date.
+desk check (fair use), 5 AI reports a month, the risk monitor (up to 3
+wallets, checked daily; paused while no pass is active), and a 3% claim fee instead of 5%. Buying again while active extends from the current end date.
 What a pass costs us to serve (AI reports, data plans, hosting) and when
 it breaks even is worked out in the PR that introduced it (#10); the real
 AI cost per report is recorded (`GET /v1/admin/provider-usage`, `ai`).
 Renewal reminders by email are planned for when alert emails exist.
+
+## Claim fees (Find money)
+
+Checking a wallet for unclaimed airdrops and rewards is free. When RektBull
+prepares a claim, the wallet is given the claim call(s) and, after them, a
+plain ERC-20 `transfer` per token of **5% of what arrives** (3% with an
+active Safety Pro pass) to `CLAIM_FEE_WALLET_EVM`. That's the whole fee
+mechanism:
+
+- **No approval, nothing held.** It's the user's own transfer, shown in the
+  wallet before signing. RektBull never touches the claimed tokens.
+- **Paid only for a claim that works.** The claim and the fee go out as one
+  EIP-5792 bundle with `atomicRequired: true` where the wallet supports it.
+  Other wallets send the claim first, then the fee (which the user can
+  decline; we accept that rather than ask for an approval).
+- **A share of what arrives**, from a simulation of the claim from the
+  user's wallet, not of what the claim says (fee-on-transfer tokens, or a
+  claim set to pay another address, show up there).
+- **No fee** when the token can't be transferred yet (the fee transfer
+  fails in simulation: points before launch, vesting), when the fee is
+  worth less than the gas to send it, or when no fee wallet is set.
+- **No price needed.** Tokens are often claimable before any exchange lists
+  them, so the fee is a share of the tokens, not dollars, and has no cap.
+- Each prepared claim is recorded (`claims`), and `POST /v1/claims/:id/confirm`
+  reads the receipts for what arrived and what fee was paid.
+
+The fee wallet fills with many different tokens: keep it cold and
+receive-only (a Safe or hardware wallet); only the owner sells from it.
+Tokens received as fees are likely income when they arrive in many places:
+ask an accountant.
 
 ## Refunds
 

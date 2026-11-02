@@ -6,7 +6,7 @@
  * push) and their delivery records, risk monitor wallets and alerts,
  * extension links, trading safety settings, free-use counters and pending
  * codes. It keeps what other records depend on, tied to the wallet address:
- * credits, top-ups, deposits, passes, paid runs, and trades made through
+ * credits, top-ups, deposits, passes, paid runs, claims, and trades made through
  * RektBull (a payment or trade record has to say who it was for). Anything
  * onchain is public and can't be deleted by anyone.
  */
@@ -32,6 +32,7 @@ const TABLES = {
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
+  claims: 'SELECT wallet, chain, items, fee_bps, fee_wallet, status, tx_hashes, received, fee_paid, created_at, confirmed_at FROM claims WHERE account_id = $1 ORDER BY created_at',
 };
 
 /** Everything RektBull holds about the account, as one JSON document. */
@@ -63,7 +64,7 @@ async function deleteMine(account, { confirm } = {}) {
     await run('trade_settings', 'DELETE FROM trade_settings WHERE account_id = $1');
     await run('free_use_counters', `DELETE FROM free_usage WHERE subject = 'account:' || $1`);
     await run('email', 'UPDATE accounts SET email = NULL WHERE id = $1 AND email IS NOT NULL');
-    return { removed, kept: 'Credits, top-ups, deposits, passes, paid runs and trades stay, tied to your wallet address: they are records of payments and trades. Anything onchain is public and permanent.' };
+    return { removed, kept: 'Credits, top-ups, deposits, passes, paid runs, claims (with their fees) and trades stay, tied to your wallet address: they are records of payments and trades. Anything onchain is public and permanent.' };
   });
 }
 
