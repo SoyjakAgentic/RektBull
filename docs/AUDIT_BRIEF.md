@@ -26,6 +26,10 @@ fixed or explicitly accepted.*
   - 0x's AllowanceHolder.
   - Chainlink feeds.
   - Test mocks (`contracts/contracts/test/Mocks.sol`).
+  - `contracts/contracts/SignInCheck6492.sol`: optional, low priority. It is
+    never deployed and holds nothing; the server runs it in a read-only
+    `eth_call` to check sign-in signatures from smart wallets that aren't
+    deployed yet (EIP-6492). It affects sign-in only, not funds.
   - The off-chain service (`src/`).
 
 ## 2. What the system does
@@ -151,7 +155,7 @@ Please look hard at these:
 ```bash
 cd contracts
 npm install
-npm test        # 46 tests on a fork of Base Sepolia
+npm test        # 53 tests on a fork of Base Sepolia
 ```
 
 - `test/breakIt.test.js`: 27 tests for the router and the MetaMask path,
@@ -159,6 +163,7 @@ npm test        # 46 tests on a fork of Base Sepolia
 - `test/walletsBreakIt.test.js`: 19 tests for the Safe module, against real
   Safe 1.4.1, and the Coinbase path, against Coinbase's real factory and Spend
   Permission Manager.
+- `test/signInCheck.test.js`: 7 tests for the sign-in check (optional scope).
 - `../test/autonomous.e2e.js`: the off-chain service driving all three wallets
   end to end on a fork. Context only; the service is out of scope.
 

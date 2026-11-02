@@ -59,6 +59,58 @@ test('sign-in: only the wallet that signed the exact message passes', async () =
   assert.equal(siwe.signedBy(message, '0xdeadbeef', wallet.address), false);
 });
 
+test('sign-in: smart wallets are checked with EIP-1271 if deployed, EIP-6492 if not, read-only', async () => {
+  const erc6492 = require('../src/auth/erc6492');
+  const rpc = require('../src/providers/rpc');
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const wallet = '0x' + 'cb'.repeat(20);
+  const factory = '0x' + 'fa'.repeat(20);
+  const message = siwe.buildMessage({ address: wallet, chainId: 84532, nonce: 'n', issuedAt: new Date(), expiresAt: new Date(Date.now() + 600000) });
+  const inner = '0x' + '11'.repeat(65);
+  const wrapped = coder.encode(['address', 'bytes', 'bytes'], [factory, '0xabcd', inner]) + erc6492.SUFFIX;
+
+  assert.equal(erc6492.isWrapped(inner), false);
+  assert.equal(erc6492.isWrapped(wrapped), true);
+  assert.deepEqual({ ...erc6492.unwrap(wrapped) }, { factory: ethers.getAddress(factory), factoryCalldata: '0xabcd', signature: inner });
+  assert.equal(erc6492.unwrap('0x' + '00'.repeat(4) + erc6492.SUFFIX), null, 'a broken wrapper is refused');
+
+  const calls = [];
+  const fake = ({ code, answer }) => async (chain, method, params) => {
+    calls.push({ chain, method, params });
+    if (method === 'eth_getCode') return code;
+    if (method === 'eth_call') return answer(params[0]);
+    throw new Error(method);
+  };
+  const real = rpc.evmRpc;
+  try {
+    // Not deployed: one deployless eth_call (no `to`) to the check, with the wrapper's parts.
+    rpc.evmRpc = fake({ code: '0x', answer: tx => (tx.to ? '0x' : '0x01') });
+    assert.equal(await siwe.signedByContract(message, wrapped, wallet), true);
+    const call = calls.find(c => c.method === 'eth_call');
+    assert.equal(call.chain, 'base-sepolia');
+    assert.equal(call.params[0].to, undefined, 'a deployless call, never a transaction');
+    assert.equal(call.params[0].data, erc6492.checkCallData(wallet, ethers.hashMessage(message), { factory, factoryCalldata: '0xabcd', signature: inner }));
+    rpc.evmRpc = fake({ code: '0x', answer: () => '0x00' });
+    assert.equal(await siwe.signedByContract(message, wrapped, wallet), false, 'the check said no');
+    rpc.evmRpc = fake({ code: '0x', answer: () => '0x01' });
+    assert.equal(await siwe.signedByContract(message, inner, wallet), false, 'not deployed and not wrapped: nothing to check');
+
+    // Deployed: EIP-1271 on the wallet, with the signature inside any wrapper.
+    calls.length = 0;
+    rpc.evmRpc = fake({ code: '0x6000', answer: tx => (tx.to === wallet ? '0x1626ba7e' + '0'.repeat(56) : '0x') });
+    assert.equal(await siwe.signedByContract(message, wrapped, wallet), true);
+    const sent = new ethers.Interface(['function isValidSignature(bytes32,bytes)']).decodeFunctionData('isValidSignature', calls.find(c => c.method === 'eth_call').params[0].data);
+    assert.equal(sent[1], inner, 'the wrapper is removed for a deployed wallet');
+    assert.equal(await siwe.signedByContract(message, inner, wallet), true);
+
+    rpc.evmRpc = async () => { throw new Error('rpc down'); };
+    assert.equal(await siwe.signedByContract(message, wrapped, wallet), false, 'an RPC failure never signs anyone in');
+    assert.equal(await siwe.signedByContract(message.replace('Chain ID: 84532', 'Chain ID: 999'), wrapped, wallet), false, 'unknown chain');
+  } finally {
+    rpc.evmRpc = real;
+  }
+});
+
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {
   const mnemonic = ethers.Mnemonic.fromPhrase('test test test test test test test test test test test junk');
   const account = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0");
