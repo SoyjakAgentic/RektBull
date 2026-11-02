@@ -1,11 +1,22 @@
 const env = require('../config/env');
 const { readToken } = require('../auth/siwe');
 
-/** Sets req.account from a Bearer session token, if there is a valid one. */
-function optionalAuth(req, _res, next) {
-  const m = /^Bearer (.+)$/.exec(req.get('authorization') || '');
-  req.account = m ? readToken(m[1]) : null;
-  next();
+/**
+ * Sets req.account from a Bearer token, if there is a valid one. An
+ * extension token (scope 'extension') counts only on the few routes it's
+ * for, and only while it isn't revoked.
+ */
+async function optionalAuth(req, _res, next) {
+  try {
+    const m = /^Bearer (.+)$/.exec(req.get('authorization') || '');
+    let account = m ? readToken(m[1]) : null;
+    if (account?.scope) {
+      const ext = require('../auth/extensionTokens');
+      if (account.scope !== 'extension' || !ext.allowed(req.method, req.path) || !(await ext.isActive(account.jti))) account = null;
+    }
+    req.account = account;
+    next();
+  } catch (err) { next(err); }
 }
 
 function requireAuth(req, res, next) {

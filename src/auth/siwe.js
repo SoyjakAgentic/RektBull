@@ -120,7 +120,7 @@ function readToken(token) {
   if (!env.jwtSecret) return null;
   try {
     const p = jwt.verify(token, env.jwtSecret);
-    return { id: Number(p.sub), wallet: p.wallet };
+    return { id: Number(p.sub), wallet: p.wallet, ...(p.scope ? { scope: p.scope, jti: p.jti } : {}) };
   } catch {
     return null;
   }

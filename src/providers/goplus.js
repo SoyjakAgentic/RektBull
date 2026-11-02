@@ -91,4 +91,12 @@ async function addressRisk(chain, address) {
   });
 }
 
-module.exports = { approvalsOf, contractRisk, addressRisk, ADDRESS_FLAGS };
+/** Whether GoPlus lists a website as phishing. Keyed by the site's origin, cached an hour. */
+async function phishingSite(origin) {
+  return cached(`goplus:phishing_site:${origin}`, 60 * 60, async () => {
+    const r = await get('/v1/phishing_site', { url: origin });
+    return { source: 'GoPlus phishing site list', phishing: flag(r?.phishing_site) === true };
+  });
+}
+
+module.exports = { approvalsOf, contractRisk, addressRisk, phishingSite, ADDRESS_FLAGS };

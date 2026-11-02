@@ -18,12 +18,12 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor'],
-  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20 },
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check'],
+  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
   included_per_month: { token_report: 5 },
   monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, and the risk monitor: up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, and the risk monitor: up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -40,6 +40,14 @@ const PRODUCTS = {
     description: 'The full scan plus liquidity, volume and age, explained in plain English.',
     price_cents: 300,
     points: null,
+    x402: true,
+  },
+  presign_check: {
+    kind: 'run',
+    title: 'Pre-sign check',
+    description: 'Before you sign: what a transaction or signature would do, simulated, with every spender, recipient and the site itself checked.',
+    price_cents: 10,
+    points: 1,
     x402: true,
   },
   approval_cleanup: {

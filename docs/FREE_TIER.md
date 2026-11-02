@@ -22,6 +22,8 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | Telegram Bot API | Risk monitor alerts | Bot token (free) | The other channels |
 | Resend | Alert emails | Free plan, then pay per email (check current limits) | The other channels |
 | Web Push (browsers' own push services) | Browser notifications | VAPID keys (free) | The other channels |
+| Your RPC / public RPC: `eth_simulateV1` | Pre-sign simulation (what would leave the wallet) | No | "Not checked: simulation"; the decoded request is still checked |
+| openchain signature database | Names of functions the pre-sign check doesn't decode (labels only) | No | The raw selector |
 | DefiLlama | Prices for trading and for the value at risk in approval cleanup | No | "Not priced", never guessed |
 | 0x | Buy-then-sell honeypot test, taxes (EVM) | Free key | GoPlus's figures |
 | Jupiter | Buy-then-sell test (Solana) | Optional | — |
