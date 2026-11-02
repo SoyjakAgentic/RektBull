@@ -56,6 +56,8 @@ const env = {
   // Payments: stablecoin deposits (credits top-ups)
   depositXpub: process.env.CRYPTO_DEPOSIT_XPUB || '',
   paymentChains: list(process.env.PAYMENT_CHAINS || 'ethereum,bsc,base'),
+  // Chains approval cleanup scans (default: every EVM chain RektBull reads).
+  approvalChains: process.env.APPROVAL_CHAINS ? list(process.env.APPROVAL_CHAINS) : null,
   invoiceExpiryMinutes: int(process.env.INVOICE_EXPIRY_MINUTES, 60),
   minTopUpCents: int(process.env.MIN_TOP_UP_CENTS, 500),
   watcherIntervalMs: int(process.env.WATCHER_INTERVAL_MS, 20000),

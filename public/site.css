@@ -80,3 +80,15 @@ button.primary .price { color: inherit; opacity: .85; }
 .facts strong { display: block; font-size: 15px; }
 .paid { font-size: 13px; color: var(--muted); margin-top: 10px; }
 .send { background: var(--soft); border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 14px; display: grid; gap: 4px; }
+
+/* approval cleanup */
+.chain-block { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+.approval { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.approval:last-of-type { border-bottom: none; }
+.approval input[type=checkbox] { margin-top: 4px; width: 18px; height: 18px; }
+.approval .what { font-weight: 600; }
+.approval .reasons { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.sev-badge { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; border-radius: 999px; padding: 0 8px; border: 1px solid currentColor; margin-right: 6px; }
+.sev-badge.critical, .sev-badge.high { color: var(--bad); }
+.sev-badge.medium { color: var(--warn); }
+.sev-badge.low { color: var(--ok); }

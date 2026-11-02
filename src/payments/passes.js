@@ -29,7 +29,9 @@ async function covering(accountId, runProductId) {
   );
   for (const r of rows) {
     const p = product(r.product);
-    if ((p.covers || []).includes(runProductId)) return { ...r, fair_use_per_day: p.fair_use_per_day };
+    if ((p.covers || []).includes(runProductId)) {
+      return { ...r, fair_use_per_day: p.fair_use_per_day?.[runProductId] ?? null, included_per_month: p.included_per_month?.[runProductId] ?? null };
+    }
   }
   return null;
 }

@@ -1,23 +1,40 @@
 # Payments
 
-Crypto only. Three ways to pay, all ending in the same payment gate
+Crypto only. Every paid run goes through the same payment gate
 (`src/payments/gate.js`), which charges only for runs that succeed.
 
 | Rail | For | Account needed | Code |
 |---|---|---|---|
 | **x402** | Runs up to about $1, bots, other agents | No | `payments/x402.js`, `payments/facilitator.js` |
 | **Credits** | Everything; the main rail on the website | Yes (wallet sign-in) | `payments/credits.js`, `invoices.js`, `watcher.js` |
-| **Passes** | Unlimited use for a fixed time | Yes | `payments/passes.js` |
+| **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
+| **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
 
 ## Order a run is paid in
 
-For a signed-in wallet: an active **pass** that covers the product, then the
-**daily free allowance**, then **credits**. An `X-PAYMENT` header (x402) is
-used first whenever it's sent. If nothing applies, the answer is
-`402 Payment Required` with every option, including x402 terms in `accepts`.
+For a signed-in wallet: an active **Safety Pro** pass that covers the
+product, then the month's **free points**, then **credits**. An `X-PAYMENT`
+header (x402) is used first whenever it's sent. If nothing applies, the
+answer is `402 Payment Required` with every option, including x402 terms in
+`accepts`, how many points it costs, and Safety Pro.
 
-If the run fails, the free use or the credits are given back and an x402
-payment is never settled. Input is validated before anything is charged.
+If the run fails, the pass use, the points or the credits are given back and
+an x402 payment is never settled. Input is validated before anything is
+charged.
+
+| Run | Points | Price | Safety Pro |
+|---|---|---|---|
+| Token quick check | 1 | $0.25 | Included (fair use 200 a day) |
+| Approval cleanup | 5 | $1 | Included (fair use 20 a day) |
+| Token report (AI) | — (each costs real AI money) | $3 | 5 a month included, then $3 |
+
+**Free points** (`FREE_POINTS` in `payments/catalog.js`): 30 a month (UTC),
+fixed when the month's first point is spent. A wallet with no transactions
+and no code on the chains in `NEW_WALLET_CHECK_CHAINS` (default Ethereum and
+Base) gets 10, so new wallets can't be farmed; if that check can't run, the
+wallet gets 30. At most 20 point-paid runs a day come from one IP address.
+Approval previews (counts and value at risk, no names) are free and don't
+use points: 3 a day signed out, 10 signed in.
 
 ## x402
 
@@ -87,8 +104,12 @@ not the user.
 ## Passes
 
 Crypto can't safely pull a payment every month, so time is prepaid:
-`pro_30d` ($9) and `pro_365d` ($79) give unlimited quick checks (fair use
-200 a day). Buying again while active extends from the current end date.
+**Safety Pro**, `pro_30d` ($9) and `pro_365d` ($79), covers every Safety
+desk check (fair use), 5 AI reports a month, and the risk monitor when it
+launches. Buying again while active extends from the current end date.
+What a pass costs us to serve (AI reports, data plans, hosting) and when
+it breaks even is worked out in the PR that introduced it (#10); the real
+AI cost per report is recorded (`GET /v1/admin/provider-usage`, `ai`).
 Renewal reminders by email are planned for when alert emails exist.
 
 ## Refunds

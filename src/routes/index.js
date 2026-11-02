@@ -9,7 +9,10 @@ const credits = require('../payments/credits');
 const invoices = require('../payments/invoices');
 const passes = require('../payments/passes');
 const x402 = require('../payments/x402');
-const { paidRoute, freeLeft } = require('../payments/gate');
+const { paidRoute, takeAllowance } = require('../payments/gate');
+const points = require('../payments/points');
+const { product: productOf } = require('../payments/catalog');
+const approvals = require('../services/approvals');
 const dd = require('../services/dueDiligence');
 const claude = require('../ai/claude');
 const usage = require('../providers/usage');
@@ -26,7 +29,7 @@ router.get('/health', async (_req, res) => {
 });
 
 // ── What's for sale, and how to pay ─────────────────────────────────────────
-router.get('/v1/catalog', (_req, res) => res.json({ products: publicCatalog() }));
+router.get('/v1/catalog', (_req, res) => res.json({ products: publicCatalog(), free_points: require('../payments/catalog').FREE_POINTS }));
 
 router.get('/v1/payment-methods', (_req, res) => res.json({
   x402: { enabled: x402.enabled(), network: env.x402Network, asset: 'USDC' },
@@ -43,11 +46,20 @@ router.post('/v1/auth/verify', async (req, res) => {
 });
 
 router.get('/v1/me', requireAuth, async (req, res) => {
+  const active = await passes.active(req.account.id);
+  const now = active.find(p => new Date(p.starts_at) <= new Date());
+  let included = null;
+  if (now) {
+    const p = productOf(now.product);
+    included = {};
+    for (const [id, n] of Object.entries(p.included_per_month || {})) included[id] = await points.includedLeft(req.account.id, id, n);
+  }
   res.json({
     account: req.account,
     credits_cents: await credits.balance(req.account.id),
-    passes: await passes.active(req.account.id),
-    free_today: await freeLeft(req.account.id),
+    points: await points.status(req.account),
+    passes: active.map(p => ({ ...p, title: productOf(p.product).title })),
+    ...(included ? { pass_included: included } : {}),
   });
 });
 
@@ -85,9 +97,27 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
   run: input => dd.fullReport(input),
 }));
 
+// ── Approval cleanup: a free preview (how many, how much at risk), then the paid cleanup ──
+const PREVIEWS_PER_DAY = { account: 10, anonymous: 3 };
+
+router.post('/v1/approvals/preview', async (req, res) => {
+  const input = approvals.parseOwner(req.body);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, PREVIEWS_PER_DAY.account] : [`ip:${req.ip}`, PREVIEWS_PER_DAY.anonymous];
+  if (!(await takeAllowance(subject, 'approval_preview', limit))) {
+    return res.status(429).json({ error: 'daily_limit', message: `Free previews are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+  }
+  res.json(await approvals.preview(input.owner, { refresh: input.refresh }));
+});
+
+router.post('/v1/approvals/cleanup', paidRoute('approval_cleanup', {
+  validate: req => approvals.parseOwner(req.body),
+  run: input => approvals.cleanup(input.owner, { refresh: input.refresh }),
+}));
+
 router.use(require('./trading'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────
-router.get('/v1/admin/provider-usage', requireAuth, requireAdmin, async (_req, res) => res.json({ usage: await usage.report() }));
+router.get('/v1/admin/provider-usage', requireAuth, requireAdmin, async (_req, res) => res.json({ usage: await usage.report(), ai: await claude.usageReport() }));
 
 module.exports = router;

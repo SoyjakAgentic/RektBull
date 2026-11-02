@@ -4,13 +4,15 @@
  * RPC_URLS_<CHAIN> lists your own endpoints (comma-separated, e.g. an
  * Alchemy free-plan URL first). The public endpoint after them is the last
  * resort: free and keyless, but rate-limited and not for heavy use.
+ * `blockscout` is the chain's public Blockscout explorer, used keyless as the
+ * explorer of last resort (providers/explorer.js).
  */
 const EVM = {
-  ethereum: { chainId: 1, goplus: '1', dexscreener: 'ethereum', publicRpc: 'https://ethereum-rpc.publicnode.com', probe: '50000000000000000', probeLabel: '0.05 ETH' },
-  base:     { chainId: 8453, goplus: '8453', dexscreener: 'base', publicRpc: 'https://mainnet.base.org', probe: '50000000000000000', probeLabel: '0.05 ETH' },
-  arbitrum: { chainId: 42161, goplus: '42161', dexscreener: 'arbitrum', publicRpc: 'https://arb1.arbitrum.io/rpc', probe: '50000000000000000', probeLabel: '0.05 ETH' },
-  optimism: { chainId: 10, goplus: '10', dexscreener: 'optimism', publicRpc: 'https://mainnet.optimism.io', probe: '50000000000000000', probeLabel: '0.05 ETH' },
-  polygon:  { chainId: 137, goplus: '137', dexscreener: 'polygon', publicRpc: 'https://polygon-bor-rpc.publicnode.com', probe: '200000000000000000000', probeLabel: '200 POL' },
+  ethereum: { chainId: 1, goplus: '1', dexscreener: 'ethereum', blockscout: 'eth.blockscout.com', publicRpc: 'https://ethereum-rpc.publicnode.com', probe: '50000000000000000', probeLabel: '0.05 ETH' },
+  base:     { chainId: 8453, goplus: '8453', dexscreener: 'base', blockscout: 'base.blockscout.com', publicRpc: 'https://mainnet.base.org', probe: '50000000000000000', probeLabel: '0.05 ETH' },
+  arbitrum: { chainId: 42161, goplus: '42161', dexscreener: 'arbitrum', blockscout: 'arbitrum.blockscout.com', publicRpc: 'https://arb1.arbitrum.io/rpc', probe: '50000000000000000', probeLabel: '0.05 ETH' },
+  optimism: { chainId: 10, goplus: '10', dexscreener: 'optimism', blockscout: 'optimism.blockscout.com', publicRpc: 'https://mainnet.optimism.io', probe: '50000000000000000', probeLabel: '0.05 ETH' },
+  polygon:  { chainId: 137, goplus: '137', dexscreener: 'polygon', blockscout: 'polygon.blockscout.com', publicRpc: 'https://polygon-bor-rpc.publicnode.com', probe: '200000000000000000000', probeLabel: '200 POL' },
   bsc:      { chainId: 56, goplus: '56', dexscreener: 'bsc', publicRpc: 'https://bsc-dataseed.bnbchain.org', probe: '200000000000000000', probeLabel: '0.2 BNB' },
 };
 

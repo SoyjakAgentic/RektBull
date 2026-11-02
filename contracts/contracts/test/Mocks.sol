@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 /// Test-only token anyone can mint.
 contract MockERC20 is ERC20 {
@@ -42,4 +43,10 @@ contract MockVenue {
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn * 2);
         MockERC20(tokenOut).mint(msg.sender, amountIn * rate / 1e18);
     }
+}
+
+/// @dev A test NFT collection, for the approval cleanup tests.
+contract MockNFT is ERC721 {
+    constructor() ERC721("Test NFT", "tNFT") {}
+    function mint(address to, uint256 id) external { _mint(to, id); }
 }

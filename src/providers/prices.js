@@ -4,7 +4,7 @@
  */
 const axios = require('axios');
 const { track } = require('./usage');
-const { cached } = require('../lib/cache');
+const { cached, get: cacheGet, set: cacheSet } = require('../lib/cache');
 
 async function usdPrice(priceId) {
   return cached(`price:${priceId}`, 60, async () => {
@@ -18,4 +18,26 @@ async function usdPrice(priceId) {
 /** The USD price of a trading base asset ({ usd } or { priceId }). */
 const basePrice = base => (base.usd ? Promise.resolve(base.usd) : usdPrice(base.priceId));
 
-module.exports = { usdPrice, basePrice };
+/**
+ * USD prices for many tokens in one call: { 'base:0x…': 1.0, … }. Tokens
+ * DefiLlama doesn't price are left out (the caller says "not priced").
+ */
+async function usdPrices(ids) {
+  const out = {};
+  const missing = [];
+  for (const id of ids) {
+    const hit = await cacheGet(`price:${id}`);
+    if (hit !== undefined) out[id] = hit; else missing.push(id);
+  }
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    const data = await track('defillama', async () => (await axios.get(`https://coins.llama.fi/prices/current/${chunk.join(',')}`, { timeout: 15000 })).data);
+    for (const id of chunk) {
+      const p = data?.coins?.[id]?.price;
+      if (p > 0) { out[id] = p; await cacheSet(`price:${id}`, p, 60); }
+    }
+  }
+  return out;
+}
+
+module.exports = { usdPrice, basePrice, usdPrices };

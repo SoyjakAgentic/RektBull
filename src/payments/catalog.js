@@ -9,42 +9,63 @@
  */
 const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 
+/**
+ * Free points: every signed-in wallet gets this many a month (UTC), spent on
+ * the runs that have a `points` cost. Wallets with no transactions yet get
+ * fewer, so new wallets can't farm them. Reports aren't payable with points
+ * (each one costs real AI money).
+ */
+const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
+
+const SAFETY_PRO = {
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report'],
+  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20 },
+  included_per_month: { token_report: 5 },
+};
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, and the risk monitor when it launches.';
+
 const PRODUCTS = {
   token_quick_check: {
     kind: 'run',
     title: 'Token quick check',
     description: 'Can it be sold, what does it tax, what can the owner do, how concentrated are holders.',
     price_cents: 25,
+    points: 1,
     x402: true,
-    free_per_day: 5, // for signed-in wallets
   },
   token_report: {
     kind: 'run',
     title: 'Token due diligence report',
     description: 'The full scan plus liquidity, volume and age, explained in plain English.',
     price_cents: 300,
+    points: null,
     x402: true,
-    free_per_day: 0,
+  },
+  approval_cleanup: {
+    kind: 'run',
+    title: 'Approval cleanup',
+    description: 'Every token and NFT permission your wallet has given, on six chains: which are risky and why, how much they could take, and the transactions to revoke them (your wallet signs).',
+    price_cents: 100,
+    points: 5,
+    x402: true,
   },
   pro_30d: {
     kind: 'pass',
-    title: 'RektBull Pro, 30 days',
-    description: 'Unlimited quick checks for 30 days (fair use: 200 a day). Prepaid; nothing renews automatically.',
+    title: 'Safety Pro, 30 days',
+    description: `${PRO_TEXT} Prepaid; nothing renews automatically.`,
     price_cents: 900,
     x402: false,
     days: 30,
-    covers: ['token_quick_check'],
-    fair_use_per_day: 200,
+    ...SAFETY_PRO,
   },
   pro_365d: {
     kind: 'pass',
-    title: 'RektBull Pro, 365 days',
-    description: 'Unlimited quick checks for a year (fair use: 200 a day). Prepaid; nothing renews automatically.',
+    title: 'Safety Pro, 365 days',
+    description: `${PRO_TEXT} Prepaid; nothing renews automatically.`,
     price_cents: 7900,
     x402: false,
     days: 365,
-    covers: ['token_quick_check'],
-    fair_use_per_day: 200,
+    ...SAFETY_PRO,
   },
 };
 
@@ -57,10 +78,10 @@ function product(id) {
 /** The ways a product can be paid for, in the order they're tried. */
 function rails(p) {
   const out = [];
-  if (p.kind === 'run') out.push('pass', 'free', 'credits');
+  if (p.kind === 'run') out.push('pass', 'points', 'credits');
   else out.push('credits');
   if (p.x402) out.push('x402');
-  return out.filter(r => r !== 'free' || p.free_per_day > 0);
+  return out.filter(r => r !== 'points' || p.points > 0);
 }
 
 const usd = cents => `$${(cents / 100).toFixed(2)}`;
@@ -72,11 +93,11 @@ function publicCatalog() {
       id, kind: p.kind, title: p.title, description: p.description,
       price_cents: p.price_cents, price_usd: usd(p.price_cents),
       pay_with: rails(p),
-      ...(p.free_per_day ? { free_per_day: p.free_per_day } : {}),
-      ...(p.days ? { days: p.days, covers: p.covers } : {}),
+      ...(p.points ? { points: p.points } : {}),
+      ...(p.days ? { days: p.days, covers: p.covers, fair_use_per_day: p.fair_use_per_day, included_per_month: p.included_per_month } : {}),
       ...(p.x402 && p.price_cents > X402_DEFAULT_CLIENT_CAP_CENTS ? { x402_note: 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.' } : {}),
     };
   });
 }
 
-module.exports = { PRODUCTS, product, rails, publicCatalog, usd, X402_DEFAULT_CLIENT_CAP_CENTS };
+module.exports = { PRODUCTS, FREE_POINTS, product, rails, publicCatalog, usd, X402_DEFAULT_CLIENT_CAP_CENTS };

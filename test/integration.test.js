@@ -45,6 +45,7 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
     PAYMENT_CHAINS: 'base',
     RPC_URLS_BASE: `http://127.0.0.1:${rpcPort}`,
     ANTHROPIC_API_KEY: '',
+    NEW_WALLET_CHECK_CHAINS: 'base', // the fake Base node: no history read, so the full allowance
   });
 
   const db = require('../src/config/db');
@@ -104,14 +105,21 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   assert.equal(replay.status, 401, 'a sign-in request works once');
   const accountId = ok.body.account.id;
 
-  // ── Free allowance, then 402 ──
-  assert.deepEqual((await call('GET', '/v1/me')).body.free_today.token_quick_check, { per_day: 5, left: 5 });
-  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'free');
-  assert.deepEqual((await call('GET', '/v1/me')).body.free_today.token_quick_check, { per_day: 5, left: 0 });
+  // ── Free points (30 a month; a quick check costs 1), then 402 ──
+  const pts = () => call('GET', '/v1/me').then(r => r.body.points);
+  assert.equal((await pts()).allowance, 30);
+  assert.equal((await pts()).left, 30);
+  for (let i = 0; i < 20; i++) assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'points');
+  assert.equal((await call('POST', '/test/quick')).status, 402, 'at most 20 point-paid runs a day from one IP address');
+  await db.query("DELETE FROM free_usage WHERE product = 'points_ip'"); // a new day for the IP cap
+  for (let i = 0; i < 10; i++) assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'points');
+  assert.equal((await pts()).left, 0);
   const noMoney = await call('POST', '/test/quick');
   assert.equal(noMoney.status, 402);
   assert.equal(noMoney.body.credits_balance_cents, 0);
   assert.match(noMoney.body.pay_with.credits, /POST \/v1\/invoices/);
+  assert.match(noMoney.body.pay_with.points, /free points are used up/);
+  assert.match(noMoney.body.pay_with.safety_pro, /pro_30d/);
 
   // ── Credits, and refunds when a run fails ──
   await credits.add(accountId, 100, 'adjustment', 'test:grant');
@@ -120,7 +128,7 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   assert.equal(await credits.balance(accountId), 75);
   assert.equal((await call('POST', '/test/quick-fails')).status, 500);
   assert.equal(await credits.balance(accountId), 75, 'a failed run is refunded');
-  assert.equal((await call('GET', '/v1/me')).body.free_today.token_quick_check.left, 0, 'a refunded credit run gives back credits, not free uses');
+  assert.equal((await pts()).left, 0, 'a refunded credit run gives back credits, not points');
   assert.equal((await call('POST', '/test/report')).status, 402, 'a $3 report needs more than 75 cents');
 
   // ── Report is refused before charging when AI isn't configured ──
@@ -155,6 +163,10 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   assert.equal(me.body.passes[0].product, 'pro_30d');
   assert.equal((await call('GET', `/v1/invoices/${inv.body.id}`)).body.status, 'paid');
   assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'pass');
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass', 'Safety Pro includes 5 reports a month');
+  assert.deepEqual((await call('GET', '/v1/me')).body.pass_included.token_report, { allowance: 5, used: 5, left: 0 });
+  assert.equal((await call('POST', '/test/report')).status, 402, 'the sixth needs credits ($3, and there are 75 cents)');
+  assert.equal((await call('GET', '/v1/me')).body.passes[0].title, 'Safety Pro, 30 days');
 
   // ── A reorged deposit is never credited ──
   const ghost = { ...log, transactionHash: '0x' + 'cd'.repeat(32), blockNumber: ethers.toQuantity(1014) };
