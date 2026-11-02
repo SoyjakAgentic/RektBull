@@ -102,7 +102,7 @@ comes first, one PR per step:
 1. ✅ Safety pages for what's built: token quick check and report, with
    sign-in, credits, top-ups and passes (`/safety`).
 2. ✅ Approval cleanup (5 points or $1, with a free preview), free points and Safety Pro.
-3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). Next: a MetaMask Snap.
+3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). ✅ Also as a MetaMask Snap (`snap/`), showing the check in MetaMask's confirmation screen; it needs MetaMask's allowlisting (network access) before regular MetaMask installs it.
 4. Airdrop and unclaimed-funds finder (ported from Soyjak).
 
 ✅ Also built ahead of step 3: the **risk monitor** (Safety Pro), because

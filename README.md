@@ -135,6 +135,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 ## Docs
 
 - [/privacy](public/privacy.html): what RektBull keeps, why, who else sees it, for how long; download and delete (`src/privacy/`)
+- [snap/README.md](snap/README.md): the RektBull Snap for MetaMask: permissions, test in Flask, publish and allowlisting
 - [extension/README.md](extension/README.md): the RektBull browser extension (pre-sign checks): how it works, develop, publish
 - [docs/SCOPE.md](docs/SCOPE.md): what RektBull is, what it covers, roadmap
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs

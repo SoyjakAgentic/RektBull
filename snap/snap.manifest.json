@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "description": "Before you confirm: what a transaction or signature would really do, simulated and checked, with every source named.",
+  "proposedName": "RektBull",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SoyjakAgentic/RektBull.git"
+  },
+  "source": {
+    "shasum": "hjwfzhvRgwXIppXTaSztIoSYLphvmxSqgdIYDHJOGAU=",
+    "location": {
+      "npm": {
+        "filePath": "dist/bundle.js",
+        "iconPath": "images/icon.svg",
+        "packageName": "@rektbull/presign-check",
+        "registry": "https://registry.npmjs.org/"
+      }
+    }
+  },
+  "initialPermissions": {
+    "endowment:transaction-insight": {
+      "allowTransactionOrigin": true
+    },
+    "endowment:signature-insight": {
+      "allowSignatureOrigin": true
+    },
+    "endowment:network-access": {},
+    "endowment:rpc": {
+      "allowedOrigins": ["https://rektbull.com"]
+    },
+    "endowment:cronjob": {
+      "jobs": [
+        {
+          "expression": "*/30 * * * *",
+          "request": {
+            "method": "checkAlerts"
+          }
+        }
+      ]
+    },
+    "endowment:page-home": {},
+    "snap_manageState": {},
+    "snap_notify": {}
+  },
+  "platformVersion": "12.1.0",
+  "manifestVersion": "0.1"
+}

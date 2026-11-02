@@ -52,6 +52,16 @@ test('extension tokens: only their routes, revocable; pre-sign checks cost a poi
     if (r.status === 402) assert.equal(r.body.credits_balance_cents, undefined, `${m} ${p} ran as signed out`);
   }
 
+  // CORS for the MetaMask Snap: only on the routes a link token may use.
+  const pre = await fetch(base + '/v1/presign/check', { method: 'OPTIONS', headers: { origin: 'null', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+  assert.match(pre.headers.get('access-control-allow-headers'), /authorization/);
+  const me = await fetch(base + '/v1/me', { headers: { authorization: `Bearer ${ext}`, origin: 'null' } });
+  assert.equal(me.headers.get('access-control-allow-origin'), '*');
+  const credits = await fetch(base + '/v1/credits', { headers: { authorization: `Bearer ${session}`, origin: 'https://evil.example' } });
+  assert.equal(credits.headers.get('access-control-allow-origin'), null, 'no other route is readable from other sites');
+
   // Listed, and revocable at once.
   const list = await call(session, 'GET', '/v1/extension/tokens');
   assert.deepEqual(list.body.tokens.map(x => x.label), ['Chrome']);
