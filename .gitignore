@@ -5,3 +5,4 @@ node_modules/
 *.log
 deposit-keys*.json
 coverage/
+rektbull-extension.zip

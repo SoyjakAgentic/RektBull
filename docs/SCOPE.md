@@ -53,7 +53,7 @@ finds or saves**, and show that figure in the result.
 |---|---|---|---|
 | Protect | **Token quick check** (sellability, taxes, owner powers, holders) | 1 point or $0.25 | ✅ built, on `/safety` |
 | Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3; 5 a month with Safety Pro | ✅ built, on `/safety` |
-| Protect | Pre-sign check (simulate a transaction before signing) | $0.25–1 | next |
+| Protect | **Pre-sign check**: in the RektBull browser extension, every transaction and signature is decoded, simulated and checked (spenders, recipients, permits, Seaport orders, sign-ins, the site) before the wallet shows it | 1 point or $0.10; in Safety Pro | ✅ built (`extension/`, `/extension`) |
 | Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
 | Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs; alerts by Telegram, email and browser notifications | in Safety Pro | ✅ built, on `/safety` |
 | Find | Airdrop and unclaimed-funds finder (check free, pay to prepare claims) | $5–15 | later |
@@ -102,13 +102,13 @@ comes first, one PR per step:
 1. ✅ Safety pages for what's built: token quick check and report, with
    sign-in, credits, top-ups and passes (`/safety`).
 2. ✅ Approval cleanup (5 points or $1, with a free preview), free points and Safety Pro.
-3. Pre-sign check ($0.25–1, also for bots over x402).
+3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). Next: a MetaMask Snap.
 4. Airdrop and unclaimed-funds finder (ported from Soyjak).
 
 ✅ Also built ahead of step 3: the **risk monitor** (Safety Pro), because
 it is what makes the pass worth renewing. Alerts reach users on Telegram,
 by email and as browser notifications, so nobody has to visit the site.
-Next: the pre-sign check as a browser extension (then a MetaMask Snap).
+
 
 Then back to the trade desk (milestone 4), unless the Safety desk shows
 something more worth doing.

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Extension</title>
+  <meta name="description" content="RektBull checks every transaction and signature before your wallet signs it.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <nav class="nav"><a href="/safety">Safety</a><a href="/extension" aria-current="page">Extension</a><a href="/trade">Trade</a></nav>
+    <div id="who" class="who">Not signed in</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Check before you sign</h2>
+      <p>The RektBull extension catches what your wallet is about to sign (a transaction, a permit, an NFT listing, a sign-in) and checks it first: it simulates what would leave your wallet, rates every spender and recipient, and checks the site against phishing lists. A risky request stops with a warning that says why, and where the facts come from; a safe one goes straight to your wallet.</p>
+      <ul class="small">
+        <li>Works with any browser wallet (MetaMask, Coinbase Wallet, Phantom, Rabby…) on any site.</li>
+        <li>Sends RektBull only the request being signed and the site's address, nothing else from your browsing.</li>
+        <li>Never touches your keys and can't sign anything: your wallet still shows every request.</li>
+        <li>1 free point per check (30 a month), or every check with Safety Pro.</li>
+      </ul>
+      <p id="ext-state" class="small muted">Looking for the extension…</p>
+    </section>
+
+    <section class="card" id="link-card">
+      <h2>Link the extension to your account</h2>
+      <div id="wallets" class="row"></div>
+      <button id="signin" class="primary" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+      <button id="link" class="primary" hidden>Link this browser's extension</button>
+      <p id="link-msg" class="msg"></p>
+      <h3>Linked browsers</h3>
+      <div id="tokens" class="small muted">Sign in to see them.</div>
+    </section>
+  </main>
+  <footer class="muted">An automated check of known patterns, not a guarantee. RektBull never holds your funds or keys.</footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/extension-page.js"></script>
+</body>
+</html>

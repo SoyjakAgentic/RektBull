@@ -166,6 +166,25 @@ const unsubscribe = async (req, res) => {
 router.get('/v1/alerts/unsubscribe', unsubscribe);
 router.post('/v1/alerts/unsubscribe', unsubscribe); // one-click unsubscribe (RFC 8058)
 
+// ── The pre-sign check (the extension calls it before a wallet signs) ──
+const presign = require('../services/presign');
+router.post('/v1/presign/check', paidRoute('presign_check', {
+  validate: req => { try { return presign.parse(req.body); } catch (err) { if (err instanceof presign.PresignRefused) return { error: err.message }; throw err; } },
+  run: input => presign.check(input),
+}));
+
+// ── Linking the browser extension ──
+const extensionTokens = require('../auth/extensionTokens');
+router.post('/v1/extension/tokens', requireAuth, async (req, res) => {
+  if (req.account.scope) return res.status(403).json({ error: 'forbidden', message: 'Sign in on rektbull.com to link the extension.' });
+  res.status(201).json(await extensionTokens.issue(req.account, req.body?.label));
+});
+router.get('/v1/extension/tokens', requireAuth, async (req, res) => res.json({ tokens: await extensionTokens.list(req.account.id) }));
+router.delete('/v1/extension/tokens/:jti', requireAuth, async (req, res) => {
+  const ok = await extensionTokens.revoke(req.account.id, req.params.jti);
+  res.status(ok ? 200 : 404).json(ok ? { ok } : { error: 'not_found' });
+});
+
 router.use(require('./trading'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────

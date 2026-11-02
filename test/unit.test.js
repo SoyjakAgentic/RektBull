@@ -29,7 +29,8 @@ test('catalog: runs try Safety Pro, points, credits, then x402; reports take no 
   assert.deepEqual(catalog.rails(catalog.product('pro_30d')), ['credits']);
   for (const id of ['token_quick_check', 'approval_cleanup']) assert.ok(catalog.product(id).price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, `${id} must work with default x402 clients`);
   const pro = catalog.product('pro_30d');
-  assert.deepEqual(pro.covers.sort(), ['approval_cleanup', 'risk_monitor', 'token_quick_check', 'token_report']);
+  assert.deepEqual(pro.covers.sort(), ['approval_cleanup', 'presign_check', 'risk_monitor', 'token_quick_check', 'token_report']);
+  assert.deepEqual(catalog.rails(catalog.product('presign_check')), ['pass', 'points', 'credits', 'x402']);
   assert.deepEqual(pro.monitor, { wallets: 3, every_hours: 24 });
   assert.equal(pro.included_per_month.token_report, 5);
   assert.equal(catalog.product('token_quick_check').points, 1);

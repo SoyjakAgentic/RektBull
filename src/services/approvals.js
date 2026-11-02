@@ -346,4 +346,4 @@ function parseOwner(body = {}) {
   return { owner: owner.toLowerCase(), refresh: body.refresh === true };
 }
 
-module.exports = { scan, scanChain, preview, cleanup, summary, rate, revokeCalls, callsFor, parseOwner, discover, verify, CHAINS, PERMIT2, MULTICALL3, KNOWN, TOPIC };
+module.exports = { scan, scanChain, preview, cleanup, summary, rate, spenderFacts, revokeCalls, callsFor, parseOwner, discover, verify, CHAINS, PERMIT2, MULTICALL3, KNOWN, TOPIC };

@@ -104,7 +104,8 @@ trading on a local copy of Base Sepolia against MetaMask's real contracts.
 copy, runs approval cleanup on them, and sends the revokes it prepares.
 
 The browser tests drive the pages in Chromium with a stand-in wallet
-(`TEST_DATABASE_URL=… node test/browser/safetyPage.js`, and `tradePage.js`);
+(`TEST_DATABASE_URL=… node test/browser/safetyPage.js`, `tradePage.js`, and
+`extension.js`, which loads the extension into Chromium);
 they aren't part of `npm test`. Contract tests are in `contracts/` (`cd contracts && npm test`).
 
 The end-to-end test drops and recreates the schema in that database, runs a
@@ -133,6 +134,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 
 ## Docs
 
+- [extension/README.md](extension/README.md): the RektBull browser extension (pre-sign checks): how it works, develop, publish
 - [docs/SCOPE.md](docs/SCOPE.md): what RektBull is, what it covers, roadmap
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on

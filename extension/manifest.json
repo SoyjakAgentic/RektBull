@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "RektBull: check before you sign",
+  "short_name": "RektBull",
+  "version": "0.1.0",
+  "description": "Before your wallet signs, RektBull shows what a transaction or signature would really do, and warns you about approvals, drains and phishing sites.",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": { "default_popup": "popup.html", "default_title": "RektBull" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["https://rektbull.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "content_scripts": [
+    { "matches": ["http://*/*", "https://*/*"], "js": ["inpage.js"], "run_at": "document_start", "world": "MAIN", "all_frames": false },
+    { "matches": ["http://*/*", "https://*/*"], "js": ["bridge.js"], "run_at": "document_start", "all_frames": false }
+  ]
+}
