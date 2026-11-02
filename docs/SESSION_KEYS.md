@@ -260,7 +260,7 @@ cost is a few dollars a month in total.
 | # | Milestone | Done when |
 |---|---|---|
 | 0 | **Testnet spike (Base Sepolia), MetaMask** | An EIP-7702 account grants a delegation with all six caveats; RektBull redeems a 0x swap through it; **fork tests that try to break each guarantee fail**: withdraw to another address, exceed the cap, call another contract, use it after expiry, use it after revocation, redeem with a different key, **set the fee recipient to another address, charge more than 1%, trade far below the reference price** |
-| 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade |
+| 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade. Brief: [AUDIT_BRIEF.md](AUDIT_BRIEF.md); hand testing with real wallets: [REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md) |
 | 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | ✅ Built (see below). Remaining: one real approve-each trade on Base mainnet with a small cap, which needs a 0x API key and your wallet |
 | 2 | Autonomous mode for MetaMask, rules port, positions and exits | ✅ Built (see below). Soyjak's swap checks pass here (`test/soyjakParity.test.js`) |
 | 3 | Safe, then Coinbase Smart Wallet | ✅ Built (see below): 19 break-it tests pass against a real Safe and a real Coinbase Smart Wallet |

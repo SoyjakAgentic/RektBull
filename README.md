@@ -134,5 +134,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
 - [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
+- [docs/AUDIT_BRIEF.md](docs/AUDIT_BRIEF.md): scope, guarantees and questions for the contract audit
+- [docs/REAL_WALLET_TESTING.md](docs/REAL_WALLET_TESTING.md): the checklist for testing MetaMask, Safe and Coinbase by hand
 - [docs/DEPLOY.md](docs/DEPLOY.md): Cloud Run, secrets, and the domain
 - [docs/MIGRATION_FROM_SOYJAK.md](docs/MIGRATION_FROM_SOYJAK.md): which crypto pieces move here from soyjak-agentic, and which don't
