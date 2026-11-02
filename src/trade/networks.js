@@ -17,13 +17,16 @@ const DEFAULTS = {
   84532: {
     name: 'base-sepolia',
     label: 'Base Sepolia (test network)',
-    router: '0x9307067d6a5fc22d1085a2fb16b1385dcc0e6b68',
-    venue: { type: 'mock', address: '0x58539f66f95c8a88289247ba9c881ede6d666cf1' },
+    router: '0xc791690584e69023cb7f68c5214988371f31211b',
+    venue: { type: 'mock', address: '0xc82ed04e1e2a1fca59329e8f122d06a3afa75345' },
     tokens: {
-      tUSDC: { address: '0x852ced5643c06f4cbec5403d2dbb92113e6ca2a8', decimals: 6 },
-      tWETH: { address: '0x113540db537cb7b3131a528281bdadd4708d1806', decimals: 18 },
+      tUSDC: { address: '0xa77eb22934917d94d09c4d96d508ecf8f40129b3', decimals: 6 },
+      tWETH: { address: '0x992fdc153a2973eb30ed8c0886e0e263ee52c8cb', decimals: 18 },
     },
     defaultBase: 'tUSDC',
+    // Milestone 3: Safe (RektBull Safe Module) and Coinbase Smart Wallet (Coinbase's Spend Permission Manager).
+    safeModule: '0xbeb7cfa95a005a18eb571bfdcb97caf6bd462f81',
+    spendPermissionManager: '0xf85210b21cc50302f477ba56686d2019dc9b67ad',
     explorerTx: 'https://sepolia.basescan.org/tx/',
   },
 };

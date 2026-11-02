@@ -43,6 +43,13 @@ npm install
 npm test        # runs on a copy of Base Sepolia, against MetaMask's real deployed contracts
 ```
 
+Also here: the **RektBull Safe Module** (`contracts/RektBullSafeModule.sol`),
+which lets RektBull's session key make a Safe call the router's `swap` and
+nothing else, and the router's `swapWithSpendPermission`, which trades for a
+Coinbase Smart Wallet through a Coinbase spend permission granted to the router.
+Their break-it tests are in `test/walletsBreakIt.test.js`; see
+[../docs/SESSION_KEYS.md](../docs/SESSION_KEYS.md), milestone 3.
+
 Built with **Hardhat 3** (ES modules: `"type": "module"`, `hardhat.config.js`
 uses `defineConfig`). The forked copy of Base Sepolia is the `default`
 network; tests and scripts get it with `await network.create()`, and a
@@ -76,10 +83,17 @@ wallet, with real Chainlink feeds and 0x as the venue.
 
 | | |
 |---|---|
-| Trade Router | [`0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68`](https://sepolia.basescan.org/address/0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68) |
-| EIP-7702 upgrade of a test wallet | [tx](https://sepolia.basescan.org/tx/0x9d184dabed0d053edfd09127b07693e62ca15b09115db629a6224b9d24be006a) |
-| A delegated trade by the session key (1% fee taken) | [tx](https://sepolia.basescan.org/tx/0x3539ab456d634594d859c9a4d97e783e12c718e8f18298cce2fb948fa1bea33d) |
+| Trade Router | [`0xc791690584E69023cb7f68c5214988371f31211b`](https://sepolia.basescan.org/address/0xc791690584E69023cb7f68c5214988371f31211b) |
+| RektBull Safe Module | [`0xbEB7CFa95a005A18Eb571BfdCb97CaF6Bd462F81`](https://sepolia.basescan.org/address/0xbEB7CFa95a005A18Eb571BfdCb97CaF6Bd462F81) |
+| Coinbase Spend Permission Manager (Coinbase's) | [`0xf85210B21cC50302F477BA56686d2019dC9b67Ad`](https://sepolia.basescan.org/address/0xf85210B21cC50302F477BA56686d2019dC9b67Ad) |
+| EIP-7702 upgrade of a test wallet | [tx](https://sepolia.basescan.org/tx/0x99bd2ef35e2d386b3ba095e583ecad2d337843221acb38c13f6669fc834550cc) |
+| A delegated trade by the session key (1% fee taken) | [tx](https://sepolia.basescan.org/tx/0x3b8c0bb7b27b8e936ac2285009e989716d2345358f07f7f3c35ab0b3445eeed2) |
 | The session key trying to take the user's tokens | Refused by MetaMask's `AllowedTargetsEnforcer` (simulated, no gas) |
 
-Deployed 2026-11-01 with test tokens, price feeds and exchange. Full
-addresses: `deployments/base-sepolia.json`. Source not yet verified on Basescan.
+Deployed 2026-11-02 with test tokens, price feeds and exchange. The
+test price feeds never update, so this deployment accepts prices up to a year
+old (`TEST_FEED_MAX_AGE` in `scripts/deploy.js`); mainnet uses real Chainlink
+feeds with their own heartbeat. Full addresses: `deployments/base-sepolia.json`.
+Source not yet verified on Basescan. Earlier test routers
+(`0x9307067d6a5FC22d1085A2Fb16B1385DCC0E6B68`, `0x800C3172fbA781aD7747b24A2F45f11a20b1C193`)
+are retired.

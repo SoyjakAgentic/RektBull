@@ -6,8 +6,11 @@
  * Nothing the client sends back is parsed, so a tampered message can't get
  * through: it simply won't match.
  *
- * Plain wallets (EOAs) only for now. Smart-contract wallets sign with
- * EIP-1271, which needs an onchain check; see docs/SCOPE.md.
+ * Plain wallets (EOAs) sign with their key. Smart-contract wallets that are
+ * already deployed (a Coinbase Smart Wallet, a MetaMask smart account) are
+ * checked onchain with EIP-1271's isValidSignature, on the chain named in the
+ * message. A Safe is linked by one of its owners instead, who signs in with
+ * their own wallet (trade/permissions.js checks they own the Safe).
  */
 const crypto = require('crypto');
 const { ethers } = require('ethers');
@@ -43,6 +46,27 @@ function signedBy(message, signature, wallet) {
   }
 }
 
+const ERC1271 = new ethers.Interface(['function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)']);
+const ERC1271_MAGIC = '0x1626ba7e';
+/** Chain ids RektBull can check a smart-wallet signature on, and their RPC names. */
+const SIGNIN_CHAINS = { 1: 'ethereum', 8453: 'base', 84532: 'base-sepolia', 42161: 'arbitrum', 10: 'optimism', 137: 'polygon', 56: 'bsc' };
+
+/** True when the deployed smart wallet accepts signature for message (EIP-1271), on the message's chain. */
+async function signedByContract(message, signature, wallet) {
+  const chainId = Number(/\nChain ID: (\d+)\n/.exec(message)?.[1]);
+  const chain = SIGNIN_CHAINS[chainId];
+  if (!chain) return false;
+  const { evmRpc } = require('../providers/rpc');
+  try {
+    const code = await evmRpc(chain, 'eth_getCode', [wallet, 'latest']);
+    if (!code || code === '0x') return false;
+    const raw = await evmRpc(chain, 'eth_call', [{ to: wallet, data: ERC1271.encodeFunctionData('isValidSignature', [ethers.hashMessage(message), signature]) }, 'latest']);
+    return String(raw).slice(0, 10).toLowerCase() === ERC1271_MAGIC;
+  } catch {
+    return false;
+  }
+}
+
 async function createChallenge({ address, chainId }) {
   if (!ethers.isAddress(address)) throw Object.assign(new Error('address must be a wallet address'), { status: 400 });
   const now = new Date();
@@ -65,7 +89,7 @@ async function verifyChallenge({ challengeId, signature }) {
     const { rows } = await c.query('SELECT * FROM siwe_challenges WHERE id = $1 FOR UPDATE', [challengeId]);
     const ch = rows[0];
     if (!ch || ch.used_at || new Date(ch.expires_at) <= new Date()) throw Object.assign(new Error('This sign-in request has expired; start again'), { status: 401 });
-    if (!signedBy(ch.message, signature, ch.wallet)) throw bad();
+    if (!signedBy(ch.message, signature, ch.wallet) && !(await signedByContract(ch.message, signature, ch.wallet))) throw bad();
     await c.query('UPDATE siwe_challenges SET used_at = now() WHERE id = $1', [challengeId]);
     const acct = await c.query(
       `INSERT INTO accounts (wallet) VALUES ($1) ON CONFLICT (wallet) DO UPDATE SET wallet = EXCLUDED.wallet RETURNING id, wallet`,
@@ -86,4 +110,4 @@ function readToken(token) {
   }
 }
 
-module.exports = { buildMessage, signedBy, createChallenge, verifyChallenge, readToken, issueToken };
+module.exports = { buildMessage, signedBy, signedByContract, createChallenge, verifyChallenge, readToken, issueToken };

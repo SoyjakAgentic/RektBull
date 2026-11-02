@@ -108,7 +108,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     await page.getByRole('button', { name: 'Get 1,000 test tUSDC' }).click();
     await page.getByText('1,000 more test tUSDC').waitFor();
     assert.equal(sent.length, 4);
-    assert.equal(sent[3].to.toLowerCase(), '0x852ced5643c06f4cbec5403d2dbb92113e6ca2a8', 'mint on the test tUSDC');
+    assert.equal(sent[3].to.toLowerCase(), require('../../src/trade/networks').network(84532).tokens.tUSDC.address, 'mint on the test tUSDC');
     await page.getByRole('button', { name: 'Let the router trade my test tokens' }).click();
     await page.getByText('Save your limits first').waitFor();
     await page.getByRole('button', { name: 'Sign the permission' }).click();
@@ -116,6 +116,31 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     assert.equal(sent.length, 4, 'nothing approved or signed without limits onchain');
     assert.match(await page.textContent('#smart-status'), /plain account/);
     console.log('✔ automatic trading: test tokens; approvals and the permission wait for limits onchain');
+
+    // Coinbase Smart Wallet: the setup goes out from the wallet; linking checks it onchain.
+    await page.selectOption('#w-type', 'coinbase');
+    assert.equal(await page.isVisible('#grant'), false, 'MetaMask-only steps are hidden');
+    await page.fill('#l-day', '10000');
+    await page.getByRole('button', { name: 'Set up from my wallet' }).click();
+    await page.getByText('Setup sent').waitFor();
+    const cbCalls = sent.slice(4);
+    assert.equal(cbCalls.length, 4, 'limits, operator, and a spend permission per test token');
+    const net = require('../../src/trade/networks').network(84532);
+    assert.equal(cbCalls[0].to.toLowerCase(), net.router);
+    assert.equal(cbCalls[2].to.toLowerCase(), net.spendPermissionManager);
+    await page.getByRole('button', { name: 'Link my wallet' }).click();
+    await page.locator('#limits-msg', { hasText: /not approved with Coinbase|name RektBull/ }).waitFor(); // the stand-in wallet sent nothing for real
+    console.log('✔ Coinbase: one setup batch from the wallet (limits, operator, spend permissions to the router); linking is checked onchain');
+
+    // Safe: setup transactions to submit from the Safe; linking checks ownership onchain.
+    await page.selectOption('#w-type', 'safe');
+    await page.fill('#safe-addr', '0x' + '42'.repeat(20));
+    await page.getByRole('button', { name: "Get my Safe's setup transactions" }).click();
+    await page.getByText('Enable the RektBull Safe Module').waitFor();
+    assert.equal(await page.locator('#safe-calls li').count(), 5, 'enable module, two approvals, limits, session');
+    await page.getByRole('button', { name: 'Link my Safe' }).click();
+    await page.locator('#limits-msg', { hasText: /not a Safe on this network|not an owner/ }).waitFor();
+    console.log('✔ Safe: the setup transactions are listed; linking someone else\'s Safe is refused');
 
     await page.setViewportSize({ width: 375, height: 800 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);

@@ -32,8 +32,8 @@ router.get('/v1/trading/config', (_req, res) => res.json({
   chains: Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
   defaults: { ...rules.DEFAULT_SETTINGS, router_limits: { per_trade_usd: 500, per_day_usd: 10000, days: 7 } },
   automatic_trading: {
-    session_key: env.sessionKeyAddress || null, wallet_types: ['metamask'],
-    networks: Object.fromEntries(networks.chainIds().map(id => { const n = networks.network(id); return [id, { label: n.label, router: n.router, tokens: n.tokens, default_base: n.defaultBase, delegation_manager: n.delegationManager }]; })),
+    session_key: env.sessionKeyAddress || null, wallet_types: ['metamask', 'safe', 'coinbase'],
+    networks: Object.fromEntries(networks.chainIds().map(id => { const n = networks.network(id); return [id, { label: n.label, router: n.router, tokens: n.tokens, default_base: n.defaultBase, delegation_manager: n.delegationManager, safe_module: n.safeModule || null, spend_permission_manager: n.spendPermissionManager || null }]; })),
   },
 }));
 
@@ -107,6 +107,63 @@ router.get('/v1/trading/auto/allowances', requireAuth, async (req, res) => {
     tokens.push({ symbol, address: t.address, decimals: t.decimals, amount });
   }
   res.json({ chain_id: net.chainId, router: net.router, covers_usd: Number(usd) / 1e8, tokens });
+});
+
+/**
+ * The setup transactions a Safe or a Coinbase Smart Wallet sends from itself
+ * before RektBull can trade for it (the wallet shows and signs each one):
+ *   safe:     enable the RektBull module, approve the router for each token,
+ *             set limits on the router, name RektBull's key on the module;
+ *   coinbase: set limits on the router, name RektBull's key as operator, and
+ *             grant Coinbase spend permissions to the router (never to RektBull).
+ * Then POST /v1/trading/permissions with wallet_type and, for Coinbase, the
+ * spend_permissions returned here.
+ */
+router.get('/v1/trading/auto/setup', requireAuth, async (req, res) => {
+  if (!env.sessionKeyAddress) return res.status(503).json({ error: 'not_configured', message: 'Automatic trading is not set up yet (SESSION_KEY_ADDRESS).' });
+  const net = networks.network(Number(req.query.chain_id || 84532));
+  const type = req.query.wallet_type;
+  const perTrade = Number(req.query.per_trade_usd || 500);
+  const perDay = Number(req.query.per_day_usd || 10000);
+  const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
+  if (!(perTrade > 0 && perDay >= perTrade)) return res.status(400).json({ error: 'bad_request', message: 'per_day_usd must be at least per_trade_usd, and both above 0' });
+  const validUntil = Math.floor(Date.now() / 1000) + days * 86400;
+  const { ethers } = require('ethers');
+  const R = new ethers.Interface(['function setLimits(uint128,uint128,uint32,uint64)', 'function setOperator(address)']);
+  const ERC20 = new ethers.Interface(['function approve(address,uint256)']);
+  const limits = { to: net.router, data: R.encodeFunctionData('setLimits', [BigInt(Math.round(perTrade * 1e8)), BigInt(Math.round(perDay * 1e8)), 86400, validUntil]), step: 'Set your limits on the Trade Router' };
+  const venues = require('../trade/venues');
+  const sized = async t => (await venues.view(net, 'amountForUsd', [t.address, BigInt(Math.round(perDay * days * 1e8))]));
+  if (type === 'safe') {
+    if (!net.safeModule) return res.status(422).json({ error: 'not_available', message: 'Safe trading isn\'t available on this network yet' });
+    const safe = String(req.query.safe || '');
+    if (!ethers.isAddress(safe)) return res.status(400).json({ error: 'bad_request', message: 'safe must be your Safe\'s address' });
+    const M = new ethers.Interface(['function setSession(address,uint64)']);
+    const S = new ethers.Interface(['function enableModule(address)']);
+    const calls = [{ to: safe, data: S.encodeFunctionData('enableModule', [net.safeModule]), step: 'Enable the RektBull Safe Module' }];
+    for (const [symbol, t] of Object.entries(net.tokens)) calls.push({ to: t.address, data: ERC20.encodeFunctionData('approve', [net.router, await sized(t)]), step: `Let the router trade ${symbol}` });
+    calls.push(limits, { to: net.safeModule, data: M.encodeFunctionData('setSession', [env.sessionKeyAddress, validUntil]), step: 'Name RektBull\'s key on the module, until your limits expire' });
+    return res.json({ chain_id: net.chainId, wallet_type: 'safe', safe, calls: calls.map(c => ({ ...c, value: '0x0' })) });
+  }
+  if (type === 'coinbase') {
+    if (!net.spendPermissionManager) return res.status(422).json({ error: 'not_available', message: 'Coinbase Smart Wallet trading isn\'t available on this network yet' });
+    const PERM = '(address account, address spender, address token, uint160 allowance, uint48 period, uint48 start, uint48 end, uint256 salt, bytes extraData)';
+    const SPM = new ethers.Interface([`function approve(${PERM} spendPermission) returns (bool)`]);
+    // A little in the past: block times trail the wall clock, and a permission that hasn't started yet refuses every spend.
+    const start = Math.floor(Date.now() / 1000) - 300;
+    const spendPermissions = [];
+    for (const t of Object.values(net.tokens)) {
+      spendPermissions.push({ account: req.account.wallet, spender: net.router, token: t.address, allowance: (await venues.view(net, 'amountForUsd', [t.address, BigInt(Math.round(perDay * 1e8))])).toString(), period: 86400, start, end: validUntil, salt: BigInt('0x' + require('crypto').randomBytes(16).toString('hex')).toString(), extraData: '0x' });
+    }
+    const calls = [limits, { to: net.router, data: R.encodeFunctionData('setOperator', [env.sessionKeyAddress]), step: 'Name RektBull\'s key as your operator on the router' }];
+    for (const sp of spendPermissions) {
+      const symbol = networks.routerToken(net, sp.token)?.symbol;
+      calls.push({ to: net.spendPermissionManager, data: SPM.encodeFunctionData('approve', [[sp.account, sp.spender, sp.token, BigInt(sp.allowance), sp.period, sp.start, sp.end, BigInt(sp.salt), sp.extraData]]), step: `Let the router spend up to your daily limit of ${symbol} through Coinbase (it sends the result straight back)` });
+    }
+    return res.json({ chain_id: net.chainId, wallet_type: 'coinbase', calls: calls.map(c => ({ ...c, value: '0x0' })), spend_permissions: spendPermissions,
+      note: 'Coinbase\'s Spend Permission Manager must be an owner of your Coinbase Smart Wallet (Coinbase adds it when you first use spend permissions).' });
+  }
+  res.status(400).json({ error: 'bad_request', message: 'wallet_type must be safe or coinbase (MetaMask uses /v1/trading/auto/delegation)' });
 });
 
 router.post('/v1/trading/auto/intents', requireAuth, async (req, res) => res.status(201).json(await autonomous.queue(req.account, req.body || {})));

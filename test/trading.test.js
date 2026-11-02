@@ -28,7 +28,7 @@ const FEE_WALLET = '0x' + 'fe'.repeat(20);
 const USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 const TOKEN = '0x' + '7a'.repeat(20);
 const AH = '0x0000000000001ff3684f28c67538d4d072c22734';
-const ROUTER_SEPOLIA = '0x9307067d6a5fc22d1085a2fb16b1385dcc0e6b68';
+const ROUTER_SEPOLIA = require('../src/trade/networks').network(84532).router; // the deployed Base Sepolia router
 
 test('trading', async t => {
   const port = await rpcReady;

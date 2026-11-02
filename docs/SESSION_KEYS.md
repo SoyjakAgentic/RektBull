@@ -263,7 +263,7 @@ cost is a few dollars a month in total.
 | 0b | **Trade Router audit** | An external audit of the router contract, with every finding fixed, before any mainnet trade |
 | 1 | Trade service, KMS signer, permissions registry, approve-each mode on Base, for all four wallets | ✅ Built (see below). Remaining: one real approve-each trade on Base mainnet with a small cap, which needs a 0x API key and your wallet |
 | 2 | Autonomous mode for MetaMask, rules port, positions and exits | ✅ Built (see below). Soyjak's swap checks pass here (`test/soyjakParity.test.js`) |
-| 3 | Safe, then Coinbase Smart Wallet | Milestone 0's break-it tests pass on each |
+| 3 | Safe, then Coinbase Smart Wallet | ✅ Built (see below): 19 break-it tests pass against a real Safe and a real Coinbase Smart Wallet |
 | 4 | Ethereum and Arbitrum (Flashbots on Ethereum) | — |
 | 5 | Solana with Phantom (Squads Smart Account or Swig) | The devnet proof in section 3 |
 
@@ -331,6 +331,47 @@ cost is a few dollars a month in total.
 - **Not yet tested with a real MetaMask:** the smart-account switch and
   MetaMask showing and signing the delegation. The browser test uses a
   stand-in wallet.
+
+### Milestone 3, as built
+
+**Safe: the RektBull Safe Module** (`contracts/contracts/RektBullSafeModule.sol`, about 60 lines).
+The Safe's owners enable it and call `setSession(key, validUntil)`, both
+ordinary Safe transactions. The named key may then ask the module to make the
+Safe call one function, the router's `swap`: nothing else, no value, never a
+delegatecall. Sessions last at most 30 days; owners stop it with `revoke()` or
+by disabling the module. The router applies its rules with the Safe as the
+account. A Safe is linked to RektBull by one of its owners, who signs in with
+their own wallet; RektBull checks onchain that they own it.
+
+**Coinbase Smart Wallet: Coinbase spend permissions to the router.** Coinbase's
+permission system lets a spender pull tokens, so it never names a RektBull
+key. It names the **Trade Router** instead. The wallet also names RektBull's
+key as its operator on the router (`setOperator`), and only that operator can
+start `swapWithSpendPermission`. The router pulls exactly the trade's input
+through the permission, applies every rule, and sends the output back to the
+wallet in the same transaction. Coinbase's own per-period allowance is a
+second cap. The wallet signs in to RektBull itself (EIP-1271). The working
+rule in `CLAUDE.md` was adjusted for this: funds may pass through the audited
+router, never to any address RektBull controls.
+
+**Break-it tests** (`contracts/test/walletsBreakIt.test.js`), against the real
+Safe 1.4.1 contracts and Coinbase's real factory and Spend Permission Manager:
+another key, the session key handing its power on, output sent elsewhere, a
+bad price, over the limits, an expired session, revocation (module revoke,
+disabled module, router revoke, Coinbase revoke), a permission to anyone but
+the router, another token's permission, and another wallet's permission. All
+refused. The end-to-end test runs both wallets through RektBull's API, from
+setup to a confirmed automatic trade.
+
+**Found while building:** a Coinbase permission starting at "now" can fail
+the first trade, because block times trail the wall clock; setups start five
+minutes early. Test-network price feeds never update, so test deployments
+accept prices up to a year old (mainnet uses real Chainlink heartbeats).
+
+**Not tested with real wallets yet:** Safe{Wallet}'s and Coinbase Wallet's own
+screens. In particular, Coinbase Wallet may not let a website add its Spend
+Permission Manager as an owner; Coinbase normally does that itself the first
+time a user approves a spend permission in its own interface.
 
 ## 8. Open questions
 

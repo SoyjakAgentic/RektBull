@@ -13,8 +13,17 @@
  *   - onchain: the wallet is a MetaMask smart account (EIP-7702), and its
  *     limits are set on the router.
  *
- * Wallet types: MetaMask first. Safe and Coinbase Smart Wallet need their own
- * adapters and break-it tests (milestone 3); Phantom comes with Solana.
+ * Wallet types (each with its own break-it tests in contracts/test):
+ *   - metamask: the delegation above, from the signed-in EIP-7702 account.
+ *   - safe: the RektBull Safe Module. The signed-in wallet must be one of the
+ *     Safe's owners; onchain, the module is enabled on the Safe, its session
+ *     names RektBull's key, and the Safe has limits on the router.
+ *   - coinbase: Coinbase spend permissions to the Trade Router (never to a
+ *     RektBull key). The signed-in wallet is the Coinbase Smart Wallet itself;
+ *     onchain, each permission is approved and not revoked, its spender is the
+ *     router, its token is one the router trades, the wallet named RektBull's
+ *     key as its operator on the router, and it has limits there.
+ *   Phantom comes with Solana.
  */
 const crypto = require('crypto');
 const { ethers } = require('ethers');
@@ -27,7 +36,14 @@ const networks = require('./networks');
 const MM_VERSION = '1.3.0';
 const MAX_DAYS = 30;
 const SWAP_SELECTOR = ethers.id('swap((address,address,uint256,uint256,address,address,bytes,uint256))').slice(0, 10);
-const ROUTER = new ethers.Interface(['function limits(address) view returns (uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)']);
+const ROUTER = new ethers.Interface([
+  'function limits(address) view returns (uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)',
+  'function operatorOf(address) view returns (address)',
+]);
+const SAFE = new ethers.Interface(['function isOwner(address owner) view returns (bool)', 'function isModuleEnabled(address module) view returns (bool)']);
+const MODULE = new ethers.Interface(['function sessions(address safe) view returns (address key, uint64 validUntil)']);
+const PERM = '(address account, address spender, address token, uint160 allowance, uint48 period, uint48 start, uint48 end, uint256 salt, bytes extraData)';
+const SPM = new ethers.Interface([`function isApproved(${PERM} spendPermission) view returns (bool)`, `function isRevoked(${PERM} spendPermission) view returns (bool)`]);
 
 class PermissionRefused extends Error {
   constructor(message) { super(message); this.status = 422; }
@@ -109,23 +125,97 @@ async function checkOnchain({ chainId, wallet, router, delegatorImpl, now = Math
   return { perTradeUsd: Number(l.perTradeUsd) / 1e8, perPeriodUsd: Number(l.perPeriodUsd) / 1e8, periodSeconds: Number(l.periodSeconds), validUntil: Number(l.validUntil) };
 }
 
-async function register(account, { chain_id: chainId, wallet_type: walletType = 'metamask', delegation }, { sessionKey, onchain = checkOnchain } = {}) {
-  chainId = Number(chainId);
-  if (walletType !== 'metamask') throw new PermissionRefused(`${walletType} wallets can trade approve-each for now; automatic trading for them comes later`);
-  const c = checkDelegation({ delegation, chainId, wallet: account.wallet, sessionKey });
-  const limits = await onchain({ chainId, wallet: account.wallet, router: c.router, delegatorImpl: c.delegatorImpl });
+async function view(chain, to, iface, fn, args) {
+  const raw = await evmRpc(chain, 'eth_call', [{ to, data: iface.encodeFunctionData(fn, args) }, 'latest']);
+  return iface.decodeFunctionResult(fn, raw);
+}
+
+async function routerLimits(chainId, router, wallet, now = Math.floor(Date.now() / 1000)) {
+  const l = await view(chainName(chainId), router, ROUTER, 'limits', [wallet]);
+  if (!(Number(l.validUntil) > now)) throw new PermissionRefused('set your trading limits on the router first');
+  return { perTradeUsd: Number(l.perTradeUsd) / 1e8, perPeriodUsd: Number(l.perPeriodUsd) / 1e8, periodSeconds: Number(l.periodSeconds), validUntil: Number(l.validUntil) };
+}
+
+/** A Safe: the signed-in wallet owns it; the module is on, names RektBull's key, and limits are set. */
+async function checkSafe({ chainId, owner, safe, sessionKey, now = Math.floor(Date.now() / 1000) }) {
+  const net = networks.network(chainId);
+  if (!net.safeModule) throw new PermissionRefused('Safe trading isn\'t available on this network yet');
+  if (!ethers.isAddress(safe)) throw new PermissionRefused('safe must be the Safe\'s address');
+  const chain = chainName(chainId);
+  let isOwner;
+  try { [isOwner] = await view(chain, safe, SAFE, 'isOwner', [owner]); } catch { throw new PermissionRefused('that address is not a Safe on this network'); }
+  if (!isOwner) throw new PermissionRefused('your signed-in wallet is not an owner of that Safe');
+  const [enabled] = await view(chain, safe, SAFE, 'isModuleEnabled', [net.safeModule]);
+  if (!enabled) throw new PermissionRefused('enable the RektBull Safe Module on your Safe first');
+  const session = await view(chain, net.safeModule, MODULE, 'sessions', [safe]);
+  if (!eq(session.key, sessionKey)) throw new PermissionRefused('your Safe\'s session on the module must name RektBull\'s session key');
+  if (!(Number(session.validUntil) > now)) throw new PermissionRefused('your Safe\'s session on the module has expired');
+  const limits = await routerLimits(chainId, net.router, safe, now);
+  return { router: net.router, limits, expiresAt: Math.min(Number(session.validUntil), limits.validUntil), hash: ethers.id(`safe:${chainId}:${safe.toLowerCase()}:${Number(session.validUntil)}`) };
+}
+
+/** A Coinbase Smart Wallet: its spend permissions go to the router only, are live, and it named RektBull's key as operator. */
+async function checkCoinbase({ chainId, wallet, permissions, sessionKey, now = Math.floor(Date.now() / 1000) }) {
+  const net = networks.network(chainId);
+  if (!net.spendPermissionManager) throw new PermissionRefused('Coinbase Smart Wallet trading isn\'t available on this network yet');
+  if (!Array.isArray(permissions) || !permissions.length) throw new PermissionRefused('spend_permissions must list at least one spend permission');
+  const chain = chainName(chainId);
+  let ends = Infinity;
+  const tokens = new Set();
+  for (const p of permissions) {
+    if (!eq(p.account, wallet)) throw new PermissionRefused('every spend permission must be from your signed-in wallet');
+    if (!eq(p.spender, net.router)) throw new PermissionRefused('spend permissions may only name the RektBull Trade Router as spender');
+    if (!networks.routerToken(net, p.token)) throw new PermissionRefused(`the router doesn't trade ${p.token}`);
+    if (tokens.has(String(p.token).toLowerCase())) throw new PermissionRefused('one spend permission per token');
+    tokens.add(String(p.token).toLowerCase());
+    if (!(Number(p.end) > now)) throw new PermissionRefused('a spend permission has already ended');
+    const tuple = [p.account, p.spender, p.token, BigInt(p.allowance), Number(p.period), Number(p.start), Number(p.end), BigInt(p.salt), p.extraData || '0x'];
+    const [approved] = await view(chain, net.spendPermissionManager, SPM, 'isApproved', [tuple]);
+    const [revoked] = await view(chain, net.spendPermissionManager, SPM, 'isRevoked', [tuple]);
+    if (!approved || revoked) throw new PermissionRefused('a spend permission is not approved with Coinbase, or was revoked');
+    ends = Math.min(ends, Number(p.end));
+  }
+  const [operator] = await view(chain, net.router, ROUTER, 'operatorOf', [wallet]);
+  if (!eq(operator, sessionKey)) throw new PermissionRefused('name RektBull\'s session key as your operator on the router first');
+  const limits = await routerLimits(chainId, net.router, wallet, now);
+  const hash = ethers.id(`coinbase:${chainId}:${wallet.toLowerCase()}:${JSON.stringify(permissions.map(p => [p.token, String(p.salt), Number(p.end)]))}`);
+  return { router: net.router, limits, expiresAt: Math.min(ends, limits.validUntil), hash };
+}
+
+async function register(account, body, { sessionKey, onchain = checkOnchain } = {}) {
+  const chainId = Number(body.chain_id);
+  const walletType = body.wallet_type || 'metamask';
+  let tradingWallet;
+  let stored;
+  let c;
+  if (walletType === 'metamask') {
+    c = checkDelegation({ delegation: body.delegation, chainId, wallet: account.wallet, sessionKey });
+    c.limits = await onchain({ chainId, wallet: account.wallet, router: c.router, delegatorImpl: c.delegatorImpl });
+    tradingWallet = account.wallet;
+    stored = body.delegation;
+  } else if (walletType === 'safe') {
+    c = await checkSafe({ chainId, owner: account.wallet, safe: body.safe, sessionKey });
+    tradingWallet = String(body.safe).toLowerCase();
+    stored = { safe: tradingWallet };
+  } else if (walletType === 'coinbase') {
+    c = await checkCoinbase({ chainId, wallet: account.wallet, permissions: body.spend_permissions, sessionKey });
+    tradingWallet = account.wallet;
+    stored = { spend_permissions: body.spend_permissions };
+  } else {
+    throw new PermissionRefused(`${walletType} wallets can trade approve-each for now; automatic trading for them comes later`);
+  }
   const id = crypto.randomUUID();
   const { rows } = await db.query(
     `INSERT INTO trade_permissions (id, account_id, wallet, chain_id, wallet_type, router, delegate, delegation, delegation_hash, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10))
      ON CONFLICT (delegation_hash) DO UPDATE SET status = trade_permissions.status RETURNING *`,
-    [id, account.id, account.wallet, chainId, walletType, c.router, sessionKey.toLowerCase(), JSON.stringify(delegation), c.hash, c.expiresAt],
+    [id, account.id, tradingWallet, chainId, walletType, c.router, sessionKey.toLowerCase(), JSON.stringify(stored), c.hash, c.expiresAt],
   );
-  return { ...present(rows[0]), limits };
+  return { ...present(rows[0]), limits: c.limits };
 }
 
 function present(r) {
-  return { id: r.id, chain_id: r.chain_id, wallet_type: r.wallet_type, router: r.router, status: r.status, expires_at: r.expires_at, created_at: r.created_at, revoked_at: r.revoked_at };
+  return { id: r.id, chain_id: r.chain_id, wallet_type: r.wallet_type, wallet: r.wallet, router: r.router, status: r.status, expires_at: r.expires_at, created_at: r.created_at, revoked_at: r.revoked_at };
 }
 
 async function list(account) {
@@ -144,4 +234,4 @@ async function revoke(account, id) {
   return present(rows[0]);
 }
 
-module.exports = { checkDelegation, checkOnchain, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, chainName, ROUTER };
+module.exports = { checkDelegation, checkOnchain, checkSafe, checkCoinbase, register, list, revoke, PermissionRefused, SWAP_SELECTOR, TYPES, chainName, ROUTER };

@@ -63,7 +63,9 @@ test('autonomous trading, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') 
   const usdcFeed = await deploy('test/Mocks.sol', 'MockFeed', [8, 100000000n]);
   const wethFeed = await deploy('test/Mocks.sol', 'MockFeed', [8, 300000000000n]);
   const venue = await deploy('test/Mocks.sol', 'MockVenue', []);
-  const router = await deploy('RektBullTradeRouter.sol', 'RektBullTradeRouter', [feeWallet, 100, 200, ethers.ZeroAddress, [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY]]);
+  const SPM = '0xf85210B21cC50302F477BA56686d2019dC9b67Ad'; // Coinbase's Spend Permission Manager
+  const router = await deploy('RektBullTradeRouter.sol', 'RektBullTradeRouter', [feeWallet, 100, 200, ethers.ZeroAddress, SPM, [venue.target], [USDC.target, WETH.target], [usdcFeed.target, wethFeed.target], [DAY, DAY]]);
+  const safeModule = await deploy('RektBullSafeModule.sol', 'RektBullSafeModule', [router.target]);
 
   Object.assign(process.env, {
     DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABLED: 'true',
@@ -71,6 +73,7 @@ test('autonomous trading, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') 
     DEV_SESSION_KEY: session.privateKey, SESSION_KEY_ADDRESS: session.address.toLowerCase(),
     AUTO_TRADING_NETWORKS: JSON.stringify({ 84532: {
       name: 'base-sepolia', label: 'local fork', router: router.target, venue: { type: 'mock', address: venue.target },
+      safeModule: safeModule.target, spendPermissionManager: SPM,
       tokens: { tUSDC: { address: USDC.target, decimals: 6 }, tWETH: { address: WETH.target, decimals: 18 } }, defaultBase: 'tUSDC',
     } }),
   });
@@ -92,10 +95,11 @@ test('autonomous trading, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') 
 
   const { rows } = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [user.address.toLowerCase()]);
   const token = issueToken(rows[0]);
-  const api = async (method, p, body) => {
-    const r = await fetch(base + p, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const apiAs = tok => async (method, p, body) => {
+    const r = await fetch(base + p, { method, headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
     return { status: r.status, body: await r.json() };
   };
+  const api = apiAs(token);
   const run = async () => { await autonomous.tick(); await autonomous.tick(); }; // send, then confirm
 
   // ── The user's own setup, from their wallet ──
@@ -186,5 +190,88 @@ test('autonomous trading, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') 
     const r = await api('POST', '/v1/trading/auto/intents', { chain_id: 84532, side: 'buy', token: 'tWETH', amount_usd: 50 });
     assert.equal(r.status, 422);
     assert.match(r.body.message, /no active automatic-trading permission/);
+  });
+
+  // ── Milestone 3: the same flow for a Safe and a Coinbase Smart Wallet ──
+  await (await wethFeed.set(300000000000n, await now())).wait();
+  await (await usdcFeed.set(100000000n, await now())).wait();
+
+  await t.test('Safe: an owner links the Safe, the Safe runs the setup RektBull gives, and RektBull trades for it', async () => {
+    const owner = ethers.Wallet.createRandom().connect(provider);
+    await fund(owner.address);
+    const { rows: [acct] } = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [owner.address.toLowerCase()]);
+    const as = apiAs(issueToken(acct));
+    const SAFE = new ethers.Interface([
+      'function setup(address[],uint256,address,bytes,address,address,uint256,address)',
+      'function execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes) payable returns (bool)',
+    ]);
+    const factory = new ethers.Contract('0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67', ['function createProxyWithNonce(address,bytes,uint256) returns (address)', 'event ProxyCreation(address indexed proxy, address singleton)'], deployer);
+    const init = SAFE.encodeFunctionData('setup', [[owner.address], 1, ethers.ZeroAddress, '0x', '0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99', ethers.ZeroAddress, 0, ethers.ZeroAddress]);
+    const rc = await (await factory.createProxyWithNonce('0x29fcB43b46531BcA003ddC8FCB67FFE91900C762', init, BigInt(Date.now()))).wait();
+    const safe = rc.logs.map(l => { try { return factory.interface.parseLog(l); } catch { return null; } }).find(e => e?.name === 'ProxyCreation').args.proxy;
+
+    const setup = await as('GET', `/v1/trading/auto/setup?chain_id=84532&wallet_type=safe&safe=${safe}`);
+    assert.equal(setup.status, 200, JSON.stringify(setup.body));
+    const sig = ethers.concat([ethers.zeroPadValue(owner.address, 32), ethers.ZeroHash, '0x01']);
+    for (const c of setup.body.calls) {
+      await (await new ethers.Contract(safe, SAFE, owner).execTransaction(c.to, 0, c.data, 0, 0, 0, 0, ethers.ZeroAddress, ethers.ZeroAddress, sig)).wait();
+    }
+    await (await USDC.mint(safe, 2000n * 10n ** 6n)).wait();
+
+    const stranger = await apiAs(token)('POST', '/v1/trading/permissions', { chain_id: 84532, wallet_type: 'safe', safe });
+    assert.equal(stranger.status, 422, 'someone who doesn\'t own the Safe can\'t link it');
+    assert.match(stranger.body.message, /not an owner of that Safe/);
+
+    const reg = await as('POST', '/v1/trading/permissions', { chain_id: 84532, wallet_type: 'safe', safe });
+    assert.equal(reg.status, 201, JSON.stringify(reg.body));
+    assert.equal(reg.body.wallet, safe.toLowerCase());
+    await as('POST', '/v1/trading/auto/intents', { chain_id: 84532, side: 'buy', token: 'tWETH', amount_usd: 100 });
+    await run();
+    const [intent] = (await as('GET', '/v1/trading/auto/intents')).body.intents;
+    assert.equal(intent.status, 'confirmed', intent.error);
+    assert.ok((await WETH.balanceOf(safe)) > 0n, 'the tokens landed in the Safe');
+    assert.equal(await WETH.balanceOf(owner.address), 0n);
+  });
+
+  await t.test('Coinbase Smart Wallet: it signs in itself (EIP-1271), runs the setup, and RektBull trades through its spend permission', async () => {
+    const owner = ethers.Wallet.createRandom().connect(provider);
+    await fund(owner.address);
+    const factory = new ethers.Contract('0xba5ed110efdba3d005bfc882d75358acbbb85842', ['function createAccount(bytes[],uint256) payable returns (address)', 'function getAddress(bytes[],uint256) view returns (address)'], deployer);
+    const owners = [ethers.AbiCoder.defaultAbiCoder().encode(['address'], [owner.address])];
+    const nonce = BigInt(Date.now());
+    const addr = await factory.getFunction('getAddress')(owners, nonce);
+    await (await factory.createAccount(owners, nonce)).wait();
+    const wallet = new ethers.Contract(addr, ['function execute(address,uint256,bytes) payable', 'function addOwnerAddress(address)', 'function replaySafeHash(bytes32) view returns (bytes32)'], owner);
+    await (await wallet.addOwnerAddress(SPM)).wait();
+
+    // Sign in as the smart wallet: its owner signs the wallet's replay-safe hash, wrapped as Coinbase expects.
+    const ch = await apiAs(null)('POST', '/v1/auth/nonce', { address: addr, chain_id: 84532 });
+    const bad = await apiAs(null)('POST', '/v1/auth/verify', { challenge_id: ch.body.challenge_id, signature: await owner.signMessage(ch.body.message) });
+    assert.equal(bad.status, 401, 'the owner\'s plain signature is not the wallet\'s');
+    const ch2 = await apiAs(null)('POST', '/v1/auth/nonce', { address: addr, chain_id: 84532 });
+    const inner2 = owner.signingKey.sign(await wallet.replaySafeHash(ethers.hashMessage(ch2.body.message))).serialized;
+    const signin = await apiAs(null)('POST', '/v1/auth/verify', { challenge_id: ch2.body.challenge_id, signature: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(uint256 ownerIndex, bytes signatureData)'], [[0, inner2]]) });
+    assert.equal(signin.status, 200, JSON.stringify(signin.body));
+    const as = apiAs(signin.body.token);
+
+    const setup = await as('GET', '/v1/trading/auto/setup?chain_id=84532&wallet_type=coinbase');
+    assert.equal(setup.status, 200, JSON.stringify(setup.body));
+    assert.ok(setup.body.spend_permissions.every(p => p.spender.toLowerCase() === router.target.toLowerCase()), 'every permission names the router, never a RektBull key');
+    for (const c of setup.body.calls) await (await wallet.execute(c.to, 0, c.data)).wait();
+    await (await USDC.mint(addr, 2000n * 10n ** 6n)).wait();
+
+    const tampered = setup.body.spend_permissions.map(p => ({ ...p, spender: session.address }));
+    const refused = await as('POST', '/v1/trading/permissions', { chain_id: 84532, wallet_type: 'coinbase', spend_permissions: tampered });
+    assert.equal(refused.status, 422);
+    assert.match(refused.body.message, /only name the RektBull Trade Router/);
+
+    const reg = await as('POST', '/v1/trading/permissions', { chain_id: 84532, wallet_type: 'coinbase', spend_permissions: setup.body.spend_permissions });
+    assert.equal(reg.status, 201, JSON.stringify(reg.body));
+    await as('POST', '/v1/trading/auto/intents', { chain_id: 84532, side: 'buy', token: 'tWETH', amount_usd: 100 });
+    await run();
+    const [intent] = (await as('GET', '/v1/trading/auto/intents')).body.intents;
+    assert.equal(intent.status, 'confirmed', intent.error);
+    assert.ok((await WETH.balanceOf(addr)) > 0n, 'the tokens landed in the Coinbase Smart Wallet');
+    assert.equal(await USDC.balanceOf(router.target), 0n, 'the router keeps nothing');
   });
 });

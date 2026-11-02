@@ -70,8 +70,15 @@
     <section class="card" id="limits-card" hidden>
       <h2>Automatic trading <span class="tag">Base Sepolia test network</span></h2>
       <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. The router isn't audited yet, so this runs on the test network only, with test tokens. Only tokens the router has a reference price for can be traded automatically.</p>
+      <label>Your wallet
+        <select id="w-type">
+          <option value="metamask">MetaMask (smart account)</option>
+          <option value="safe">Safe</option>
+          <option value="coinbase">Coinbase Smart Wallet</option>
+        </select>
+      </label>
       <ol class="steps">
-        <li id="step-smart"><strong>A MetaMask smart account.</strong> <span id="smart-status" class="muted">Checking…</span>
+        <li id="step-smart" class="only-metamask"><strong>A MetaMask smart account.</strong> <span id="smart-status" class="muted">Checking…</span>
           <div class="muted small">In MetaMask, switch this account to a smart account (it keeps the same address), then <button class="link" id="smart-refresh">check again</button>.</div></li>
         <li><strong>Your limits</strong>
           <div id="limits-now" class="limits-now"></div>
@@ -86,16 +93,28 @@
               <input id="l-confirm" placeholder="e.g. 25000" autocomplete="off">
             </label>
           </div>
-          <button id="l-save" class="primary">Save limits from my wallet</button>
+          <button id="l-save" class="primary only-metamask">Save limits from my wallet</button>
         </li>
-        <li><strong>Test tokens, and let the router trade them</strong>
+        <li class="only-safe" hidden><strong>Set up your Safe</strong>
+          <label class="wide">Your Safe's address<input id="safe-addr" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+          <div class="muted small">You must be signed in with one of the Safe's owners. RektBull gives you the Safe's setup transactions: enable the RektBull module, let the router trade the test tokens, save the limits above, and name RektBull's key on the module. Submit them from your Safe (for example with the Transaction Builder in Safe{Wallet}); your Safe's owners sign them as usual.</div>
+          <button id="safe-setup">Get my Safe's setup transactions</button>
+          <ol id="safe-calls" class="small"></ol>
+          <button id="safe-link" class="primary">Link my Safe</button>
+        </li>
+        <li class="only-coinbase" hidden><strong>Set up your Coinbase Smart Wallet</strong>
+          <div class="muted small">Sign in with the Coinbase Smart Wallet itself. One batch from your wallet saves the limits above, names RektBull's key as your operator on the router, and gives the router (never RektBull) a Coinbase spend permission per test token, capped at your daily limit. The router sends every trade's result straight back to your wallet.</div>
+          <button id="cb-setup" class="primary">Set up from my wallet</button>
+          <button id="cb-link">Link my wallet</button>
+        </li>
+        <li class="only-metamask"><strong>Test tokens, and let the router trade them</strong>
           <div class="row">
             <button id="faucet">Get 1,000 test tUSDC</button>
             <button id="allow">Let the router trade my test tokens</button>
           </div>
           <div id="allow-status" class="muted small"></div>
         </li>
-        <li><strong>Give RektBull permission</strong>
+        <li class="only-metamask"><strong>Give RektBull permission</strong>
           <div class="muted small">Your wallet shows exactly what you're allowing: only RektBull's key, only the Trade Router's swap, until your limits expire. Nothing else.</div>
           <button id="grant" class="primary">Sign the permission</button>
           <div id="perm-status" class="muted small"></div>
