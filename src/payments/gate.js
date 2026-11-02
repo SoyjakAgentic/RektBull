@@ -16,6 +16,7 @@ const db = require('../config/db');
 const logger = require('../config/logger');
 const { product, rails, usd, FREE_POINTS } = require('./catalog');
 const points = require('./points');
+const { ipSubject } = require('../privacy/ipKey');
 const credits = require('./credits');
 const passes = require('./passes');
 const x402 = require('./x402');
@@ -79,11 +80,11 @@ async function acquire(p, req, runId) {
     } else if (rail === 'points') {
       // A cap per IP address too, so many new wallets from one place can't farm points.
       const ipKey = 'points_ip';
-      if (await takeAllowance(`ip:${req.ip}`, ipKey, FREE_POINTS.per_ip_per_day)) {
+      if (await takeAllowance(ipSubject(req.ip), ipKey, FREE_POINTS.per_ip_per_day)) {
         if (await points.spend(acct, p.points)) {
-          return { method: 'points', points: p.points, commit: async () => {}, rollback: async () => { await points.refund(acct, p.points); await giveBackAllowance(`ip:${req.ip}`, ipKey); } };
+          return { method: 'points', points: p.points, commit: async () => {}, rollback: async () => { await points.refund(acct, p.points); await giveBackAllowance(ipSubject(req.ip), ipKey); } };
         }
-        await giveBackAllowance(`ip:${req.ip}`, ipKey);
+        await giveBackAllowance(ipSubject(req.ip), ipKey);
       }
     } else if (rail === 'credits') {
       try {
@@ -97,7 +98,12 @@ async function acquire(p, req, runId) {
   return null;
 }
 
-function paidRoute(productId, { validate, run }) {
+/**
+ * record(input) chooses what of the input is kept with the run (default: all
+ * of it). The pre-sign check keeps only the method and chain, not what was
+ * being signed or where.
+ */
+function paidRoute(productId, { validate, run, record = input => input }) {
   const p = product(productId);
   return async (req, res) => {
     const input = validate(req);
@@ -118,7 +124,7 @@ function paidRoute(productId, { validate, run }) {
 
     await db.query(
       'INSERT INTO runs (id, account_id, product, payment_method, price_cents, input, x402_payer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [runId, req.account?.id || null, p.id, charge.method, charge.method === 'credits' || charge.method === 'x402' ? p.price_cents : 0, JSON.stringify(input), charge.payer || null],
+      [runId, req.account?.id || null, p.id, charge.method, charge.method === 'credits' || charge.method === 'x402' ? p.price_cents : 0, JSON.stringify(record(input)), charge.payer || null],
     );
 
     let result;

@@ -308,6 +308,22 @@ Object.assign(process.env, {
     assert.equal(await page.isEnabled('#ch-push'), true, 'browser notifications can be turned on');
     console.log('✔ alerts: link Telegram (through its webhook) and email (through the confirmation link), then a test alert reaches both');
 
+    // Your data: download, then delete (typed confirmation).
+    await page.locator('#data-card').waitFor();
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download my data' }).click();
+    const file = await (await dl).path();
+    const exported = JSON.parse(require('fs').readFileSync(file, 'utf8'));
+    assert.equal(exported.account.wallet, wallet.address.toLowerCase());
+    assert.ok(exported.monitored_wallets.length && exported.alert_channels.length);
+    await page.getByRole('button', { name: 'Delete my data' }).click();
+    await page.locator('#d-msg', { hasText: 'Type DELETE to confirm.' }).waitFor();
+    await page.fill('#d-confirm', 'DELETE');
+    await page.getByRole('button', { name: 'Delete my data' }).click();
+    await page.locator('#d-msg', { hasText: /Deleted \(\d+ items\)\. Credits, top-ups/ }).waitFor();
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM alert_channels')).rows[0].n, 0);
+    console.log('✔ your data: downloaded as one file; deleting needs DELETE typed, then removes channels and watched wallets, keeping payment records');
+
     await page.setViewportSize({ width: 375, height: 800 });
     const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 0.5).map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.className ? '.' + String(e.className).replace(/ /g, '.') : ''}`));
     assert.deepEqual(wide, [], 'no sideways scroll at phone width');
@@ -319,6 +335,12 @@ Object.assign(process.env, {
     await page.goto(url + '/safety');
     await page.locator('#who', { hasText: 'Signed in' }).waitFor();
     console.log('✔ the sign-in carries over between pages');
+
+    await page.goto(url + '/privacy');
+    await page.getByRole('heading', { name: 'Privacy', level: 1 }).waitFor();
+    const privacyWide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 0.5).length);
+    assert.equal(privacyWide, 0, 'the privacy page fits a phone');
+    console.log('✔ the privacy page reads on a phone');
 
     assert.deepEqual(errors.filter(e => !/Failed to load resource/.test(e)), [], 'no page errors');
     console.log('all passed');

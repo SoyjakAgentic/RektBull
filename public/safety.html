@@ -107,6 +107,14 @@
         <p id="topup-msg" class="msg"></p>
 
       </div>
+      <div id="data-card" hidden>
+        <h3>Your data</h3>
+        <p class="muted small">What RektBull keeps and why is on the <a href="/privacy">privacy page</a>.</p>
+        <div class="row"><button id="d-export">Download my data</button></div>
+        <label class="small">To delete your personal data (email, alert channels, watched wallets and alerts, extension links, trading settings), type DELETE<input id="d-confirm" autocomplete="off" spellcheck="false"></label>
+        <div class="row"><button id="d-delete" class="danger">Delete my data</button></div>
+        <p id="d-msg" class="msg"></p>
+      </div>
       <div id="pro-card">
         <h3>Safety Pro</h3>
         <p id="pro-what" class="small"></p>
@@ -122,11 +130,12 @@
     </section>
   </main>
 
-  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys.</footer>
+  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/safety.js"></script>
   <script src="/approvals.js"></script>
   <script src="/monitor.js"></script>
+  <script src="/mydata.js"></script>
 </body>
 </html>

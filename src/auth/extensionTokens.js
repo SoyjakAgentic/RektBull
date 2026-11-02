@@ -51,4 +51,7 @@ async function revoke(accountId, jti) {
   return rowCount === 1;
 }
 
-module.exports = { issue, list, revoke, isActive, allowed, ALLOWED };
+/** Forgets cached answers for these tokens (after they were deleted), so they stop working at once here. */
+const forget = jtis => { for (const j of jtis) seen.delete(j); };
+
+module.exports = { issue, list, revoke, isActive, forget, allowed, ALLOWED };

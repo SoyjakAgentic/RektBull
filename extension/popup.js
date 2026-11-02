@@ -5,6 +5,7 @@
   const send = msg => chrome.runtime.sendMessage(msg);
   const s = await send({ type: 'status' });
   const open = path => chrome.tabs.create({ url: s.apiBase + path });
+  $('privacy').addEventListener('click', e => { e.preventDefault(); open('/privacy'); });
   $('warn-medium').checked = s.warnMedium !== false;
   $('warn-medium').addEventListener('change', () => send({ type: 'settings', values: { warnMedium: $('warn-medium').checked } }));
   $('api-base').value = s.apiBase;
