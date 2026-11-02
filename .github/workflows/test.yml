@@ -65,3 +65,20 @@ jobs:
       - run: node --test test/approvals.e2e.js
         env:
           TEST_DATABASE_URL: postgres://rb:rb@localhost:5432/rektbull_test
+
+  snap:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: snap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: snap/package-lock.json
+      - run: npm ci
+      - run: npm test
+      # The committed manifest must match the production bundle (its shasum).
+      - run: git diff --exit-code snap.manifest.json

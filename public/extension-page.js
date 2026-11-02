@@ -18,7 +18,24 @@
 
   window.RB.onSignedIn(async () => {
     $('link').hidden = false;
+    $('snap-link').hidden = false;
+    say('snap-msg', '');
     await loadTokens();
+  });
+
+  // The MetaMask Snap: install it (MetaMask asks), then hand it a link token. ?snap=local:http://localhost:8081 for development.
+  const SNAP_ID = new URLSearchParams(location.search).get('snap') || 'npm:@rektbull/presign-check';
+  $('snap-link').addEventListener('click', async () => {
+    const mm = (window.RB.state.wallets.find(w => /metamask/i.test(w.info.name)) || {}).provider || (window.ethereum?.isMetaMask ? window.ethereum : null);
+    if (!mm) return say('snap-msg', 'MetaMask isn\'t installed in this browser.', 'bad');
+    try {
+      say('snap-msg', 'MetaMask will ask you to install the RektBull Snap and approve what it may do.');
+      await mm.request({ method: 'wallet_requestSnaps', params: { [SNAP_ID]: {} } });
+      const { token } = await api('POST', '/v1/extension/tokens', { label: 'MetaMask Snap' });
+      const r = await mm.request({ method: 'wallet_invokeSnap', params: { snapId: SNAP_ID, request: { method: 'link', params: { token } } } });
+      say('snap-msg', `Linked to ${r.wallet.slice(0, 6)}…${r.wallet.slice(-4)}. MetaMask now shows RektBull's check when you confirm.`, 'ok');
+      loadTokens();
+    } catch (err) { say('snap-msg', err.message, 'bad'); }
   });
 
   window.addEventListener('message', e => {

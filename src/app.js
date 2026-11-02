@@ -14,6 +14,15 @@ function createApp() {
   app.use(express.json({ limit: '100kb' }));
   // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
   app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') }));
+  // The MetaMask Snap calls these from inside MetaMask (another origin), with its link token in a header.
+  // Only the routes a link token may use; no cookies are involved, so any origin is fine.
+  const { ALLOWED } = require('./auth/extensionTokens');
+  app.use((req, res, next) => {
+    if (!ALLOWED.some(([, p]) => p === req.path)) return next();
+    res.set({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '600', 'cross-origin-resource-policy': 'cross-origin' });
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
   app.use(optionalAuth);
   app.use(routes);
 

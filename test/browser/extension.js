@@ -110,6 +110,35 @@ async function screenText(page) {
     assert.ok((await sw.evaluate(() => chrome.storage.local.get('token'))).token, 'the extension holds a token');
     console.log('✔ linked from /extension: the page sees the extension, gets a token for it, and lists the browser');
 
+    // The MetaMask Snap: installed and linked from the same page (MetaMask played by a stand-in).
+    const snapPage = await ctx.newPage();
+    snapPage.on('pageerror', e => errors.push(e.message));
+    await snapPage.addInitScript(([t, w]) => {
+      sessionStorage.setItem('rb_token', t); sessionStorage.setItem('rb_wallet', w);
+      window.__snapCalls = [];
+      const mm = { request: async ({ method, params }) => {
+        window.__snapCalls.push({ method, params });
+        if (method === 'wallet_requestSnaps') return { 'npm:@rektbull/presign-check': { version: '0.1.0' } };
+        if (method === 'wallet_invokeSnap') return { linked: true, wallet: w };
+        if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [w];
+        if (method === 'eth_chainId') return '0x2105';
+        throw new Error(method);
+      } };
+      window.addEventListener('eip6963:requestProvider', () => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: { info: { uuid: 'mm', name: 'MetaMask' }, provider: mm } })));
+    }, [session, ME]);
+    await snapPage.goto(api + '/extension');
+    await snapPage.getByRole('button', { name: 'Install and link the RektBull Snap' }).click();
+    await snapPage.locator('#snap-msg', { hasText: 'Linked to 0x1111…1111' }).waitFor();
+    const calls = await snapPage.evaluate(() => window.__snapCalls.filter(c => c.method.startsWith('wallet_')));
+    assert.deepEqual(calls.map(c => c.method), ['wallet_requestSnaps', 'wallet_invokeSnap']);
+    assert.deepEqual(Object.keys(calls[0].params), ['npm:@rektbull/presign-check']);
+    assert.equal(calls[1].params.request.method, 'link');
+    const snapToken = calls[1].params.request.params.token;
+    assert.equal((await fetch(api + '/v1/me', { headers: { authorization: `Bearer ${snapToken}` } })).status, 200, 'the Snap gets a working link token');
+    await snapPage.locator('#tokens', { hasText: 'MetaMask Snap' }).waitFor();
+    await snapPage.close();
+    console.log('✔ the MetaMask Snap: installed and linked from /extension with its own link token, listed with the browsers');
+
     // ── A risky request: stopped with the reasons, cancelled ──
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push(e.message));
