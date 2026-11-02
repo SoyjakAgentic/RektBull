@@ -1,6 +1,7 @@
 /**
  * What RektBull sells, at what price, and how each thing can be paid for.
- * Crypto only: x402 (USDC per call), or credits topped up with USDT/USDC.
+ * Crypto only: x402 (USDC per call), credits topped up with USDT/USDC, and
+ * claim fees (a share of claimed tokens, in a transfer the user signs).
  *
  * x402 note: x402 client libraries default to refusing payments over about
  * $1 a call unless the payer raises that limit (soyjak-agentic's own agent
@@ -18,12 +19,12 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check'],
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim'],
   fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
   included_per_month: { token_report: 5 },
   monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, and the risk monitor: up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), and a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -58,6 +59,19 @@ const PRODUCTS = {
     points: 5,
     x402: true,
   },
+  // Find money: not charged through the gate. When RektBull prepares a claim,
+  // a share of the claimed tokens goes to RektBull's fee wallet in a plain
+  // transfer the user signs next to the claim (no approval; RektBull holds
+  // nothing). Checking is free; claiming directly on the project's site is too.
+  airdrop_claim: {
+    kind: 'fee',
+    title: 'Claim fee',
+    description: 'Checking for unclaimed airdrops and rewards is free. Claim through RektBull and a share of what you receive is sent to RektBull in a separate transfer you sign with the claim. Free when the tokens can\'t be transferred yet, or the fee is worth less than its gas.',
+    price_cents: 0,
+    fee_bps: 500,
+    pro_fee_bps: 300,
+    x402: false,
+  },
   pro_30d: {
     kind: 'pass',
     title: 'Safety Pro, 30 days',
@@ -86,6 +100,7 @@ function product(id) {
 
 /** The ways a product can be paid for, in the order they're tried. */
 function rails(p) {
+  if (p.kind === 'fee') return ['claim_transfer'];
   const out = [];
   if (p.kind === 'run') out.push('pass', 'points', 'credits');
   else out.push('credits');
@@ -103,6 +118,7 @@ function publicCatalog() {
       price_cents: p.price_cents, price_usd: usd(p.price_cents),
       pay_with: rails(p),
       ...(p.points ? { points: p.points } : {}),
+      ...(p.kind === 'fee' ? { fee_bps: p.fee_bps, pro_fee_bps: p.pro_fee_bps } : {}),
       ...(p.days ? { days: p.days, covers: p.covers, fair_use_per_day: p.fair_use_per_day, included_per_month: p.included_per_month } : {}),
       ...(p.x402 && p.price_cents > X402_DEFAULT_CLIENT_CAP_CENTS ? { x402_note: 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.' } : {}),
     };

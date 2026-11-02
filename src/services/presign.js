@@ -309,4 +309,4 @@ async function check(input) {
   };
 }
 
-module.exports = { parse, check, decode, readLogs, checkPersonalSign, PresignRefused, METHODS, TOPIC, ETH_PSEUDO };
+module.exports = { parse, check, decode, simulate, readLogs, checkPersonalSign, PresignRefused, METHODS, TOPIC, ETH_PSEUDO };

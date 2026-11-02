@@ -30,6 +30,7 @@ function createApp() {
   const pub = path.join(__dirname, '..', 'public');
   app.get('/', (_req, res) => res.redirect(302, '/safety'));
   app.get('/safety', (_req, res) => res.sendFile(path.join(pub, 'safety.html')));
+  app.get('/find', (_req, res) => res.sendFile(path.join(pub, 'find.html')));
   app.get('/extension', (_req, res) => res.sendFile(path.join(pub, 'extension.html')));
   // The privacy page names who runs RektBull and how to reach them (OPERATOR_NAME, PRIVACY_CONTACT).
   const privacy = require('fs').readFileSync(path.join(pub, 'privacy.html'), 'utf8');

@@ -565,4 +565,4 @@ async function scanToken({ chain, token_address }) {
   };
 }
 
-module.exports = { scanToken, SCAN_CHAINS, EVM_CHAINS, POWERS, powersFromAbi, evmFlags, disagreements, rolePower, KNOWN_ROLES, ROLE_GRANTED, ROLE_REVOKED };
+module.exports = { scanToken, goplus, SCAN_CHAINS, EVM_CHAINS, POWERS, powersFromAbi, evmFlags, disagreements, rolePower, KNOWN_ROLES, ROLE_GRANTED, ROLE_REVOKED };

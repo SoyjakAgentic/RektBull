@@ -130,6 +130,37 @@ router.post('/v1/approvals/cleanup', paidRoute('approval_cleanup', {
   run: input => approvals.cleanup(input.owner, { refresh: input.refresh }),
 }));
 
+// ── Find money: airdrops and unclaimed rewards (checking is free; claims carry a share as their fee) ──
+const claims = require('../services/claims');
+const CLAIM_LIMITS = { check: { account: 30, anonymous: 5 }, prepare: { account: 30, anonymous: 10 } };
+const claimCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof claims.ClaimRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+const dailyLimit = kind => async (req, res, next) => {
+  const limits = CLAIM_LIMITS[kind];
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, limits.account] : [require('../privacy/ipKey').ipSubject(req.ip), limits.anonymous];
+  if (!env.databaseUrl || await takeAllowance(subject, `claims_${kind}`, limit)) return next();
+  res.status(429).json({ error: 'daily_limit', message: `Free ${kind === 'check' ? 'checks' : 'claim preparations'} are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+};
+const validated = parse => (req, res, next) => {
+  const input = parse(req.body);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  req.input = input;
+  next();
+};
+router.post('/v1/claims/check', validated(claims.parseWallet), dailyLimit('check'), claimCall(req => claims.check(req.input.wallet, { accountId: req.account?.id || null })));
+router.post('/v1/claims/prepare', validated(claims.parsePrepare), dailyLimit('prepare'), claimCall(req => claims.prepare(req.input, { accountId: req.account?.id || null })));
+router.post('/v1/claims/:id/confirm', claimCall(req => {
+  if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new claims.ClaimRefused('No such claim.', 404);
+  return claims.confirm(req.params.id, req.body?.tx_hashes);
+}));
+router.get('/v1/claims/programs', claimCall(async () => ({ programs: await claims.programs() })));
+
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');
 const monitorCall = fn => async (req, res) => {
@@ -205,5 +236,13 @@ router.use(require('./trading'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────
 router.get('/v1/admin/provider-usage', requireAuth, requireAdmin, async (_req, res) => res.json({ usage: await usage.report(), ai: await claude.usageReport() }));
+
+// Airdrops for the finder: each is checked when added (root onchain, proofs, a simulated claim).
+router.get('/v1/admin/airdrops', requireAuth, requireAdmin, claimCall(async () => ({ programs: await claims.programs({ all: true }) })));
+router.post('/v1/admin/airdrops', requireAuth, requireAdmin, validated(claims.parseProgram), claimCall(req => claims.addProgram(req.input, req.account.id)));
+router.patch('/v1/admin/airdrops/:id', requireAuth, requireAdmin, claimCall(req => {
+  if (!/^\d+$/.test(req.params.id)) throw new claims.ClaimRefused('No such airdrop.', 404);
+  return claims.setActive(req.params.id, req.body?.active);
+}));
 
 module.exports = router;
