@@ -29,7 +29,8 @@ test('catalog: runs try Safety Pro, points, credits, then x402; reports take no 
   assert.deepEqual(catalog.rails(catalog.product('pro_30d')), ['credits']);
   for (const id of ['token_quick_check', 'approval_cleanup']) assert.ok(catalog.product(id).price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, `${id} must work with default x402 clients`);
   const pro = catalog.product('pro_30d');
-  assert.deepEqual(pro.covers.sort(), ['approval_cleanup', 'token_quick_check', 'token_report']);
+  assert.deepEqual(pro.covers.sort(), ['approval_cleanup', 'risk_monitor', 'token_quick_check', 'token_report']);
+  assert.deepEqual(pro.monitor, { wallets: 3, every_hours: 24 });
   assert.equal(pro.included_per_month.token_report, 5);
   assert.equal(catalog.product('token_quick_check').points, 1);
   assert.equal(catalog.product('approval_cleanup').points, 5);
@@ -204,6 +205,39 @@ test('AI cost estimate: list prices per million tokens; unknown models are recor
   const claude = require('../src/ai/claude');
   assert.equal(claude.estimateUsd('claude-opus-5-5', { input_tokens: 5000, output_tokens: 2500 }), 0.07, '5K in + 2.5K out on Opus 5.5 is 7 cents');
   assert.equal(claude.estimateUsd('some-future-model', { input_tokens: 1, output_tokens: 1 }), null);
+});
+
+test('risk monitor: what changed since the last check becomes an alert, and nothing twice', () => {
+  const { compare } = require('../src/services/monitor');
+  const appr = (chain, id, severity, extra = {}) => ({ chain, id, kind: 'erc20', severity, token: { address: '0xt', symbol: 'USDC' }, spender: { address: extra.spender || '0xs', label: null, is_wallet: extra.wallet ?? false }, allowance: {}, value_at_risk_usd: 10, reasons: [{ text: 'r', source: 'GoPlus' }] });
+  const open = list => Object.fromEntries(list.map(a => [`${a.chain}:${a.id}`, a]));
+
+  // First check: one summary, no per-approval alerts.
+  const first = compare(null, { read: ['base', 'ethereum'], unread: [], open: open([appr('base', 'a', 'high', { spender: '0xa' })]), impls: { 'base:0xa': '0xi1' }, stables: [] });
+  assert.deepEqual(first.alerts.map(a => [a.kind, a.severity]), [['watching_started', 'high']]);
+  assert.match(first.alerts[0].title, /1 risky approval is open now/);
+
+  // Next check: a new risky approval, a rating that rose, an upgraded spender, a depeg; a low one alerts nothing.
+  const now = {
+    read: ['base', 'ethereum'], unread: [],
+    open: open([appr('base', 'a', 'critical', { spender: '0xa' }), appr('base', 'b', 'medium', { spender: '0xb' }), appr('ethereum', 'c', 'low', { spender: '0xc' })]),
+    impls: { 'base:0xa': '0xi2' },
+    stables: [{ chain: 'base', symbol: 'USDC', address: '0xusdc', amount: 500, price: 0.95 }, { chain: 'ethereum', symbol: 'USDT', address: '0xusdt', amount: 9, price: 0.999 }],
+  };
+  const second = compare(first.snapshot, now, '2026-11-02');
+  const kinds = second.alerts.map(a => `${a.kind}:${a.severity}`).sort();
+  assert.deepEqual(kinds, ['depeg:high', 'new_approval:medium', 'spender_flagged:critical', 'spender_upgraded:high']);
+  const up = second.alerts.find(a => a.kind === 'spender_upgraded');
+  assert.equal(up.detail.implementation_was, '0xi1');
+  assert.ok(up.detail.reasons[0].source.includes('EIP-1967'));
+  assert.equal(second.alerts.find(a => a.kind === 'depeg').dedupe, 'depeg:base:0xusdc:2026-11-02', 'a depeg alerts once a day');
+  assert.deepEqual(second.snapshot.summary, { open: 3, risky: 2, value_at_risk_usd: 20, chains_not_read: [] });
+
+  // A chain that couldn't be read keeps what it had, so its approvals don't look new when it's back.
+  const blind = compare(second.snapshot, { read: ['ethereum'], unread: [{ chain: 'base', reason: 'down' }], open: open([appr('ethereum', 'c', 'low', { spender: '0xc' })]), impls: {}, stables: [] });
+  assert.deepEqual(blind.alerts, []);
+  const back = compare(blind.snapshot, now, '2026-11-02');
+  assert.deepEqual(back.alerts.map(a => a.kind).filter(k => k !== 'depeg'), [], 'nothing new on Base after it comes back');
 });
 
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {

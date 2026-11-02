@@ -1,7 +1,7 @@
 /**
  * One image, several roles:
  *   web    - the HTTP API
- *   worker - the deposit watcher and housekeeping
+ *   worker - the deposit watcher, the risk monitor and housekeeping
  *   trade  - the trade service: confirms trades, runs exits, and sends
  *            automatic trades; the only role allowed to sign with RektBull's KMS key
  *   all    - all three (local development)
@@ -25,7 +25,14 @@ async function main() {
   if ((role === 'worker' || role === 'all') && env.databaseUrl) {
     watcher.start();
     setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);
-    logger.info('worker started: deposit watcher on', { chains: env.paymentChains });
+    // The risk monitor: a few due wallets every 5 minutes (each is checked once a day).
+    let monitoring = false;
+    setInterval(async () => {
+      if (monitoring) return;
+      monitoring = true;
+      try { await require('./services/monitor').tick(); } catch (err) { logger.error('monitor tick failed', { error: err.message }); } finally { monitoring = false; }
+    }, 5 * 60 * 1000);
+    logger.info('worker started: deposit watcher and risk monitor', { chains: env.paymentChains });
   }
   if ((role === 'trade' || role === 'all') && env.databaseUrl) {
     let busy = false;

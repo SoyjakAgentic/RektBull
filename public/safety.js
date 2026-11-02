@@ -225,6 +225,7 @@
     try {
       await api('POST', '/v1/passes/' + p.id);
       say('pass-msg', `${p.title} is active.`, 'ok');
+      document.dispatchEvent(new Event('rb:account-changed'));
       loadAccount();
     } catch (err) {
       say('pass-msg', err.status === 402 ? `Not enough credits: it costs ${p.price_usd}, you have ${usd(err.data?.balance_cents || 0)}. Top up above.` : err.message, 'bad');
