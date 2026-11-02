@@ -18,11 +18,12 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report'],
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor'],
   fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20 },
   included_per_month: { token_report: 5 },
+  monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, and the risk monitor when it launches.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, and the risk monitor: up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -100,4 +101,4 @@ function publicCatalog() {
   });
 }
 
-module.exports = { PRODUCTS, FREE_POINTS, product, rails, publicCatalog, usd, X402_DEFAULT_CLIENT_CAP_CENTS };
+module.exports = { PRODUCTS, FREE_POINTS, SAFETY_PRO, product, rails, publicCatalog, usd, X402_DEFAULT_CLIENT_CAP_CENTS };

@@ -96,7 +96,8 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
   goplus.addressRisk = async (chain, a) => (a === drainer ? { source: 'GoPlus (data from SlowMist)', flags: ['phishing', 'theft'] } : { source: 'GoPlus', flags: [] });
   goplus.contractRisk = async (chain, a) => (a === PERMIT2.toLowerCase() ? { source: 'GoPlus', known: true, open_source: true, trusted: true, name: 'Permit2', malicious: [] }
     : a === V ? { source: 'GoPlus', known: true, open_source: false, trusted: false, malicious: [] } : { source: 'GoPlus', known: false });
-  require('../src/providers/prices').usdPrices = async ids => (ids.includes(`base-sepolia:${A}`) ? { [`base-sepolia:${A}`]: 2 } : {});
+  let tkaPrice = 2;
+  require('../src/providers/prices').usdPrices = async ids => (ids.includes(`base-sepolia:${A}`) ? { [`base-sepolia:${A}`]: tkaPrice } : {});
 
   const db = require('../src/config/db');
   t.after(() => db.getPool().end().catch(() => {}));
@@ -258,5 +259,84 @@ test('approval cleanup, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') ||
     for (let i = 0; i < 2; i++) await call('POST', '/v1/approvals/preview', { wallet: clean });
     const capped = await call('POST', '/v1/approvals/preview', { wallet: clean });
     assert.equal(capped.status, 429, 'three free previews a day without signing in');
+  });
+
+  await t.test('the risk monitor: Safety Pro only; then new approvals, an upgraded spender and a depeg become alerts, once', async () => {
+    const credits = require('../src/payments/credits');
+    const { issueToken } = require('../src/auth/siwe');
+    const monitor = require('../src/services/monitor');
+    // TKA stands in for a stablecoin on this chain, so a depeg can be shown.
+    require('../src/payments/stablecoins').STABLECOINS['base-sepolia'] = { tokens: { TKA: { address: A, decimals: 6 } } };
+    const { createApp } = require('../src/app');
+    const server = createApp().listen(0);
+    t.after(() => server.close());
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const { rows } = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [ethers.Wallet.createRandom().address.toLowerCase()]);
+    const acct = rows[0];
+    const token = issueToken(acct);
+    const call = async (method, p, body) => {
+      const r = await fetch(base + p, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, body: await r.json() };
+    };
+
+    const refused = await call('POST', '/v1/monitor/wallets', { wallet: owner.address });
+    assert.equal(refused.status, 402);
+    assert.equal(refused.body.offer, 'pro_30d');
+    await credits.add(acct.id, 900, 'adjustment', 'test:pro');
+    assert.equal((await call('POST', '/v1/passes/pro_30d')).status, 201);
+
+    // The owner's wallet after the cleanup above: only the usual Permit2 approval is open.
+    tkaPrice = 1; // TKA "stablecoin" on peg
+    const started = await call('POST', '/v1/monitor/wallets', { wallet: owner.address, label: 'main' });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    assert.deepEqual(started.body.alerts.map(a => a.kind), ['watching_started']);
+    assert.match(started.body.alerts[0].title, /no risky approvals open/);
+    assert.equal(started.body.wallet.summary.open, 1);
+
+    // Something happens: a new unlimited approval to the flagged wallet, an approval to a proxy contract, and a depeg.
+    const IMPL = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+    const setImpl = a => provider.send('hardhat_setStorageAt', [V, IMPL, ethers.zeroPadValue(a, 32)]);
+    await setImpl('0x' + '11'.repeat(20));
+    await send(tA.connect(owner).approve(drainer, ethers.MaxUint256));
+    await send(tB.connect(owner).approve(V, 7n));
+    tkaPrice = 0.92;
+    const [row] = (await db.query('SELECT * FROM monitored_wallets WHERE account_id = $1', [acct.id])).rows;
+    const raised = await monitor.check(row);
+    assert.deepEqual(raised.map(a => `${a.kind}:${a.severity}`).sort(), ['depeg:high', 'new_approval:critical', 'new_approval:medium']);
+    const drain = raised.find(a => a.severity === 'critical');
+    assert.ok(drain.detail.reasons.some(r => /phishing/.test(r.text) && /SlowMist/.test(r.source)), 'the reason and its source travel with the alert');
+
+    // The proxy's code is replaced: one alert; the same state again alerts nothing.
+    await setImpl('0x' + '22'.repeat(20));
+    const [row2] = (await db.query('SELECT * FROM monitored_wallets WHERE id = $1', [row.id])).rows;
+    const upgraded = await monitor.check(row2);
+    assert.deepEqual(upgraded.map(a => a.kind), ['spender_upgraded']);
+    assert.equal(upgraded[0].detail.implementation_was, '0x' + '11'.repeat(20));
+    const [row3] = (await db.query('SELECT * FROM monitored_wallets WHERE id = $1', [row.id])).rows;
+    assert.deepEqual(await monitor.check(row3), [], 'nothing alerted twice (the depeg once a day)');
+
+    // The API: alerts, unread count, mark read; at most 3 wallets; stop watching.
+    const list = await call('GET', '/v1/monitor');
+    assert.equal(list.body.active, true);
+    assert.equal(list.body.unread_alerts, 5);
+    assert.equal(list.body.wallets[0].label, 'main');
+    const al = await call('GET', '/v1/monitor/alerts');
+    assert.equal(al.body.alerts.length, 5);
+    assert.equal(al.body.alerts[0].kind, 'spender_upgraded', 'newest first');
+    await call('POST', '/v1/monitor/alerts/read', { ids: [al.body.alerts[0].id] });
+    assert.equal((await call('GET', '/v1/monitor')).body.unread_alerts, 4);
+    await call('POST', '/v1/monitor/alerts/read', {});
+    assert.equal((await call('GET', '/v1/monitor')).body.unread_alerts, 0);
+    for (let i = 0; i < 2; i++) assert.equal((await call('POST', '/v1/monitor/wallets', { wallet: ethers.Wallet.createRandom().address })).status, 200);
+    assert.equal((await call('POST', '/v1/monitor/wallets', { wallet: ethers.Wallet.createRandom().address })).status, 409, 'Safety Pro watches up to 3 wallets');
+
+    // When Safety Pro ends, checks pause.
+    await db.query(`UPDATE passes SET ends_at = now() - interval '1 minute' WHERE account_id = $1`, [acct.id]);
+    await db.query('UPDATE monitored_wallets SET next_check_at = now() WHERE account_id = $1', [acct.id]);
+    await monitor.tick();
+    const paused = await call('GET', '/v1/monitor');
+    assert.equal(paused.body.active, false);
+    assert.ok(paused.body.wallets.every(w => w.last_error === 'Paused: Safety Pro has ended'));
+    assert.equal((await call('DELETE', `/v1/monitor/wallets/${row.id}`)).status, 200);
   });
 });

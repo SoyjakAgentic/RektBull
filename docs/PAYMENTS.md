@@ -105,8 +105,8 @@ not the user.
 
 Crypto can't safely pull a payment every month, so time is prepaid:
 **Safety Pro**, `pro_30d` ($9) and `pro_365d` ($79), covers every Safety
-desk check (fair use), 5 AI reports a month, and the risk monitor when it
-launches. Buying again while active extends from the current end date.
+desk check (fair use), 5 AI reports a month, and the risk monitor (up to 3
+wallets, checked daily; paused while no pass is active). Buying again while active extends from the current end date.
 What a pass costs us to serve (AI reports, data plans, hosting) and when
 it breaks even is worked out in the PR that introduced it (#10); the real
 AI cost per report is recorded (`GET /v1/admin/provider-usage`, `ai`).

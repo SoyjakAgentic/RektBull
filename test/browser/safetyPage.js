@@ -79,6 +79,15 @@ Object.assign(process.env, {
   };
   approvalsSvc.preview = async owner => { owner0.value = owner; const r = cleanupResult(); return { owner, checked_at: r.checked_at, summary: r.summary, note: 'The full cleanup lists each approval.' }; };
   approvalsSvc.cleanup = async owner => { owner0.value = owner; return cleanupResult(); };
+
+  // The risk monitor's chain reads are a stand-in too (test/approvals.e2e.js runs them for real).
+  const monitorSvc = require('../../src/services/monitor');
+  let looks = 0;
+  monitorSvc.look = async () => {
+    looks++;
+    const a = { chain: 'base', id: 'erc20:0xaa:0xdd', kind: 'erc20', severity: 'critical', token: { address: '0x' + 'aa'.repeat(20), symbol: 'USDC' }, spender: { address: '0x' + 'dd'.repeat(20), label: null, is_wallet: true }, allowance: { amount: 'unlimited' }, value_at_risk_usd: 250, reasons: [{ text: 'Flagged for phishing.', source: 'GoPlus (data from SlowMist)' }] };
+    return { read: ['base'], unread: [], open: looks === 1 ? {} : { 'base:erc20:0xaa:0xdd': a }, impls: {}, stables: [] };
+  };
   const credits = require('../../src/payments/credits');
 
   const { createApp } = require('../../src/app');
@@ -241,6 +250,28 @@ Object.assign(process.env, {
     assert.deepEqual(batch.map(x => x.data), ['0x095ea7b3a1', '0xcc53287fp2'], 'exactly the chosen revokes, in one batch');
     assert.ok(batch.every(x => x.batch && x.chainId === '0x2105'), 'sent as a batch on Base');
     console.log('✔ approvals: the wallet is asked to sign exactly the chosen revokes, on Base, as one batch');
+
+    // The risk monitor (Safety Pro is active here): watch, an alert, mark read, review.
+    await page.locator('#m-on').waitFor();
+    assert.equal((await page.inputValue('#m-wallet')).toLowerCase(), wallet.address.toLowerCase());
+    await page.fill('#m-label', 'main');
+    await page.getByRole('button', { name: 'Watch this wallet' }).click();
+    await page.locator('#m-msg', { hasText: 'Watching.' }).waitFor();
+    await page.locator('#m-wallets', { hasText: 'main (' }).waitFor();
+    assert.match(await page.textContent('#m-wallets'), /Watching 1 of 3 wallets, each checked every 24 hours/);
+    assert.match(await page.textContent('#m-alerts'), /Watching started: no risky approvals open/);
+    const [mw] = (await db.query('SELECT * FROM monitored_wallets')).rows;
+    await monitorSvc.check(mw); // the next day's check finds a new approval to a flagged wallet
+    await page.reload();
+    await page.locator('#m-unread', { hasText: '2 new' }).waitFor();
+    const alertsText = await page.textContent('#m-alerts');
+    assert.match(alertsText, /critical\s*New critical-risk approval: 0xdddd…dddd on USDC \(base\)/);
+    assert.match(alertsText, /Flagged for phishing\. \(GoPlus \(data from SlowMist\)\)/);
+    await page.getByRole('button', { name: 'Mark all as read' }).click();
+    await page.locator('#m-unread').waitFor({ state: 'hidden' });
+    await page.locator('#m-alerts').getByRole('button', { name: 'Review and revoke' }).first().click();
+    assert.equal((await page.inputValue('#a-wallet')).toLowerCase(), wallet.address.toLowerCase());
+    console.log('✔ risk monitor: watch a wallet; a new risky approval shows as an alert with its reason and source; mark read; review it');
 
     await page.setViewportSize({ width: 375, height: 800 });
     const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 0.5).map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.className ? '.' + String(e.className).replace(/ /g, '.') : ''}`));

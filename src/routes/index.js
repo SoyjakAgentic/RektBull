@@ -115,6 +115,24 @@ router.post('/v1/approvals/cleanup', paidRoute('approval_cleanup', {
   run: input => approvals.cleanup(input.owner, { refresh: input.refresh }),
 }));
 
+// ── The risk monitor (Safety Pro) ──
+const monitor = require('../services/monitor');
+const monitorCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof monitor.MonitorRefused) {
+      return res.status(err.status).json({ error: err.status === 402 ? 'safety_pro_required' : 'refused', message: err.message, ...(err.offer ? { offer: err.offer } : {}) });
+    }
+    throw err;
+  }
+};
+router.get('/v1/monitor', requireAuth, monitorCall(req => monitor.list(req.account.id)));
+router.post('/v1/monitor/wallets', requireAuth, monitorCall(req => monitor.watch(req.account.id, req.body || {})));
+router.delete('/v1/monitor/wallets/:id', requireAuth, monitorCall(req => monitor.unwatch(req.account.id, req.params.id)));
+router.get('/v1/monitor/alerts', requireAuth, monitorCall(async req => ({ alerts: await monitor.alerts(req.account.id, { unreadOnly: req.query.unread === '1' }) })));
+router.post('/v1/monitor/alerts/read', requireAuth, monitorCall(req => monitor.markRead(req.account.id, req.body?.ids)));
+
 router.use(require('./trading'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────

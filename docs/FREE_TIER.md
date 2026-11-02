@@ -25,6 +25,16 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | DexScreener | Liquidity, volume, price, token age | No | — |
 | Anthropic | Report writing | Paid per use | Covered by the report price |
 
+## The risk monitor's cost
+
+Each watched wallet gets one fresh approval scan a day (about 18 explorer
+calls and ~15 RPC reads, GoPlus only as the fallback), plus one RPC read per
+spender contract (its EIP-1967 implementation) and a few for stablecoin
+balances. That is about 550 explorer calls per wallet a month: Etherscan's
+free plan (about 100K a day) covers several thousand watched wallets. The
+worker checks at most 10 wallets every 5 minutes, so a burst never hits a
+provider all at once.
+
 ## What's not on free data yet
 
 - **Tax and profit reports:** need full transaction histories and historical

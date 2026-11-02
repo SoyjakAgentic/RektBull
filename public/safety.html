@@ -49,6 +49,24 @@
       <div id="a-result" hidden></div>
     </section>
 
+    <section class="card" id="monitor-card">
+      <h2>Risk monitor <span id="m-unread" class="tag" hidden></span></h2>
+      <p class="muted">RektBull checks your wallets every day and tells you when something changes: a new risky approval, a spender that gets flagged, a contract you approved that has its code replaced, or a stablecoin you hold losing its peg. Every alert says why, and where the facts come from.</p>
+      <div id="m-off" class="small" hidden></div>
+      <div id="m-on" hidden>
+        <div id="m-wallets"></div>
+        <div class="grid">
+          <label class="wide">Watch a wallet<input id="m-wallet" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+          <label>Name (optional)<input id="m-label" maxlength="60" placeholder="e.g. main"></label>
+        </div>
+        <button id="m-add">Watch this wallet</button>
+        <p id="m-msg" class="msg"></p>
+        <h3>Alerts</h3>
+        <div class="row"><button id="m-read" class="link">Mark all as read</button></div>
+        <div id="m-alerts" class="small muted">No alerts yet.</div>
+      </div>
+    </section>
+
     <section class="card" id="account-card">
       <h2>Your account</h2>
       <p class="muted">Sign in with your wallet for 30 free points a month: a quick check is 1 point, an approval cleanup 5. Signing in costs nothing and moves no funds.</p>
@@ -97,5 +115,6 @@
   <script src="/common.js"></script>
   <script src="/safety.js"></script>
   <script src="/approvals.js"></script>
+  <script src="/monitor.js"></script>
 </body>
 </html>

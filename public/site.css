@@ -92,3 +92,11 @@ button.primary .price { color: inherit; opacity: .85; }
 .sev-badge.critical, .sev-badge.high { color: var(--bad); }
 .sev-badge.medium { color: var(--warn); }
 .sev-badge.low { color: var(--ok); }
+
+/* risk monitor */
+.watched { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.alert { border-left: 3px solid var(--line); padding: 6px 0 6px 10px; margin: 8px 0; }
+.alert.critical, .alert.high { border-color: var(--bad); }
+.alert.medium { border-color: var(--warn); }
+.alert.unread .title { font-weight: 600; }
+.alert .when { color: var(--muted); font-size: 12px; }
