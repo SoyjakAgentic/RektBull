@@ -16,8 +16,10 @@ function createApp() {
   app.use(optionalAuth);
   app.use(routes);
 
-  // The trading page and its files (the wallet signs everything; the page holds no key).
+  // The pages and their files (the wallet signs everything; no page holds a key).
   const pub = path.join(__dirname, '..', 'public');
+  app.get('/', (_req, res) => res.redirect(302, '/safety'));
+  app.get('/safety', (_req, res) => res.sendFile(path.join(pub, 'safety.html')));
   app.get('/trade', (_req, res) => res.sendFile(path.join(pub, 'trade.html')));
   app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
   app.use(express.static(pub, { index: false }));

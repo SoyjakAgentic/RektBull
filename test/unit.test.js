@@ -59,6 +59,23 @@ test('sign-in: only the wallet that signed the exact message passes', async () =
   assert.equal(siwe.signedBy(message, '0xdeadbeef', wallet.address), false);
 });
 
+test('token checks list every check that could not run, with its reason', () => {
+  const { notChecked } = require('../src/services/dueDiligence');
+  const out = notChecked({
+    source: { verified: true },
+    trading: { not_checked: 'no 0x API key (ZEROEX_API_KEY)' },
+    goplus: { not_checked: 'GoPlus does not cover this chain' },
+    holders: { source: 'RPC', roles: { not_checked: 'Role holders: timeout' } },
+  }, { not_checked: 'DexScreener: 429' });
+  assert.deepEqual(out, [
+    { check: 'trading', reason: 'no 0x API key (ZEROEX_API_KEY)' },
+    { check: 'goplus', reason: 'GoPlus does not cover this chain' },
+    { check: 'holders.roles', reason: 'Role holders: timeout' },
+    { check: 'market', reason: 'DexScreener: 429' },
+  ]);
+  assert.deepEqual(notChecked({ source: { verified: true } }, { source: 'DexScreener', pairs: 2 }), []);
+});
+
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {
   const mnemonic = ethers.Mnemonic.fromPhrase('test test test test test test test test test test test junk');
   const account = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0");

@@ -80,6 +80,17 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
     return { status: r.status, body: await r.json() };
   };
 
+  // ── The pages ──
+  const home = await fetch(base + '/', { redirect: 'manual' });
+  assert.equal(home.status, 302);
+  assert.equal(home.headers.get('location'), '/safety');
+  for (const page of ['/safety', '/trade']) {
+    const r = await fetch(base + page);
+    assert.equal(r.status, 200, page);
+    assert.match(await r.text(), /<nav class="nav">/);
+  }
+  assert.ok((await call('GET', '/v1/tokens/chains')).body.chains.includes('base'));
+
   // ── Sign in with a wallet ──
   const wallet = ethers.Wallet.createRandom();
   const nonce = await call('POST', '/v1/auth/nonce', { address: wallet.address, chain_id: 8453 });
@@ -94,7 +105,9 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   const accountId = ok.body.account.id;
 
   // ── Free allowance, then 402 ──
+  assert.deepEqual((await call('GET', '/v1/me')).body.free_today.token_quick_check, { per_day: 5, left: 5 });
   for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'free');
+  assert.deepEqual((await call('GET', '/v1/me')).body.free_today.token_quick_check, { per_day: 5, left: 0 });
   const noMoney = await call('POST', '/test/quick');
   assert.equal(noMoney.status, 402);
   assert.equal(noMoney.body.credits_balance_cents, 0);
@@ -107,6 +120,7 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   assert.equal(await credits.balance(accountId), 75);
   assert.equal((await call('POST', '/test/quick-fails')).status, 500);
   assert.equal(await credits.balance(accountId), 75, 'a failed run is refunded');
+  assert.equal((await call('GET', '/v1/me')).body.free_today.token_quick_check.left, 0, 'a refunded credit run gives back credits, not free uses');
   assert.equal((await call('POST', '/test/report')).status, 402, 'a $3 report needs more than 75 cents');
 
   // ── Report is refused before charging when AI isn't configured ──

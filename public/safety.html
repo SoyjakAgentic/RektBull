@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Safety</title>
+  <meta name="description" content="Check a token before you buy it: can it be sold, what does it tax, what can its owner do. Every finding names its source.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <nav class="nav"><a href="/safety" aria-current="page">Safety</a><a href="/trade">Trade</a></nav>
+    <div id="who" class="who">Not signed in</div>
+  </header>
+
+  <main>
+    <section class="card" id="check-card">
+      <h2>Check a token before you buy it</h2>
+      <p class="muted">Can it be sold back? What does it tax? What can its owner change? Who holds it? Every finding names its source, and anything we couldn't check is listed as such.</p>
+      <div class="grid">
+        <label>Chain<select id="chain"></select></label>
+        <label class="wide">Token address
+          <input id="token" placeholder="0x… (or a Solana mint address)" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row">
+        <button id="quick" class="primary">Quick check<span class="price" id="quick-price"></span></button>
+        <button id="report">Full report<span class="price" id="report-price"></span></button>
+      </div>
+      <p id="check-msg" class="msg"></p>
+      <div id="result" hidden></div>
+    </section>
+
+    <section class="card" id="account-card">
+      <h2>Your account</h2>
+      <p class="muted">Sign in with your wallet to get free quick checks every day and to pay from credits. Signing in costs nothing and moves no funds.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" class="primary" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+
+      <div id="account" hidden>
+        <div class="facts">
+          <div>Credits<strong id="balance">–</strong></div>
+          <div>Free quick checks left today<strong id="free-left">–</strong></div>
+          <div>Pass<strong id="pass">none</strong></div>
+        </div>
+
+        <h3>Top up credits with USDT or USDC</h3>
+        <p class="muted small">You're charged only when a check succeeds; a run that fails is given back. Credits don't expire.</p>
+        <div id="topup-off" class="msg bad" hidden></div>
+        <div id="topup-form" class="grid">
+          <label>Chain<select id="t-chain"></select></label>
+          <label>Coin<select id="t-coin"></select></label>
+          <label>Amount (USD)<input id="t-amount" type="number" min="5" step="1" value="10"></label>
+        </div>
+        <button id="t-create">Get a deposit address</button>
+        <div id="invoice" hidden></div>
+        <p id="topup-msg" class="msg"></p>
+
+        <h3>Passes</h3>
+        <p class="muted small">Prepaid from your credits. Nothing renews automatically.</p>
+        <div id="passes" class="row"></div>
+        <p id="pass-msg" class="msg"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small">No account needed: pay per call with <a href="https://www.x402.org/">x402</a> (USDC on Base). <code>POST /v1/tokens/quick-check</code> and <code>POST /v1/tokens/report</code> with <code>{"chain", "token_address"}</code>; prices and payment options at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
+    </section>
+  </main>
+
+  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys.</footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/safety.js"></script>
+</body>
+</html>

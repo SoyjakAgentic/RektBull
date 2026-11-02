@@ -130,4 +130,13 @@ function paidRoute(productId, { validate, run }) {
   };
 }
 
-module.exports = { paidRoute, acquire, paymentRequired };
+/** How much of today's free allowance a signed-in account has left, per product that has one. */
+async function freeLeft(accountId) {
+  const { PRODUCTS } = require('./catalog');
+  const ids = Object.keys(PRODUCTS).filter(id => PRODUCTS[id].kind === 'run' && PRODUCTS[id].free_per_day > 0);
+  const { rows } = await db.query('SELECT product, count FROM free_usage WHERE subject = $1 AND day = $2 AND product = ANY($3)', [`account:${accountId}`, today(), ids]);
+  const used = Object.fromEntries(rows.map(r => [r.product, r.count]));
+  return Object.fromEntries(ids.map(id => [id, { per_day: PRODUCTS[id].free_per_day, left: Math.max(PRODUCTS[id].free_per_day - (used[id] || 0), 0) }]));
+}
+
+module.exports = { paidRoute, acquire, paymentRequired, freeLeft };
