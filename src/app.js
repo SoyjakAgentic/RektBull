@@ -12,7 +12,8 @@ function createApp() {
   app.set('trust proxy', 1); // behind Cloud Run's load balancer
   app.use(helmet());
   app.use(express.json({ limit: '100kb' }));
-  app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false }));
+  // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
+  app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') }));
   app.use(optionalAuth);
   app.use(routes);
 
@@ -21,6 +22,14 @@ function createApp() {
   app.get('/', (_req, res) => res.redirect(302, '/safety'));
   app.get('/safety', (_req, res) => res.sendFile(path.join(pub, 'safety.html')));
   app.get('/extension', (_req, res) => res.sendFile(path.join(pub, 'extension.html')));
+  // The privacy page names who runs RektBull and how to reach them (OPERATOR_NAME, PRIVACY_CONTACT).
+  const privacy = require('fs').readFileSync(path.join(pub, 'privacy.html'), 'utf8');
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  app.get('/privacy.html', (_req, res) => res.redirect(301, '/privacy'));
+  app.get('/privacy', (_req, res) => {
+    const env = require('./config/env');
+    res.type('html').send(privacy.replaceAll('{{OPERATOR}}', esc(env.operatorName)).replaceAll('{{CONTACT}}', esc(env.privacyContact)));
+  });
   app.get('/trade', (_req, res) => res.sendFile(path.join(pub, 'trade.html')));
   app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
   app.use(express.static(pub, { index: false }));

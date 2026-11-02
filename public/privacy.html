@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Privacy</title>
+  <meta name="description" content="What RektBull and its browser extension collect, why, who else sees it, how long it's kept, and how to download or delete it.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <nav class="nav"><a href="/safety">Safety</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
+  </header>
+  <main class="prose">
+    <section class="card">
+      <h1>Privacy</h1>
+      <p class="muted small">Last updated 2 November 2026. RektBull is run by {{OPERATOR}}. Questions or requests: <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</p>
+      <h2>In short</h2>
+      <ul>
+        <li>Your account is your wallet address. We don't ask for your name, and we never see your keys or seed phrase.</li>
+        <li>We keep what each feature needs to work, and no more. No ads, no analytics or tracking scripts, no tracking cookies, and we don't sell data.</li>
+        <li>The browser extension sends us the request your wallet is about to sign and the site asking, only when a site asks to sign, to check it. It doesn't send your browsing.</li>
+        <li>Wallet addresses, approvals and transactions are public on their blockchains. We read public data; nobody can delete what's onchain.</li>
+        <li>You can download everything we hold about your account, and delete your personal data, from the <a href="/safety#account-card">Safety page</a>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>What we collect, and why</h2>
+      <table>
+        <thead><tr><th>When you…</th><th>We keep</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Sign in with your wallet</td><td>Your wallet address; the sign-in message (deleted a day after it expires)</td><td>Your account is your wallet</td></tr>
+          <tr><td>Top up credits, buy a pass</td><td>The deposit address we gave you, the deposits it received (amount, sending address, transaction), your credit balance and history, your passes</td><td>To credit what you paid and keep payment records</td></tr>
+          <tr><td>Check a token, clean up approvals</td><td>The token or wallet address you checked, the result and how it was paid (for pay-per-call with x402, the paying address and transaction)</td><td>To run the check, charge only when it succeeds, and refund it when it fails</td></tr>
+          <tr><td>Use free points or previews</td><td>Monthly counters on your account; for limits on use without an account, a counter keyed by a <strong>hashed</strong> IP address (we don't store the IP address itself)</td><td>To give free use fairly and stop abuse</td></tr>
+          <tr><td>Watch wallets with the risk monitor</td><td>The wallets you watch (and the names you give them), what the last check saw, and the alerts raised</td><td>To tell you what changed since the last check</td></tr>
+          <tr><td>Get alerts by Telegram, email or browser notification</td><td>Your Telegram chat ID and username, or your email address, or your browser's push subscription; which alerts each one gets; delivery records</td><td>To send you alerts, and stop when a channel stops working</td></tr>
+          <tr><td>Use the browser extension</td><td>A link to your account (which you can revoke), when it was last used, and for each check only the kind of request and the chain. <strong>Not</strong> what you were signing or which site asked</td><td>To check requests before you sign, and count your free checks</td></tr>
+          <tr><td>Trade through RektBull</td><td>Your trading safety settings, the trades you were offered and made, positions from them, and the trading permissions you signed</td><td>To build, check and confirm trades, and keep trade records</td></tr>
+          <tr><td>Use the website</td><td>In your browser only: your sign-in and your last paid approval result, for this tab (session storage, cleared when you close it)</td><td>So you stay signed in while you browse and don't pay twice for a result</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Our hosting keeps request logs, including your IP address, for 30 days, for security and to fix faults. Our own logs record errors; some include a wallet address that was being checked.</p>
+    </section>
+
+    <section class="card">
+      <h2>What the browser extension does</h2>
+      <ul>
+        <li>It runs on every site, because any site can ask your wallet to sign. It only reads a request when a site asks your wallet to sign something (a transaction, a signature, a sign-in), and does nothing on pages that don't.</li>
+        <li>For that request it sends RektBull: the request itself, your wallet address, the chain, and the address of the site asking (for example <code>https://app.example</code>, not the full page address). We use them to run the check, and keep only the kind of request and the chain.</li>
+        <li>It keeps your account link and settings in the extension's own storage on your computer.</li>
+        <li>It doesn't read your browsing history, page contents, passwords or form data, and it can't sign anything. Your wallet still shows every request.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Who else sees it</h2>
+      <p class="small">To answer your requests we call these services. Each gets only what that call needs; none gets your email address unless it's the one sending your email.</p>
+      <table>
+        <thead><tr><th>Service</th><th>For</th><th>Gets</th></tr></thead>
+        <tbody>
+          <tr><td>Google Cloud</td><td>Hosting, database, our signing keys (KMS)</td><td>Everything we store, as our host</td></tr>
+          <tr><td>GoPlus Security</td><td>Token, address and phishing-site checks</td><td>Token and contract addresses, wallet addresses being checked, the site address in a pre-sign check</td></tr>
+          <tr><td>Etherscan, Blockscout</td><td>Contract sources and approval history</td><td>Contract and wallet addresses</td></tr>
+          <tr><td>Blockchain nodes (RPC providers)</td><td>Reading the chain, simulating transactions</td><td>Addresses and the transactions being checked or simulated</td></tr>
+          <tr><td>DefiLlama, DexScreener</td><td>Prices and market data</td><td>Token addresses</td></tr>
+          <tr><td>0x, Jupiter</td><td>Trade quotes and sell tests</td><td>Tokens, amounts, and your wallet address for trades you make</td></tr>
+          <tr><td>openchain signature database</td><td>Names of contract functions</td><td>A function's 4-byte code</td></tr>
+          <tr><td>Anthropic</td><td>Writing AI token reports</td><td>The token's check results (no account data)</td></tr>
+          <tr><td>Coinbase (x402 facilitator)</td><td>Pay-per-call payments in USDC</td><td>The payment authorization you sign</td></tr>
+          <tr><td>Telegram, Resend (email), your browser's push service</td><td>Delivering alerts you turned on</td><td>The alert, and your chat ID, email address or push subscription</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>How long we keep it</h2>
+      <ul>
+        <li>Sign-in requests, and linking or email-confirmation codes: deleted a day after they expire.</li>
+        <li>Daily free-use counters (including hashed IP addresses): 40 days.</li>
+        <li>Monthly points and pass counters: 13 months.</li>
+        <li>Alert delivery records: 90 days. Risk monitor alerts: a year.</li>
+        <li>Revoked or expired extension links: 30 days.</li>
+        <li>Hosting request logs: 30 days.</li>
+        <li>Everything else, such as your watched wallets, alert channels and settings: until you delete it or your data.</li>
+        <li>Payment and trade records (credits, top-ups, deposits, passes, paid checks, trades): kept for as long as accounting and tax law requires, tied to your wallet address.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Your choices</h2>
+      <ul>
+        <li><strong>Download your data</strong>: everything we hold about your account, as one file (Safety page → Your account → Your data).</li>
+        <li><strong>Delete your data</strong>: removes your email address, alert channels, watched wallets and alerts, extension links, trading settings and free-use counters. Payment and trade records stay, as above. Stop automatic trading first if it's on.</li>
+        <li>Stop alerts any time: <code>/stop</code> in Telegram, the unsubscribe link in any email, your browser's notification settings, or Remove on the Safety page.</li>
+        <li>Unlink the extension from its popup or from the <a href="/extension">Extension page</a>, or uninstall it.</li>
+        <li>For anything else, including correcting or objecting to what we hold, write to <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Security</h2>
+      <p>RektBull never holds your funds or your keys: your wallet signs everything. Our own signing keys live in a hardware security module (Google Cloud KMS). Traffic is encrypted, secrets are kept out of the code, and every check names where its facts come from.</p>
+      <h2>Children</h2>
+      <p>RektBull is for adults. Don't use it if you're under 18.</p>
+      <h2>Changes</h2>
+      <p>When this page changes, the date at the top changes. If a change means we'd collect something new, we'll say so on the site before it applies.</p>
+    </section>
+  </main>
+  <footer class="muted">RektBull never holds your funds or keys.</footer>
+</body>
+</html>

@@ -22,6 +22,9 @@ const env = {
   siweDomain: process.env.SIWE_DOMAIN || 'rektbull.com',
   siweUri: process.env.SIWE_URI || 'https://rektbull.com',
   // Alerts: where links in alerts point, and the delivery channels (each optional).
+  // Who runs RektBull and how to reach them about privacy (shown on /privacy).
+  operatorName: process.env.OPERATOR_NAME || 'the RektBull team',
+  privacyContact: process.env.PRIVACY_CONTACT || 'privacy@rektbull.com',
   publicUrl: (process.env.PUBLIC_URL || process.env.SIWE_URI || 'https://rektbull.com').replace(/\/$/, ''),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',

@@ -25,6 +25,8 @@ async function main() {
   if ((role === 'worker' || role === 'all') && env.databaseUrl) {
     watcher.start();
     setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);
+    // Deletes data past the periods on the privacy page (src/privacy/retention.js).
+    setInterval(() => require('./privacy/retention').purge().catch(err => logger.warn('retention purge failed', { error: err.message })), 60 * 60 * 1000);
     // The risk monitor: a few due wallets every 5 minutes (each is checked once a day).
     let monitoring = false;
     setInterval(async () => {

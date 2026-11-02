@@ -29,6 +29,15 @@ Migrations run on start.
    `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` and `RPC_URLS_*`.
 6. A Cloud Build trigger on pushes to `main`.
 
+## Privacy page
+
+`/privacy` names who runs RektBull and where privacy requests go: set
+`OPERATOR_NAME` (the person or company responsible) and `PRIVACY_CONTACT`
+(an address someone reads) before launch. The page states what each
+feature keeps and for how long; `src/privacy/retention.js` deletes data on
+those same periods (the worker runs it hourly). Change both together, and
+have the page reviewed by a lawyer for the places you serve.
+
 ## Alerts: Telegram, email, browser push
 
 The risk monitor sends alerts to whatever each user links. Each channel is

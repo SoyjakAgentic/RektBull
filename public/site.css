@@ -100,3 +100,9 @@ button.primary .price { color: inherit; opacity: .85; }
 .alert.medium { border-color: var(--warn); }
 .alert.unread .title { font-weight: 600; }
 .alert .when { color: var(--muted); font-size: 12px; }
+
+/* long-form pages (privacy) */
+.prose h1 { font-size: 22px; margin: 0 0 6px; }
+.prose li { margin: 4px 0; }
+.prose table td:first-child { font-weight: 600; width: 30%; }
+@media (max-width: 520px) { .prose table, .prose thead, .prose tbody, .prose tr, .prose td, .prose th { display: block; width: auto !important; } .prose thead { display: none; } .prose tr { border-bottom: 1px solid var(--line); padding: 6px 0; } .prose td { border: none; padding: 2px 0; } }

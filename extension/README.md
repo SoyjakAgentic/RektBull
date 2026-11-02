@@ -45,9 +45,10 @@ wallet. Manifest V3; Chrome, Brave and Edge (Chromium).
    - **storage**: the link token and settings;
    - **alarms**: refreshing the unread-alerts badge every 30 minutes;
    - **host access to rektbull.com**: the API.
-4. Privacy: the extension sends RektBull the request being signed, the
-   wallet address, the chain and the site's origin, only when a signing
-   request is made, to run the check. Nothing else from browsing, no
-   analytics, nothing sold. Publish this (with how to unlink and delete) at
-   rektbull.com/privacy and link it in the listing.
+4. Privacy policy URL for the listing: **https://rektbull.com/privacy**
+   (`public/privacy.html`; set `OPERATOR_NAME` and `PRIVACY_CONTACT` first).
+   In the store's privacy form: it handles "website content" (only the
+   signing request and the site's origin, when a site asks to sign) and
+   "authentication information" (the account link); not sold, not used for
+   anything but the check, not used for creditworthiness or ads.
 5. Bump `version` in `manifest.json` for every upload.

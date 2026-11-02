@@ -63,6 +63,21 @@ router.get('/v1/me', requireAuth, async (req, res) => {
   });
 });
 
+// ── Your data: download it, or delete what can be deleted ──
+const myData = require('../privacy/myData');
+router.get('/v1/me/export', requireAuth, async (req, res) => {
+  res.set('content-disposition', 'attachment; filename="rektbull-my-data.json"');
+  res.json(await myData.exportAll(req.account));
+});
+router.post('/v1/me/delete', requireAuth, async (req, res) => {
+  try {
+    res.json(await myData.deleteMine(req.account, req.body || {}));
+  } catch (err) {
+    if (err instanceof myData.DataRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+});
+
 // ── Credits, invoices and passes ────────────────────────────────────────────
 router.get('/v1/credits', requireAuth, async (req, res) => {
   res.json({ balance_cents: await credits.balance(req.account.id), history: await credits.history(req.account.id) });
@@ -103,7 +118,7 @@ const PREVIEWS_PER_DAY = { account: 10, anonymous: 3 };
 router.post('/v1/approvals/preview', async (req, res) => {
   const input = approvals.parseOwner(req.body);
   if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
-  const [subject, limit] = req.account ? [`account:${req.account.id}`, PREVIEWS_PER_DAY.account] : [`ip:${req.ip}`, PREVIEWS_PER_DAY.anonymous];
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, PREVIEWS_PER_DAY.account] : [require('../privacy/ipKey').ipSubject(req.ip), PREVIEWS_PER_DAY.anonymous];
   if (!(await takeAllowance(subject, 'approval_preview', limit))) {
     return res.status(429).json({ error: 'daily_limit', message: `Free previews are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
   }
@@ -171,6 +186,7 @@ const presign = require('../services/presign');
 router.post('/v1/presign/check', paidRoute('presign_check', {
   validate: req => { try { return presign.parse(req.body); } catch (err) { if (err instanceof presign.PresignRefused) return { error: err.message }; throw err; } },
   run: input => presign.check(input),
+  record: input => ({ method: input.method, chain_id: input.chainId }), // not what was signed, nor where
 }));
 
 // ── Linking the browser extension ──
