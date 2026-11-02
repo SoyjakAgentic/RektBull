@@ -10,12 +10,15 @@
  * holds a delegation from it. Each test below is something a hacked RektBull
  * (or anyone else) might try, and must fail.
  */
-const assert = require('node:assert/strict');
-const hre = require('hardhat');
-const { ethers } = hre;
-const { DELEGATOR_CONTRACTS } = require('@metamask/delegation-deployments');
-const abis = require('@metamask/delegation-abis');
-const core = require('@metamask/delegation-core');
+import assert from 'node:assert/strict';
+import { describe, it, before } from 'node:test';
+import { network } from 'hardhat';
+import { DELEGATOR_CONTRACTS } from '@metamask/delegation-deployments';
+import * as abis from '@metamask/delegation-abis';
+import * as core from '@metamask/delegation-core';
+
+// A fresh copy of Base Sepolia for this file (see hardhat.config.js).
+const { ethers } = await network.create();
 
 const MM = DELEGATOR_CONTRACTS['1.3.0'][84532];
 const DAY = 24 * 60 * 60;

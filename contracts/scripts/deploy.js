@@ -11,13 +11,15 @@
  *
  * The test user and session key are throwaway wallets made by this script.
  */
-const fs = require('fs');
-const path = require('path');
-const hre = require('hardhat');
-const { ethers } = hre;
-const { DELEGATOR_CONTRACTS } = require('@metamask/delegation-deployments');
-const abis = require('@metamask/delegation-abis');
-const core = require('@metamask/delegation-core');
+import fs from 'node:fs';
+import path from 'node:path';
+import { network } from 'hardhat';
+import { DELEGATOR_CONTRACTS } from '@metamask/delegation-deployments';
+import * as abis from '@metamask/delegation-abis';
+import * as core from '@metamask/delegation-core';
+
+// The network chosen with --network (default: a local copy of Base Sepolia).
+const { ethers } = await network.create();
 
 const CHAIN_ID = 84532;
 const MM = DELEGATOR_CONTRACTS['1.3.0'][CHAIN_ID];
@@ -113,10 +115,10 @@ async function main() {
     contracts: { router: router.target, testUSDC: USDC.target, testWETH: WETH.target, usdcFeed: usdcFeed.target, wethFeed: wethFeed.target, mockVenue: venue.target },
     demo: { user: user.address, sessionKey: session.address, upgradeTx: upgrade.hash, tradeTx: trade.hash, attackRefused: !!refused },
   };
-  const file = path.join(__dirname, '..', 'deployments', 'base-sepolia.json');
+  const file = path.join(import.meta.dirname, '..', 'deployments', process.env.DEPLOY_OUT || 'base-sepolia.json');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
-  console.log(`\nwritten to deployments/base-sepolia.json\nexplorer: https://sepolia.basescan.org/address/${router.target}`);
+  console.log(`\nwritten to deployments/${path.basename(file)}\nexplorer: https://sepolia.basescan.org/address/${router.target}`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

@@ -43,6 +43,17 @@ npm install
 npm test        # runs on a copy of Base Sepolia, against MetaMask's real deployed contracts
 ```
 
+Built with **Hardhat 3** (ES modules: `"type": "module"`, `hardhat.config.js`
+uses `defineConfig`). The forked copy of Base Sepolia is the `default`
+network; tests and scripts get it with `await network.create()`, and a
+standalone node is `npx hardhat --network default node`. Tests use Node's
+built-in test runner (`node:test`) through `@nomicfoundation/hardhat-node-test-runner`.
+
+Known audit findings with no fix released yet (Nov 2026): `zod` inside
+Hardhat 3 (memory use when validating very large input; here it only
+validates our own config), and `uuid` inside MetaMask's delegation library
+(only affects a calling style that library doesn't use).
+
 `test/breakIt.test.js` tries every way a hacked RektBull could take funds or
 break a limit; all must fail. Set `BASE_SEPOLIA_RPC_URL` to use your own RPC
 instead of the public one.

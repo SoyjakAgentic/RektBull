@@ -27,7 +27,7 @@ const step = m => { if (process.env.E2E_DEBUG) console.error('STEP', m); };
 function startNode() {
   return new Promise((resolve, reject) => {
     // Its own process group, so stopping it also stops the node npx starts.
-    const node = spawn('npx', ['hardhat', 'node', '--port', String(PORT)], { cwd: CONTRACTS, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const node = spawn('npx', ['hardhat', '--network', 'default', 'node', '--port', String(PORT)], { cwd: CONTRACTS, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     node.stop = () => { try { process.kill(-node.pid, 'SIGTERM'); } catch { /* already gone */ } node.stdout.destroy(); node.stderr.destroy(); };
     const timer = setTimeout(() => reject(new Error('hardhat node did not start')), 120000);
     node.stdout.on('data', d => { if (/Started HTTP/.test(String(d))) { clearTimeout(timer); resolve(node); } });
