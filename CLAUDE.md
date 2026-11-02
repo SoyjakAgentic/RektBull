@@ -1,10 +1,10 @@
 # RektBull: working rules
 
 - **Crypto payments only.** No card processors (no Stripe). Rails: x402 (USDC on
-  Base), USDT/USDC credit top-ups, prepaid passes, and claim fees (a share of
-  claimed tokens, in a plain transfer the user signs next to the claim; see
-  docs/PAYMENTS.md). No recurring pulls and no token approvals asked of users
-  for billing.
+  Base), USDT/USDC credit top-ups, prepaid passes, and in-kind fees on claims
+  and yield moves (a share of what's claimed or moved, in a plain transfer the
+  user signs next to it; see docs/PAYMENTS.md). No recurring pulls and no
+  token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the
   server must never receive an xprv or mnemonic.
@@ -17,9 +17,9 @@
   trade service.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
-  free uses on failure, settle x402 only after the run succeeds. Claim fees
-  are a share of what a simulated claim delivers, bundled with the claim so
-  they're paid only if it works (where the wallet can bundle).
+  free uses on failure, settle x402 only after the run succeeds. In-kind fees
+  are a share of what a simulated claim delivers or a move moves, bundled with
+  it so they're paid only if it works (where the wallet can bundle).
 - **Free data plans first.** Every external data call goes through
   `providers/usage.track()` and, where it can be reused, `lib/cache.cached()`.
   Add new providers the same way, with a fallback where one exists.

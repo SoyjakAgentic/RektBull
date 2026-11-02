@@ -110,42 +110,6 @@
   $('c-cancel').addEventListener('click', () => { $('claim-card').hidden = true; prepared = null; });
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  async function receipt(hash) {
-    for (let k = 0; k < 90; k++) {
-      const r = await request('eth_getTransactionReceipt', [hash]).catch(() => null);
-      if (r) return r;
-      await sleep(2000);
-    }
-    throw new Error('The transaction hasn\'t confirmed yet. It may still go through; check your wallet.');
-  }
-  const unsupported = err => err && err.code !== 4001 && (err.code === 4200 || err.code === -32601 || err.code === 5700 || err.code === 5710 || /not supported|does not exist|unsupported|method not found/i.test(err.message || ''));
-
-  /** Sends the calls: as one bundle where the wallet can (all or nothing), otherwise one at a time, claim first. */
-  async function send(p) {
-    try {
-      const sent = await request('wallet_sendCalls', [{ version: '2.0.0', chainId: p.chain_id, from: state.address, atomicRequired: p.atomic, calls: p.calls.map(c => ({ to: c.to, data: c.data, value: c.value })) }]);
-      const id = typeof sent === 'string' ? sent : sent?.id;
-      for (let k = 0; k < 90; k++) {
-        const s = await request('wallet_getCallsStatus', [id]);
-        const code = Number(s?.status);
-        if (code === 200 || s?.status === 'CONFIRMED') return (s.receipts || []).map(r => r.transactionHash);
-        if (code >= 400) throw new Error('The wallet says the claim failed.');
-        await sleep(2000);
-      }
-      throw new Error('The claim hasn\'t confirmed yet. Check your wallet.');
-    } catch (err) {
-      if (!unsupported(err)) throw err;
-    }
-    const hashes = [];
-    for (const c of p.calls) {
-      const hash = await request('eth_sendTransaction', [{ from: state.address, to: c.to, data: c.data, value: c.value }]);
-      hashes.push(hash);
-      say('c-msg', `Sent ${hashes.length} of ${p.calls.length}. Waiting for it to confirm…`);
-      const r = await receipt(hash);
-      if (Number(r.status) !== 1) throw new Error(hashes.length === 1 ? 'The claim failed onchain. Nothing else was sent.' : 'A fee transfer failed onchain; your claim went through.');
-    }
-    return hashes;
-  }
 
   $('c-send').addEventListener('click', async () => {
     const p = prepared;
@@ -156,7 +120,7 @@
     try {
       await switchChain(p.chain_id);
       say('c-msg', 'Check your wallet: it shows the claim and the fee before you sign.');
-      const hashes = await send(p);
+      const hashes = await window.RB.sendCalls(p, text => say('c-msg', text));
       say('c-msg', 'Confirming what arrived…');
       let done = null;
       for (let k = 0; k < 10; k++) {

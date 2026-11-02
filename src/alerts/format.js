@@ -24,12 +24,14 @@ function message(alert) {
     `Wallet ${short(alert.wallet)}`,
     ...reasons(alert),
   ];
-  const url = alert.kind === 'depeg' ? `${env.publicUrl}/safety#monitor-card` : reviewUrl(alert);
+  const yieldRisk = alert.kind === 'yield_risk';
+  const url = alert.kind === 'depeg' ? `${env.publicUrl}/safety#monitor-card`
+    : yieldRisk ? `${env.publicUrl}/find?wallet=${encodeURIComponent(alert.wallet)}#yield-card` : reviewUrl(alert);
   return {
     subject: `RektBull ${alert.severity === 'info' ? '' : `${SEVERITY[alert.severity]} `}alert: ${alert.title}`.slice(0, 150),
     text: lines.join('\n'),
     url,
-    action: alert.kind === 'depeg' ? 'Open RektBull' : 'Review and revoke',
+    action: alert.kind === 'depeg' ? 'Open RektBull' : yieldRisk ? 'Review and withdraw' : 'Review and revoke',
   };
 }
 

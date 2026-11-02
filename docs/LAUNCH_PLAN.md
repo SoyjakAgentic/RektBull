@@ -30,8 +30,10 @@ are built before we deploy. Each is its own PR, in this order unless we change i
    transfer the user signs with the claim. At deploy: `CLAIM_FEE_WALLET_EVM`
    (section 4), and add the live Merkle airdrops worth covering
    (`POST /v1/admin/airdrops`; Merkl rewards need nothing).
-2. **Find money: yield proposals** (the agent proposes, the user approves and
-   signs). Needs the legal review in section 7 before it goes live.
+2. ✅ **Find money: yield proposals** (`/find`, Safety Pro; 0.1% per move).
+   At deploy: `YIELD_FEE_WALLET_EVM` (or it uses the claim fee wallet).
+   Needs the legal review in section 7 before it goes live. Next: automatic
+   rebalancing (the Yield Router and session keys), built but switched off.
 3. **Save money: governance assistant.**
 4. **Site desks** from [SCOPE.md](SCOPE.md) section 5: Home, Discover,
    Markets, Opportunities, Portfolio, Research, Agents, Developers.
@@ -126,7 +128,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `OPERATOR_NAME`, `PRIVACY_CONTACT` | ✔ | | The person or company responsible; an address someone reads |
 | `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` | ✔ | ✔ | Section 4; `ethereum,bsc,base` |
 | `X402_PAY_TO` | ✔ | | Section 4 |
-| `CLAIM_FEE_WALLET_EVM` | ✔ | | Section 4 |
+| `CLAIM_FEE_WALLET_EVM`, `YIELD_FEE_WALLET_EVM` | ✔ | | Section 4 |
 | `ADMIN_WALLETS` | ✔ | | Your address |
 | `RPC_URLS_ETHEREUM`, `_BASE`, `_BSC`, `_ARBITRUM`, `_OPTIMISM`, `_POLYGON`, `_SOLANA` | ✔ | ✔ | Your endpoints. They carry API keys: restrict them to RektBull's use in the provider's dashboard |
 | `PROVIDER_DAILY_LIMITS` | ✔ | ✔ | Just under each free plan's daily limit (see `.env.example`) |

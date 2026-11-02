@@ -63,6 +63,8 @@ const env = {
   // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
   // transfer the user signs next to the claim (receive-only wallet; unset = no fee).
   claimFeeWalletEvm: (process.env.CLAIM_FEE_WALLET_EVM || '').toLowerCase(),
+  // The 0.1% yield move fee goes here (defaults to the claim fee wallet).
+  yieldFeeWalletEvm: (process.env.YIELD_FEE_WALLET_EVM || '').toLowerCase(),
 
   // Payments: x402 (pay per call in USDC on Base)
   x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),
