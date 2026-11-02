@@ -133,6 +133,39 @@ router.delete('/v1/monitor/wallets/:id', requireAuth, monitorCall(req => monitor
 router.get('/v1/monitor/alerts', requireAuth, monitorCall(async req => ({ alerts: await monitor.alerts(req.account.id, { unreadOnly: req.query.unread === '1' }) })));
 router.post('/v1/monitor/alerts/read', requireAuth, monitorCall(req => monitor.markRead(req.account.id, req.body?.ids)));
 
+// ── Where alerts go: Telegram, email, browser push ──
+const alertChannels = require('../alerts/channels');
+const alertDispatch = require('../alerts/dispatch');
+const channelCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof alertChannels.ChannelRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/alerts/channels', requireAuth, channelCall(req => alertChannels.list(req.account.id)));
+router.post('/v1/alerts/channels/telegram', requireAuth, channelCall(req => alertChannels.startTelegram(req.account.id)));
+router.post('/v1/alerts/channels/email', requireAuth, channelCall(req => alertChannels.startEmail(req.account.id, req.body?.email)));
+router.post('/v1/alerts/channels/push', requireAuth, channelCall(req => alertChannels.addPush(req.account.id, req.body?.subscription, req.body?.label)));
+router.patch('/v1/alerts/channels/:id', requireAuth, channelCall(req => alertChannels.update(req.account.id, req.params.id, req.body || {})));
+router.delete('/v1/alerts/channels/:id', requireAuth, channelCall(req => alertChannels.remove(req.account.id, req.params.id)));
+router.post('/v1/alerts/test', requireAuth, channelCall(req => alertDispatch.sendTest(req.account.id)));
+// Telegram calls this when someone starts or stops the bot (secret header checked).
+router.post('/v1/telegram/webhook', channelCall(req => alertChannels.telegramUpdate(req.headers, req.body)));
+// Links from emails: they land on the page with the outcome.
+router.get('/v1/alerts/confirm-email', async (req, res) => {
+  const ok = await alertChannels.confirmEmail(req.query.code);
+  res.redirect(302, `/safety?email=${ok ? 'confirmed' : 'expired'}#monitor-card`);
+});
+const unsubscribe = async (req, res) => {
+  const ok = await alertChannels.unsubscribe(req.query.c, req.query.t);
+  if (req.method === 'POST') return res.status(ok ? 200 : 400).json({ ok });
+  res.redirect(302, `/safety?email=${ok ? 'unsubscribed' : 'bad-link'}#monitor-card`);
+};
+router.get('/v1/alerts/unsubscribe', unsubscribe);
+router.post('/v1/alerts/unsubscribe', unsubscribe); // one-click unsubscribe (RFC 8058)
+
 router.use(require('./trading'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────

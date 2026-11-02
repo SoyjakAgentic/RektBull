@@ -32,6 +32,13 @@ async function main() {
       monitoring = true;
       try { await require('./services/monitor').tick(); } catch (err) { logger.error('monitor tick failed', { error: err.message }); } finally { monitoring = false; }
     }, 5 * 60 * 1000);
+    // Alerts out to Telegram, email and browser push, every 20 seconds.
+    let sending = false;
+    setInterval(async () => {
+      if (sending) return;
+      sending = true;
+      try { await require('./alerts/dispatch').tick(); } catch (err) { logger.error('alert delivery tick failed', { error: err.message }); } finally { sending = false; }
+    }, 20 * 1000);
     logger.info('worker started: deposit watcher and risk monitor', { chains: env.paymentChains });
   }
   if ((role === 'trade' || role === 'all') && env.databaseUrl) {

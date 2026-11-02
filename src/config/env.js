@@ -21,6 +21,16 @@ const env = {
   jwtSecret: process.env.JWT_SECRET || '',
   siweDomain: process.env.SIWE_DOMAIN || 'rektbull.com',
   siweUri: process.env.SIWE_URI || 'https://rektbull.com',
+  // Alerts: where links in alerts point, and the delivery channels (each optional).
+  publicUrl: (process.env.PUBLIC_URL || process.env.SIWE_URI || 'https://rektbull.com').replace(/\/$/, ''),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',
+  telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || '',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'RektBull <alerts@rektbull.com>',
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || '',
+  vapidSubject: process.env.VAPID_SUBJECT || 'mailto:alerts@rektbull.com',
   adminWallets: list(process.env.ADMIN_WALLETS).map(a => a.toLowerCase()),
 
   // AI. The model is a setting, so changing it never needs a code change.

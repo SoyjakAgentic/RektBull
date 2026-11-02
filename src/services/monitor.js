@@ -155,6 +155,7 @@ async function check(row) {
     );
     if (rows.length) raised.push({ id: rows[0].id, ...a });
   }
+  if (raised.length) await require('../alerts/dispatch').enqueue(raised.map(a => a.id)); // to Telegram, email, push
   await db.query(
     `UPDATE monitored_wallets SET snapshot = $2, last_checked_at = now(), last_error = NULL,
        next_check_at = now() + make_interval(hours => $3) WHERE id = $1`,
