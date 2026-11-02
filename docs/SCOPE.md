@@ -105,6 +105,10 @@ comes first, one PR per step:
 3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). ✅ Also as a MetaMask Snap (`snap/`), showing the check in MetaMask's confirmation screen; it needs MetaMask's allowlisting (network access) before regular MetaMask installs it.
 4. Airdrop and unclaimed-funds finder (ported from Soyjak).
 
+**Deployment comes after the planned desks** (decided 2026-11-02): see
+[LAUNCH_PLAN.md](LAUNCH_PLAN.md) for the build order before launch and the
+deployment runbook.
+
 ✅ Also built ahead of step 3: the **risk monitor** (Safety Pro), because
 it is what makes the pass worth renewing. Alerts reach users on Telegram,
 by email and as browser notifications, so nobody has to visit the site.

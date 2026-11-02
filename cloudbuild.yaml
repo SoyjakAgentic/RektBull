@@ -1,12 +1,19 @@
-# Builds one image and deploys it as three Cloud Run services:
-#   rektbull-api     SERVICE_ROLE=web     (scales with traffic; no KMS access)
-#   rektbull-worker  SERVICE_ROLE=worker  (one always-on instance: the deposit watcher)
+# Builds one image and deploys it as Cloud Run services:
+#   rektbull-api     SERVICE_ROLE=web     (scales with traffic; serves rektbull.com and /v1; no KMS access)
+#   rektbull-worker  SERVICE_ROLE=worker  (one always-on instance: deposit watcher, risk monitor,
+#                                          alert delivery, data retention)
 #   rektbull-trade   SERVICE_ROLE=trade   (one always-on instance, its own service account:
 #                                          the only identity allowed to sign with RektBull's KMS keys)
-# Secrets come from Secret Manager; see docs/DEPLOY.md.
+#                    Deployed only when _DEPLOY_TRADE=true. The launch is the Safety desk alone
+#                    (docs/LAUNCH_PLAN.md), so it stays off until the trade desk is resumed.
+#
+# Secrets come from Secret Manager (every one named here must exist; docs/LAUNCH_PLAN.md).
+# Other settings are set on each service once and kept: --update-env-vars only sets
+# SERVICE_ROLE, where --set-env-vars would wipe them on every deploy.
 substitutions:
   _REGION: us-central1
   _REPO: rektbull
+  _DEPLOY_TRADE: 'false'
 steps:
   - name: gcr.io/cloud-builders/docker
     args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA', '.']
@@ -21,8 +28,9 @@ steps:
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA
       - --region=${_REGION}
       - --allow-unauthenticated
-      - --set-env-vars=SERVICE_ROLE=web
-      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ANTHROPIC_API_KEY=rektbull-anthropic-api-key:latest,CDP_API_KEY_ID=rektbull-cdp-api-key-id:latest,CDP_API_KEY_SECRET=rektbull-cdp-api-key-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest
+      - --service-account=rektbull-api@$PROJECT_ID.iam.gserviceaccount.com
+      - --update-env-vars=SERVICE_ROLE=web
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ANTHROPIC_API_KEY=rektbull-anthropic-api-key:latest,CDP_API_KEY_ID=rektbull-cdp-api-key-id:latest,CDP_API_KEY_SECRET=rektbull-cdp-api-key-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,ZEROEX_API_KEY=rektbull-zeroex-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,TELEGRAM_WEBHOOK_SECRET=rektbull-telegram-webhook-secret:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -35,22 +43,24 @@ steps:
       - --min-instances=1
       - --max-instances=1
       - --no-cpu-throttling
-      - --set-env-vars=SERVICE_ROLE=worker
-      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
+      - --service-account=rektbull-worker@$PROJECT_ID.iam.gserviceaccount.com
+      - --update-env-vars=SERVICE_ROLE=worker
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - rektbull-trade
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA
-      - --region=${_REGION}
-      - --no-allow-unauthenticated
-      - --min-instances=1
-      - --max-instances=1
-      - --no-cpu-throttling
-      - --service-account=rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com
-      - --set-env-vars=SERVICE_ROLE=trade
-      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
+      - -c
+      - |
+        if [ "${_DEPLOY_TRADE}" != "true" ]; then echo "rektbull-trade not deployed (_DEPLOY_TRADE=${_DEPLOY_TRADE})"; exit 0; fi
+        gcloud run deploy rektbull-trade \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA \
+          --region=${_REGION} \
+          --no-allow-unauthenticated \
+          --min-instances=1 \
+          --max-instances=1 \
+          --no-cpu-throttling \
+          --service-account=rektbull-trade@$PROJECT_ID.iam.gserviceaccount.com \
+          --update-env-vars=SERVICE_ROLE=trade \
+          --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rektbull:$SHORT_SHA'

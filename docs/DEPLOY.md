@@ -1,5 +1,9 @@
 # Deploying
 
+*The order to do all this in, who does each step, and the launch smoke test:
+[LAUNCH_PLAN.md](LAUNCH_PLAN.md). The launch is the Safety desk alone, so
+`rektbull-trade` isn't deployed (`_DEPLOY_TRADE=false`).*
+
 One Docker image, three Cloud Run services (`cloudbuild.yaml`):
 
 | Service | Role | Scaling |
@@ -16,17 +20,15 @@ Migrations run on start.
    and billing are apart from Soyjak's.
 2. **Postgres**: Cloud SQL (small instance) or a free Neon/Supabase plan to start.
 3. **Artifact Registry** repository named `rektbull` in the region in `cloudbuild.yaml`.
-4. **Secrets** in Secret Manager, named as in `cloudbuild.yaml`:
-   `rektbull-database-url`, `rektbull-jwt-secret`,
-   `rektbull-anthropic-api-key`, `rektbull-cdp-api-key-id`,
-   `rektbull-cdp-api-key-secret`, `rektbull-etherscan-api-key`,
-   `rektbull-blockscout-api-key`. The worker only needs the database URL and
-   JWT secret.
+4. **Secrets** in Secret Manager, named as in `cloudbuild.yaml` (the full
+   list, and which service reads each, is in [LAUNCH_PLAN.md](LAUNCH_PLAN.md)
+   section 4). Every secret named there must exist, or the deploy fails.
 5. Non-secret settings (`X402_PAY_TO`, `CRYPTO_DEPOSIT_XPUB`,
-   `PAYMENT_CHAINS`, `RPC_URLS_*`, `PROVIDER_DAILY_LIMITS`, `ADMIN_WALLETS`)
-   as environment variables on the services. `RPC_URLS_*` hold API keys in
-   their URLs, so treat those as secrets too. The worker needs
-   `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` and `RPC_URLS_*`.
+   `PAYMENT_CHAINS`, `RPC_URLS_*`, `PROVIDER_DAILY_LIMITS`, `ADMIN_WALLETS`,
+   `PUBLIC_URL`, `SIWE_*`, …) as environment variables on the services, set
+   once with `gcloud run services update --update-env-vars`. Deploys keep them:
+   `cloudbuild.yaml` only updates `SERVICE_ROLE`. `RPC_URLS_*` hold API keys
+   in their URLs, so restrict those keys in the provider's dashboard.
 6. A Cloud Build trigger on pushes to `main`.
 
 ## Privacy page
@@ -78,8 +80,10 @@ user sees why.
 
 ## Domain: rektbull.com
 
-- Map `api.rektbull.com` to `rektbull-api` (Cloud Run domain mapping, or a
-  load balancer), and keep `rektbull.com` for the website.
+- Map `rektbull.com` to `rektbull-api` (Cloud Run domain mapping, or a load
+  balancer). The same service serves the website and the API under `/v1`,
+  and the extension and the Snap call `https://rektbull.com`. Redirect
+  `www.rektbull.com` to it.
 - Register `rektbull.app` and redirect it to `rektbull.com`.
 - **Email authentication before any alert email goes out:** SPF, DKIM and
   DMARC records for `rektbull.com` (start DMARC at `p=quarantine`). For a
