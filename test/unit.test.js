@@ -128,6 +128,49 @@ test('sign-in: smart wallets are checked with EIP-1271 if deployed, EIP-6492 if 
   }
 });
 
+test('explorer logs: paged by block range, without duplicates, and incomplete when pages run out', async () => {
+  const explorer = require('../src/providers/explorer');
+  const real = explorer.explorerGet;
+  const log = (block, i) => ({ blockNumber: '0x' + block.toString(16), logIndex: '0x' + i.toString(16), transactionHash: '0x' + String(block).padStart(64, '0'), topics: [] });
+  const seen = [];
+  try {
+    // 1,000 logs ending in block 50, then the rest of block 50 again plus two more.
+    explorer.explorerGet = async (chain, params) => {
+      seen.push(params.fromBlock);
+      if (params.fromBlock === 0) return { status: '1', result: Array.from({ length: 1000 }, (_, i) => log(i < 999 ? 1 + Math.floor(i / 25) : 50, i)) };
+      return { status: '1', result: [log(50, 999), log(50, 1000), log(51, 0)] };
+    };
+    const out = await explorer.explorerLogs('base', { topic0: '0xaa', topic1: '0xbb' });
+    assert.deepEqual(seen, [0, 50]);
+    assert.equal(out.logs.length, 1002, 'the repeated log is counted once');
+    assert.equal(out.complete, true);
+
+    explorer.explorerGet = async () => ({ status: '1', result: Array.from({ length: 1000 }, (_, i) => log(7, i)) });
+    const capped = await explorer.explorerLogs('base', { topic0: '0xaa' }, { maxPages: 2 });
+    assert.equal(capped.complete, false, 'still more when the pages ran out');
+
+    explorer.explorerGet = async () => ({ status: '0', message: 'No records found', result: [] });
+    assert.deepEqual(await explorer.explorerLogs('base', { topic0: '0xaa' }), { logs: [], complete: true });
+    explorer.explorerGet = async () => ({ status: '0', message: 'NOTOK', result: 'Max rate limit reached' });
+    await assert.rejects(explorer.explorerLogs('base', { topic0: '0xaa' }), /Max rate limit reached/);
+  } finally {
+    explorer.explorerGet = real;
+  }
+});
+
+test('approval cleanup: input checks, and known contracts rate low even when unlimited', () => {
+  const approvals = require('../src/services/approvals');
+  assert.match(approvals.parseOwner({ wallet: '0x123' }).error, /wallet address/);
+  assert.equal(approvals.parseOwner({ wallet: '0x' + 'AB'.repeat(20) }).owner, '0x' + 'ab'.repeat(20));
+  const p2 = approvals.PERMIT2;
+  const r = approvals.rate({ kind: 'erc20', unlimited: true }, { address: p2, wallet: false, risk: { source: 'GoPlus', known: true, open_source: true, trusted: true } });
+  assert.equal(r.severity, 'low');
+  assert.ok(r.reasons.some(x => x.source === 'RektBull\'s list of known contracts'));
+  const unknown = approvals.rate({ kind: 'erc20', unlimited: true }, { address: '0x' + '12'.repeat(20), wallet: false, risk: { not_checked: 'GoPlus: timeout' } });
+  assert.equal(unknown.severity, 'medium', 'when we couldn\'t check who it is, it is never rated low');
+  assert.ok(unknown.reasons.some(x => /Couldn't check who it is: GoPlus: timeout/.test(x.text)));
+});
+
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {
   const mnemonic = ethers.Mnemonic.fromPhrase('test test test test test test test test test test test junk');
   const account = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0");

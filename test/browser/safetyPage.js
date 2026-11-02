@@ -46,6 +46,39 @@ Object.assign(process.env, {
     written_by: 'test-model',
   });
   require('../../src/ai/claude').available = () => true;
+
+  // Approval cleanup: the service is a stand-in here (test/approvals.e2e.js runs the real one on a chain).
+  const approvalsSvc = require('../../src/services/approvals');
+  const owner0 = { value: null };
+  const P2 = approvalsSvc.PERMIT2;
+  const appr = (id, kind, severity, extra) => ({
+    id, kind, severity, recommended: severity !== 'low', found_by: ['explorer logs'], last_approved_at: '2025-01-02T00:00:00.000Z',
+    token: { address: '0x' + 'aa'.repeat(20), symbol: 'USDC', decimals: 6 }, spender: { address: '0x' + 'dd'.repeat(20), label: null, is_wallet: true },
+    allowance: { raw: '1', unlimited: true, amount: 'unlimited' }, balance: '250.0', value_at_risk_usd: 250, reasons: [], ...extra,
+  });
+  const cleanupResult = () => {
+    const approvalsList = [
+      appr('a1', 'erc20', 'critical', { reasons: [{ text: 'Flagged for phishing.', source: 'GoPlus (data from SlowMist)' }, { text: 'It\'s a plain wallet, not a contract.', source: 'RPC (no contract code at the address)' }] }),
+      appr('p1', 'permit2', 'high', { spender: { address: '0x' + 'e1'.repeat(20), label: null, is_wallet: true }, allowance: { raw: '5', unlimited: false, amount: '5.0' }, value_at_risk_usd: 5, expires_at: '2027-01-01T00:00:00.000Z', reasons: [{ text: 'It\'s a plain wallet.', source: 'RPC' }] }),
+      appr('p2', 'permit2', 'high', { spender: { address: '0x' + 'e2'.repeat(20), label: null, is_wallet: true }, allowance: { raw: '7', unlimited: false, amount: '7.0' }, value_at_risk_usd: 7, reasons: [{ text: 'It\'s a plain wallet.', source: 'RPC' }] }),
+      appr('k1', 'erc20', 'low', { spender: { address: P2, label: 'Uniswap Permit2', is_wallet: false }, value_at_risk_usd: 250, reasons: [{ text: 'Known: Uniswap Permit2.', source: 'RektBull\'s list of known contracts' }] }),
+    ];
+    return {
+      owner: owner0.value, checked_at: new Date().toISOString(),
+      chains: [
+        { chain: 'base', chain_id: 8453, read: true, approvals: approvalsList, not_checked: [{ check: 'GoPlus approvals', reason: 'GoPlus: timeout' }], revoke_calls: [
+          { chain_id: 8453, to: '0x' + 'aa'.repeat(20), data: '0x095ea7b3' + 'a1', value: '0x0', revokes: ['a1'], label: 'Revoke USDC' },
+          { chain_id: 8453, to: P2, data: '0xcc53287f' + 'p2', value: '0x0', revokes: ['p1', 'p2'], label: 'Revoke 2 Permit2 allowances' },
+          { chain_id: 8453, to: '0x' + 'aa'.repeat(20), data: '0x095ea7b3' + 'k1', value: '0x0', revokes: ['k1'], label: 'Revoke USDC for Permit2' },
+        ] },
+        { chain: 'ethereum', chain_id: 1, read: false, reason: 'Neither the explorer nor GoPlus answered', approvals: [], revoke_calls: [], not_checked: [] },
+      ],
+      summary: { open: 4, to_revoke: 3, value_at_risk_usd: 262, not_priced: 0, chains_read: ['base'], chains_not_read: [{ chain: 'ethereum', reason: 'Neither the explorer nor GoPlus answered' }] },
+      note: 'Revoking needs your wallet to sign each transaction.',
+    };
+  };
+  approvalsSvc.preview = async owner => { owner0.value = owner; const r = cleanupResult(); return { owner, checked_at: r.checked_at, summary: r.summary, note: 'The full cleanup lists each approval.' }; };
+  approvalsSvc.cleanup = async owner => { owner0.value = owner; return cleanupResult(); };
   const credits = require('../../src/payments/credits');
 
   const { createApp } = require('../../src/app');
@@ -69,6 +102,7 @@ Object.assign(process.env, {
         if (method === 'wallet_switchEthereumChain') { chainId = params[0].chainId; return null; }
         if (method === 'personal_sign') return window.__sign(params[0]);
         if (method === 'eth_sendTransaction') return window.__sent({ ...params[0], chainId });
+        if (method === 'wallet_sendCalls') { for (const c of params[0].calls) window.__sent({ ...c, chainId, batch: true }); return { id: 'batch-1' }; }
         throw new Error('stand-in wallet: ' + method);
       },
     };
@@ -165,6 +199,42 @@ Object.assign(process.env, {
     await page.getByRole('button', { name: /Quick check/ }).click();
     await page.getByText('Paid with your pass').waitFor();
     console.log('✔ passes: refused without enough credits; bought from credits; then checks use the pass');
+
+    // Approval cleanup: a free preview, then the paid list, then revoking from the wallet.
+    assert.equal((await page.inputValue('#a-wallet')).toLowerCase(), wallet.address.toLowerCase(), 'the signed-in wallet is filled in');
+    await page.getByRole('button', { name: 'Free preview' }).click();
+    await page.locator('#a-summary', { hasText: 'Could be taken now$262.00' }).waitFor();
+    assert.match(await page.textContent('#a-summary'), /Couldn't read: Ethereum \(Neither the explorer nor GoPlus answered\)/);
+    assert.ok(!(await page.textContent('#a-summary')).includes('dddd'), 'the preview names no spender');
+    await page.getByRole('button', { name: /Full cleanup/ }).click();
+    await page.locator('#a-msg', { hasText: 'Approval cleanup costs $5.00; you have $0.00 in credits' }).waitFor();
+    await credits.add(rows[0].id, 500, 'adjustment', 'test:topup3');
+    await page.getByRole('button', { name: /Full cleanup/ }).click();
+    await page.getByText('Revoke selected on Base').waitFor();
+    const list = await page.textContent('#a-result');
+    assert.match(list, /critical.*can spend your unlimited USDC/s);
+    assert.match(list, /Flagged for phishing\. \(GoPlus \(data from SlowMist\)\)/);
+    assert.match(list, /Couldn't read this chain: Neither the explorer nor GoPlus answered/);
+    assert.match(list, /Paid with \$5\.00 from credits, charged because it completed/);
+    const boxes = page.locator('#a-result input[type=checkbox]');
+    assert.deepEqual(await boxes.evaluateAll(b => b.map(x => x.checked)), [true, true, true, false], 'the risky ones are ticked, the known one is not');
+    await boxes.nth(1).uncheck();
+    assert.deepEqual(await boxes.evaluateAll(b => b.map(x => x.checked)), [true, false, false, false], 'Permit2 allowances go together');
+    await boxes.nth(2).check();
+    assert.deepEqual(await boxes.evaluateAll(b => b.map(x => x.checked)), [true, true, true, false]);
+    console.log('✔ approvals: free preview names no one; the paid list shows each one with reasons and sources; risky ones pre-ticked; Permit2 ones go together');
+
+    await page.reload();
+    await page.getByText('Revoke selected on Base').waitFor();
+    console.log('✔ approvals: the paid result survives a reload (no paying twice)');
+    await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
+    const before = sent.length;
+    await page.getByRole('button', { name: 'Revoke selected on Base' }).click();
+    await page.locator('#revoke-msg-base', { hasText: 'Sent.' }).waitFor();
+    const batch = sent.slice(before);
+    assert.deepEqual(batch.map(x => x.data), ['0x095ea7b3a1', '0xcc53287fp2'], 'exactly the chosen revokes, in one batch');
+    assert.ok(batch.every(x => x.batch && x.chainId === '0x2105'), 'sent as a batch on Base');
+    console.log('✔ approvals: the wallet is asked to sign exactly the chosen revokes, on Base, as one batch');
 
     await page.setViewportSize({ width: 375, height: 800 });
     const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 0.5).map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.className ? '.' + String(e.className).replace(/ /g, '.') : ''}`));

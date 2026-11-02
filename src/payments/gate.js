@@ -139,4 +139,4 @@ async function freeLeft(accountId) {
   return Object.fromEntries(ids.map(id => [id, { per_day: PRODUCTS[id].free_per_day, left: Math.max(PRODUCTS[id].free_per_day - (used[id] || 0), 0) }]));
 }
 
-module.exports = { paidRoute, acquire, paymentRequired, freeLeft };
+module.exports = { paidRoute, acquire, paymentRequired, freeLeft, takeAllowance };

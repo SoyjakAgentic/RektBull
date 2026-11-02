@@ -3,7 +3,8 @@
  * etherscanApi.js.
  *
  * Etherscan API V2 is tried first, then Blockscout's PRO API, which takes the
- * same module/action calls and has a free plan. Etherscan's free plan does not
+ * same module/action calls and has a free plan, then the chain's public
+ * Blockscout explorer with no key (rate-limited; the last resort). Etherscan's free plan does not
  * cover every chain; when it refuses one for plan reasons, or has used its
  * daily allowance, the call goes to Blockscout. Blockscout's getsourcecode
  * reply is rewritten into Etherscan's shape so callers read one format.
@@ -14,8 +15,9 @@ const { EVM } = require('./chains');
 const { track } = require('./usage');
 
 const EXPLORERS = [
-  { name: 'etherscan', url: 'https://api.etherscan.io/v2/api', key: () => env.etherscanApiKey },
-  { name: 'blockscout', url: 'https://api.blockscout.com/v2/api', key: () => env.blockscoutApiKey },
+  { name: 'etherscan', url: () => 'https://api.etherscan.io/v2/api', key: () => env.etherscanApiKey },
+  { name: 'blockscout', url: () => 'https://api.blockscout.com/v2/api', key: () => env.blockscoutApiKey },
+  { name: 'blockscout-public', url: chain => (EVM[chain]?.blockscout ? `https://${EVM[chain].blockscout}/api` : null), keyless: true },
 ];
 
 const UNVERIFIED = 'Contract source code not verified';
@@ -52,12 +54,14 @@ async function explorerGet(chain, params, { timeout = 10000 } = {}) {
   if (!chainid) throw new ExplorerError(`no explorer covers ${chain}`);
   const tried = [];
   for (const ex of EXPLORERS) {
-    const key = ex.key();
-    if (!key) { tried.push(`${ex.name}: no key`); continue; }
+    const url = ex.url(chain);
+    if (!url) continue;
+    const key = ex.keyless ? null : ex.key();
+    if (!ex.keyless && !key) { tried.push(`${ex.name}: no key`); continue; }
     try {
-      const data = await track(ex.name, async () => (await axios.get(ex.url, { params: { chainid, ...params, apikey: key }, timeout })).data);
+      const data = await track(ex.name, async () => (await axios.get(url, { params: { chainid, ...params, ...(key ? { apikey: key } : {}) }, timeout })).data);
       if (refusedForPlan(data)) { tried.push(`${ex.name}: ${data.result || data.message}`); continue; }
-      if (ex.name === 'blockscout' && params.module === 'contract' && params.action === 'getsourcecode' && Array.isArray(data?.result)) {
+      if (ex.name.startsWith('blockscout') && params.module === 'contract' && params.action === 'getsourcecode' && Array.isArray(data?.result)) {
         return { ...data, result: data.result.map(blockscoutSourceRow) };
       }
       return data;
@@ -68,4 +72,38 @@ async function explorerGet(chain, params, { timeout = 10000 } = {}) {
   throw new ExplorerError(`no explorer answered for ${chain} (${tried.join('; ')})`);
 }
 
-module.exports = { explorerGet, blockscoutSourceRow, refusedForPlan, ExplorerError, UNVERIFIED };
+const LOGS_PER_PAGE = 1000; // both Etherscan and Blockscout return at most this many
+const blockOf = l => Number(l.blockNumber);
+
+/**
+ * Every log matching { address?, topic0?, topic1? } from block 0, paged by
+ * block range (works the same on every explorer). Returns { logs, complete }:
+ * complete is false when maxPages ran out first (the oldest logs are read).
+ */
+async function explorerLogs(chain, { address, topic0, topic1 }, { maxPages = 5 } = {}) {
+  const logs = [];
+  const seen = new Set();
+  let from = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const params = { module: 'logs', action: 'getLogs', fromBlock: from, toBlock: 'latest' };
+    if (address) params.address = address;
+    if (topic0) params.topic0 = topic0;
+    if (topic1) params.topic1 = topic1;
+    if (topic0 && topic1) params.topic0_1_opr = 'and';
+    const data = await module.exports.explorerGet(chain, params);
+    if (!Array.isArray(data?.result)) {
+      if (/no records|no logs/i.test(`${data?.message} ${data?.result}`)) return { logs, complete: true };
+      throw new ExplorerError(`logs on ${chain}: ${data?.result || data?.message || 'no answer'}`);
+    }
+    for (const l of data.result) {
+      const id = `${l.transactionHash}:${Number(l.logIndex)}`;
+      if (!seen.has(id)) { seen.add(id); logs.push(l); }
+    }
+    if (data.result.length < LOGS_PER_PAGE) return { logs, complete: true };
+    const last = blockOf(data.result[data.result.length - 1]);
+    from = last > from ? last : from + 1; // the last block again: it may hold more
+  }
+  return { logs, complete: false };
+}
+
+module.exports = { explorerGet, explorerLogs, blockscoutSourceRow, refusedForPlan, ExplorerError, UNVERIFIED };

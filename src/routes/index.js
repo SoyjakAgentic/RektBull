@@ -9,7 +9,8 @@ const credits = require('../payments/credits');
 const invoices = require('../payments/invoices');
 const passes = require('../payments/passes');
 const x402 = require('../payments/x402');
-const { paidRoute, freeLeft } = require('../payments/gate');
+const { paidRoute, freeLeft, takeAllowance } = require('../payments/gate');
+const approvals = require('../services/approvals');
 const dd = require('../services/dueDiligence');
 const claude = require('../ai/claude');
 const usage = require('../providers/usage');
@@ -83,6 +84,24 @@ router.post('/v1/tokens/quick-check', paidRoute('token_quick_check', { validate:
 router.post('/v1/tokens/report', paidRoute('token_report', {
   validate: req => (claude.available() ? target(req) : { error: 'Reports are not available yet: the AI key is not configured' }),
   run: input => dd.fullReport(input),
+}));
+
+// ── Approval cleanup: a free preview (how many, how much at risk), then the paid cleanup ──
+const PREVIEWS_PER_DAY = { account: 10, anonymous: 3 };
+
+router.post('/v1/approvals/preview', async (req, res) => {
+  const input = approvals.parseOwner(req.body);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, PREVIEWS_PER_DAY.account] : [`ip:${req.ip}`, PREVIEWS_PER_DAY.anonymous];
+  if (!(await takeAllowance(subject, 'approval_preview', limit))) {
+    return res.status(429).json({ error: 'daily_limit', message: `Free previews are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+  }
+  res.json(await approvals.preview(input.owner, { refresh: input.refresh }));
+});
+
+router.post('/v1/approvals/cleanup', paidRoute('approval_cleanup', {
+  validate: req => approvals.parseOwner(req.body),
+  run: input => approvals.cleanup(input.owner),
 }));
 
 router.use(require('./trading'));

@@ -32,6 +32,23 @@
       <div id="result" hidden></div>
     </section>
 
+    <section class="card" id="approvals-card">
+      <h2>Clean up your approvals</h2>
+      <p class="muted">Every app you've traded with may still be allowed to take your tokens. Most approval scams use exactly that. See what's open on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain, which approvals are risky and why, and revoke them from your wallet.</p>
+      <div class="grid">
+        <label class="wide">Wallet address
+          <input id="a-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row">
+        <button id="a-preview">Free preview</button>
+        <button id="a-cleanup" class="primary">Full cleanup<span class="price" id="a-price"></span></button>
+      </div>
+      <p id="a-msg" class="msg"></p>
+      <div id="a-summary" hidden></div>
+      <div id="a-result" hidden></div>
+    </section>
+
     <section class="card" id="account-card">
       <h2>Your account</h2>
       <p class="muted">Sign in with your wallet to get free quick checks every day and to pay from credits. Signing in costs nothing and moves no funds.</p>
@@ -67,7 +84,7 @@
 
     <section class="card">
       <h2>For bots and AI agents</h2>
-      <p class="muted small">No account needed: pay per call with <a href="https://www.x402.org/">x402</a> (USDC on Base). <code>POST /v1/tokens/quick-check</code> and <code>POST /v1/tokens/report</code> with <code>{"chain", "token_address"}</code>; prices and payment options at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
+      <p class="muted small">No account needed: pay per call with <a href="https://www.x402.org/">x402</a> (USDC on Base). <code>POST /v1/tokens/quick-check</code> and <code>POST /v1/tokens/report</code> with <code>{"chain", "token_address"}</code>; <code>POST /v1/approvals/cleanup</code> with <code>{"wallet"}</code>; prices and payment options at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
     </section>
   </main>
 
@@ -75,5 +92,6 @@
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/safety.js"></script>
+  <script src="/approvals.js"></script>
 </body>
 </html>

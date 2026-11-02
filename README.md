@@ -100,6 +100,8 @@ TEST_DATABASE_URL=postgres://user:pass@localhost/rektbull_test npm test   # + en
 The autonomous end-to-end test (`TEST_DATABASE_URL=… node --test test/autonomous.e2e.js`,
 after `cd contracts && npm install && npx hardhat compile`) runs automatic
 trading on a local copy of Base Sepolia against MetaMask's real contracts.
+`test/approvals.e2e.js` (same setup) makes real approvals of every kind on that
+copy, runs approval cleanup on them, and sends the revokes it prepares.
 
 The browser tests drive the pages in Chromium with a stand-in wallet
 (`TEST_DATABASE_URL=… node test/browser/safetyPage.js`, and `tradePage.js`);

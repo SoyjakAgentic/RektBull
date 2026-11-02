@@ -26,6 +26,14 @@ const PRODUCTS = {
     x402: true,
     free_per_day: 0,
   },
+  approval_cleanup: {
+    kind: 'run',
+    title: 'Approval cleanup',
+    description: 'Every token and NFT permission your wallet has given, on six chains: which are risky and why, how much they could take, and the transactions to revoke them (your wallet signs).',
+    price_cents: 500,
+    x402: true,
+    free_per_day: 0,
+  },
   pro_30d: {
     kind: 'pass',
     title: 'RektBull Pro, 30 days',
