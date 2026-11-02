@@ -19,6 +19,9 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | Blockscout PRO API | Same, for chains Etherscan's free plan won't serve | Free key | The chain's public Blockscout |
 | Public Blockscout explorers (eth., base., arbitrum., optimism., polygon.blockscout.com) | Same, last resort; rate-limited | No | — (check marked "not checked") |
 | GoPlus | Honeypot, tax, owner-power flags, holders, LP locks; spender and address risk; the approval index, only when the explorer can't give a wallet's whole history (it saves GoPlus's free allowance) | No | Our own checks still run |
+| Telegram Bot API | Risk monitor alerts | Bot token (free) | The other channels |
+| Resend | Alert emails | Free plan, then pay per email (check current limits) | The other channels |
+| Web Push (browsers' own push services) | Browser notifications | VAPID keys (free) | The other channels |
 | DefiLlama | Prices for trading and for the value at risk in approval cleanup | No | "Not priced", never guessed |
 | 0x | Buy-then-sell honeypot test, taxes (EVM) | Free key | GoPlus's figures |
 | Jupiter | Buy-then-sell test (Solana) | Optional | — |

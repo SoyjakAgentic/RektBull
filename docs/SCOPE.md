@@ -55,7 +55,7 @@ finds or saves**, and show that figure in the result.
 | Protect | **Token due diligence report** (+ liquidity, age, plain-English report) | $3; 5 a month with Safety Pro | ✅ built, on `/safety` |
 | Protect | Pre-sign check (simulate a transaction before signing) | $0.25–1 | next |
 | Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
-| Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs (in-app alerts; email next) | in Safety Pro | ✅ built, on `/safety` |
+| Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs; alerts by Telegram, email and browser notifications | in Safety Pro | ✅ built, on `/safety` |
 | Find | Airdrop and unclaimed-funds finder (check free, pay to prepare claims) | $5–15 | later |
 | Find | Yield proposals (agent proposes, user approves) | pass | later |
 | Save | Tax and profit report | $29–99 / year | after paid data |
@@ -106,8 +106,9 @@ comes first, one PR per step:
 4. Airdrop and unclaimed-funds finder (ported from Soyjak).
 
 ✅ Also built ahead of step 3: the **risk monitor** (Safety Pro), because
-it is what makes the pass worth renewing. Alerts are in-app; email
-delivery comes next.
+it is what makes the pass worth renewing. Alerts reach users on Telegram,
+by email and as browser notifications, so nobody has to visit the site.
+Next: the pre-sign check as a browser extension (then a MetaMask Snap).
 
 Then back to the trade desk (milestone 4), unless the Safety desk shows
 something more worth doing.

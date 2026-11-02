@@ -17,6 +17,9 @@
   });
 
   const wallet = () => $('a-wallet').value.trim();
+  // A link from an alert (…/safety?wallet=0x…) opens the cleanup for that wallet.
+  const fromLink = new URLSearchParams(location.search).get('wallet');
+  if (fromLink && /^0x[0-9a-fA-F]{40}$/.test(fromLink)) $('a-wallet').value = fromLink;
   const fill = () => { if (!wallet() && state.address) $('a-wallet').value = state.address; };
   window.RB.onSignedIn(fill);
   setTimeout(fill, 500);

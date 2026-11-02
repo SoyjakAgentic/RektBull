@@ -18,6 +18,8 @@ const MNEMONIC = ethers.Mnemonic.fromPhrase('test test test test test test test 
 
 Object.assign(process.env, {
   DATABASE_URL: DB, JWT_SECRET: 'test', PAYMENT_CHAINS: 'base', NEW_WALLET_CHECK_CHAINS: '',
+  TELEGRAM_BOT_TOKEN: '1:x', TELEGRAM_BOT_USERNAME: 'RektBullTestBot', TELEGRAM_WEBHOOK_SECRET: 'hook', RESEND_API_KEY: 're_x',
+  VAPID_PUBLIC_KEY: 'BNbxGYNMhEIi9zrneh7mqV4oUanjLUK3m-mYZBc62frMKrEoMk88r3Lk596T0ck9xlT-4AxH6aGoN4zbHk1cAPw', VAPID_PRIVATE_KEY: 'test-only',
   CRYPTO_DEPOSIT_XPUB: ethers.HDNodeWallet.fromMnemonic(MNEMONIC, "m/44'/60'/0'/0").neuter().extendedKey,
 });
 
@@ -46,6 +48,11 @@ Object.assign(process.env, {
     written_by: 'test-model',
   });
   require('../../src/ai/claude').available = () => true;
+  // Alert transports: stand-ins that record what would be sent.
+  const transports = require('../../src/alerts/transports');
+  const outbox = { telegram: [], email: [] };
+  transports.telegram.send = async (chatId, m) => { outbox.telegram.push({ chatId, ...m }); };
+  transports.email.send = async m => { outbox.email.push(m); };
 
   // Approval cleanup: the service is a stand-in here (test/approvals.e2e.js runs the real one on a chain).
   const approvalsSvc = require('../../src/services/approvals');
@@ -272,6 +279,34 @@ Object.assign(process.env, {
     await page.locator('#m-alerts').getByRole('button', { name: 'Review and revoke' }).first().click();
     assert.equal((await page.inputValue('#a-wallet')).toLowerCase(), wallet.address.toLowerCase());
     console.log('✔ risk monitor: watch a wallet; a new risky approval shows as an alert with its reason and source; mark read; review it');
+
+    // Where alerts go: Telegram and email, linked from the page.
+    await page.locator('#ch-list', { hasText: 'No channel yet' }).waitFor();
+    const popupWait = page.waitForEvent('popup');
+    await page.getByRole('button', { name: 'Connect Telegram' }).click();
+    const popup = await popupWait;
+    const tgLink = popup.url();
+    await popup.close();
+    assert.match(tgLink, /^https:\/\/t\.me\/RektBullTestBot\?start=/);
+    await page.locator('#ch-msg', { hasText: 'press Start' }).waitFor();
+    // Telegram calls the webhook when the user presses Start.
+    const code = new URL(tgLink).searchParams.get('start');
+    const hook = await fetch(url + '/v1/telegram/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'hook' }, body: JSON.stringify({ message: { chat: { id: 4242, type: 'private' }, text: `/start ${code}`, from: { username: 'tester' } } }) });
+    assert.equal((await hook.json()).linked, true);
+    await page.locator('#ch-msg', { hasText: 'Telegram is linked.' }).waitFor({ timeout: 15000 });
+    await page.locator('#ch-list', { hasText: '@tester' }).waitFor();
+    await page.fill('#ch-email', 'me@example.com');
+    await page.getByRole('button', { name: 'Send confirmation email' }).click();
+    await page.locator('#ch-msg', { hasText: 'Check me@example.com for the confirmation link' }).waitFor();
+    const confirmUrl = outbox.email.at(-1).text.match(/https?:\/\/\S+confirm-email\?code=\S+/)[0];
+    await page.goto(url + new URL(confirmUrl).pathname + new URL(confirmUrl).search);
+    await page.locator('#ch-msg', { hasText: 'Email confirmed' }).waitFor();
+    await page.locator('#ch-list', { hasText: 'me@example.com' }).waitFor();
+    await page.getByRole('button', { name: 'Send a test alert' }).click();
+    await page.locator('#ch-msg', { hasText: 'Test sent to: Telegram, Email.' }).waitFor();
+    assert.match(outbox.telegram.at(-1).text, /Test alert/);
+    assert.equal(await page.isEnabled('#ch-push'), true, 'browser notifications can be turned on');
+    console.log('✔ alerts: link Telegram (through its webhook) and email (through the confirmation link), then a test alert reaches both');
 
     await page.setViewportSize({ width: 375, height: 800 });
     const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 0.5).map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.className ? '.' + String(e.className).replace(/ /g, '.') : ''}`));

@@ -29,6 +29,44 @@ Migrations run on start.
    `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` and `RPC_URLS_*`.
 6. A Cloud Build trigger on pushes to `main`.
 
+## Alerts: Telegram, email, browser push
+
+The risk monitor sends alerts to whatever each user links. Each channel is
+optional; one that isn't set up shows as "not available yet" on the page.
+Set `PUBLIC_URL=https://rektbull.com` so links in alerts point to the site.
+
+**Telegram** (free):
+1. In Telegram, message @BotFather: `/newbot`, name it (e.g. RektBull Alerts)
+   and get its token. `/setprivacy` → Enable (it only needs its own chats).
+2. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without @), and
+   `TELEGRAM_WEBHOOK_SECRET` (a long random string: `openssl rand -hex 32`).
+3. Point Telegram at the web service, with the same secret:
+   ```bash
+   curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+     -d url=https://rektbull.com/v1/telegram/webhook \
+     -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message"]'
+   ```
+   Requests without that secret are refused.
+
+**Email** (Resend; another provider is one function in `src/alerts/transports.js`):
+1. Create a Resend account, add and verify the sending domain (it gives
+   SPF and DKIM records for rektbull.com's DNS). Without them, alerts land
+   in spam.
+2. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `RektBull <alerts@rektbull.com>`).
+   Every alert email has a one-click unsubscribe link and header.
+
+**Browser push** (free; Web Push with VAPID):
+1. `npx web-push generate-vapid-keys` once. Keep the private key secret
+   (Secret Manager), and never change the pair: changing it ends every
+   existing subscription.
+2. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`
+   (`mailto:` an address you read).
+
+The worker sends due alerts every 20 seconds, retrying a failed send after
+1, 5 and 30 minutes, then 2 and 6 hours. A channel that can't work any more
+(bot blocked, browser unsubscribed, address rejected) is switched off and the
+user sees why.
+
 ## Domain: rektbull.com
 
 - Map `api.rektbull.com` to `rektbull-api` (Cloud Run domain mapping, or a

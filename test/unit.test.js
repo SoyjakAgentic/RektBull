@@ -240,6 +240,31 @@ test('risk monitor: what changed since the last check becomes an alert, and noth
   assert.deepEqual(back.alerts.map(a => a.kind).filter(k => k !== 'depeg'), [], 'nothing new on Base after it comes back');
 });
 
+test('alert transports: a blocked bot or a missing chat switches the channel off; our own bad message does not', async () => {
+  const axios = require('axios');
+  const { telegram } = require('../src/alerts/transports');
+  const real = axios.post;
+  const fail = (status, description) => { axios.post = async () => { throw Object.assign(new Error('x'), { response: { status, data: { description } } }); }; };
+  try {
+    fail(403, 'Forbidden: bot was blocked by the user');
+    await assert.rejects(telegram.send('1', { text: 'hi' }), e => e.permanent === true);
+    fail(400, 'Bad Request: chat not found');
+    await assert.rejects(telegram.send('1', { text: 'hi' }), e => e.permanent === true);
+    fail(400, 'Bad Request: message is too long');
+    await assert.rejects(telegram.send('1', { text: 'hi' }), e => !e.permanent, 'retried, not switched off');
+    fail(429, 'Too Many Requests');
+    await assert.rejects(telegram.send('1', { text: 'hi' }), e => !e.permanent);
+    let body;
+    axios.post = async (url, b) => { body = b; return { data: { ok: true } }; };
+    await telegram.send('1', { text: 'hi', url: 'http://localhost/x', action: 'Open' });
+    assert.equal(body.reply_markup, undefined, 'Telegram buttons need https links');
+    await telegram.send('1', { text: 'hi', url: 'https://rektbull.com/safety', action: 'Open' });
+    assert.deepEqual(body.reply_markup.inline_keyboard[0][0], { text: 'Open', url: 'https://rektbull.com/safety' });
+  } finally {
+    axios.post = real;
+  }
+});
+
 test('deposit xpub: public key only, at the right path, same addresses as the mnemonic', () => {
   const mnemonic = ethers.Mnemonic.fromPhrase('test test test test test test test test test test test junk');
   const account = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0");
