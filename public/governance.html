@@ -35,6 +35,14 @@
       <div class="row"><button id="s-add">Add</button></div>
       <div id="s-list" class="small"></div>
       <p id="s-msg" class="msg"></p>
+      <h3>On-chain governors</h3>
+      <p class="muted small">RektBull reads Uniswap, Compound, ENS, Gitcoin, Hop and Arbitrum's governors for every wallet. Add another OpenZeppelin Governor or Governor Bravo by its address.</p>
+      <div class="grid">
+        <label>Chain<select id="gv-chain"><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option><option value="base">Base</option><option value="optimism">Optimism</option><option value="polygon">Polygon</option><option value="bsc">BNB Chain</option></select></label>
+        <label class="wide">Governor address<input id="gv-address" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="row"><button id="gv-add">Add governor</button></div>
+      <div id="gv-list" class="small"></div>
     </section>
 
     <section class="card" id="account-card">

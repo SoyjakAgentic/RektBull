@@ -12,6 +12,7 @@ const { ethers } = require('ethers');
 const DB = process.env.TEST_DATABASE_URL;
 Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', ANTHROPIC_API_KEY: 'test', ...(DB ? { DATABASE_URL: DB } : {}) });
 const governance = require('../src/services/governance');
+require('../src/services/governors').REGISTRY.length = 0; // no network: on-chain governors are tested in test/governors.e2e.js
 const snapshot = require('../src/providers/snapshot');
 
 test('choices: each voting type, refused when out of range', () => {
@@ -87,7 +88,8 @@ test('votes, summaries, spaces and alerts, through the API', { skip: !DB && 'set
     assert.equal(by[open.id].can_vote_here, true);
     assert.equal(by[done.id].voted.choice, 'Against');
     assert.match(by[shielded.id].why_not_here, /shielded/);
-    assert.deepEqual(r.body.summary, { active: 3, to_vote: 2, closing_within_24h: 1 });
+    assert.deepEqual(r.body.summary, { active: 3, to_vote: 2, closing_within_24h: 1, votes_counting_for_nobody: 0 });
+    assert.deepEqual(r.body.onchain.governors, [], 'on-chain governors are tested in test/governors.e2e.js');
     assert.equal(r.body.proposals.at(-1).id, done.id, 'what you already voted on comes last');
     assert.match(r.body.note, /never recommends/);
   });
@@ -169,4 +171,20 @@ test('votes, summaries, spaces and alerts, through the API', { skip: !DB && 'set
     assert.match(m.url, /\/governance\?wallet=0x/);
     assert.equal(m.action, 'Review and vote');
   });
+});
+
+test('on-chain proposals: each action decoded and flagged by what it changes', () => {
+  const { decodeAction } = require('../src/services/governors');
+  const t = '0x' + 'aa'.repeat(20);
+  const I = new ethers.Interface(['function transfer(address,uint256)', 'function upgradeTo(address)', 'function setVotingPeriod(uint256)', 'function poke()']);
+  const transfer = decodeAction(t, 0, '', I.encodeFunctionData('transfer', ['0x' + 'bb'.repeat(20), 5n]));
+  assert.deepEqual([transfer.function, transfer.flags], ['transfer(address,uint256)', ['moves funds']]);
+  assert.equal(transfer.args[1], 'uint256 5');
+  assert.deepEqual(decodeAction(t, 0, '', I.encodeFunctionData('upgradeTo', [t])).flags, ['changes who controls something']);
+  assert.deepEqual(decodeAction(t, 0, '', I.encodeFunctionData('setVotingPeriod', [100])).flags, ['changes the voting rules']);
+  assert.deepEqual(decodeAction(t, 10n ** 18n, '', I.encodeFunctionData('poke')).flags, ['moves funds'], 'sending the chain\'s coin moves funds');
+  assert.match(decodeAction(t, 0, '', I.encodeFunctionData('poke')).function, /^unknown \(0x/);
+  // Governor Bravo keeps the signature apart from the arguments.
+  const bravo = decodeAction(t, 0, 'transfer(address,uint256)', ethers.AbiCoder.defaultAbiCoder().encode(['address', 'uint256'], ['0x' + 'cc'.repeat(20), 7n]));
+  assert.deepEqual([bravo.function, bravo.flags, bravo.args[1]], ['transfer(address,uint256)', ['moves funds'], 'uint256 7']);
 });

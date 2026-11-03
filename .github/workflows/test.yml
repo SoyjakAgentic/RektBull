@@ -71,6 +71,9 @@ jobs:
       - run: node --test test/yield.e2e.js
         env:
           TEST_DATABASE_URL: postgres://rb:rb@localhost:5432/rektbull_test
+      - run: node --test test/governors.e2e.js
+        env:
+          TEST_DATABASE_URL: postgres://rb:rb@localhost:5432/rektbull_test
 
   snap:
     runs-on: ubuntu-latest

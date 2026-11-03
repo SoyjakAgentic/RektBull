@@ -35,8 +35,10 @@ are built before we deploy. Each is its own PR, in this order unless we change i
    Needs the legal review in section 7 before it goes live. ✅ Automatic
    rebalancing (the Yield Router and session keys) is built and switched off
    ([YIELD_ROUTER.md](YIELD_ROUTER.md)).
-3. ✅ **Save money: governance assistant** (`/governance`). Snapshot votes only
-   for now; on-chain governors (Tally and similar) later. Needs the legal
+3. ✅ **Save money: governance assistant** (`/governance`). Snapshot votes, and
+   on-chain governors (OpenZeppelin Governor and Compound Bravo: Uniswap,
+   Compound, ENS, Gitcoin, Hop, Arbitrum, plus any a user adds), with each
+   proposal's actions decoded and flagged. Needs the legal
    review in section 7 like yield proposals, although it never recommends a vote.
 4. **Site desks** from [SCOPE.md](SCOPE.md) section 5: Home, Discover,
    Markets, Opportunities, Portfolio, Research, Agents, Developers.

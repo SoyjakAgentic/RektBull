@@ -22,7 +22,10 @@
  *                   signed vote to Snapshot's sequencer, which checks it
  *                   again with the voting power.
  *
- * On-chain governors (OpenZeppelin Governor, Compound Bravo) come later.
+ * On-chain governors (OpenZeppelin Governor, Compound Bravo; governors.js)
+ * are part of the same check: the registry's and ones the account added,
+ * for the wallet's votes, its delegation, and their open proposals. Votes
+ * and delegations there are transactions the wallet sends.
  */
 const crypto = require('crypto');
 const { ethers } = require('ethers');
@@ -31,6 +34,7 @@ const env = require('../config/env');
 const snapshot = require('../providers/snapshot');
 const rpc = require('../providers/rpc');
 const claude = require('../ai/claude');
+const governors = require('./governors');
 const { cached } = require('../lib/cache');
 
 const DOMAIN = { name: 'snapshot', version: '0.1.4' };
@@ -39,6 +43,7 @@ const MAX_PROPOSALS = 40;
 const BODY_CHARS = 12000;
 const isAddress = a => /^0x[0-9a-fA-F]{40}$/.test(String(a || ''));
 const isProposalId = id => /^(0x[0-9a-fA-F]{64}|[A-Za-z0-9]{40,64})$/.test(String(id || ''));
+const EVM_CHAINS = Object.keys(require('../providers/chains').EVM);
 const isSpaceId = id => /^[a-z0-9][a-z0-9.\-_:]{1,63}$/i.test(String(id || ''));
 
 class GovernanceRefused extends Error {
@@ -72,6 +77,12 @@ function shape(p, now = Date.now() / 1000) {
   };
 }
 
+async function savedGovernors(accountId) {
+  if (!accountId || !env.databaseUrl) return [];
+  const { rows } = await db.query('SELECT chain, address, name FROM governance_governors WHERE account_id = $1 ORDER BY created_at', [accountId]);
+  return rows;
+}
+
 async function savedSpaces(accountId) {
   if (!accountId || !env.databaseUrl) return [];
   const { rows } = await db.query('SELECT space_id FROM governance_spaces WHERE account_id = $1 ORDER BY created_at', [accountId]);
@@ -101,14 +112,23 @@ async function check(walletIn, { accountId = null } = {}) {
     return { ...s, your_voting_power: vp, ...(vpReason ? { voting_power_not_read: vpReason } : {}), voted, can_vote_here: !voted && !why && vp > 0, ...(why && !voted ? { why_not_here: why } : {}) };
   }));
   items.sort((a, b) => (a.voted ? 1 : 0) - (b.voted ? 1 : 0) || a.hours_left - b.hours_left);
+  let onchain = { governors: [], proposals: [], not_checked: [], source: null };
+  try { onchain = await governors.forWallet(wallet, { extra: await savedGovernors(accountId) }); } catch (err) { notChecked.push({ check: 'on-chain governors', reason: err.message }); }
+  const open = [...items, ...onchain.proposals.filter(p => p.state === 'Active')];
+  const canVote = i => !i.voted && Number(i.your_voting_power) > 0;
   return {
     wallet, checked_at: new Date().toISOString(),
     spaces: { followed: spaces.followed, voted_in: spaces.voted_in, added },
     proposals: items,
-    summary: { active: items.length, to_vote: items.filter(i => !i.voted && i.your_voting_power > 0).length, closing_within_24h: items.filter(i => !i.voted && i.your_voting_power > 0 && i.hours_left <= 24).length },
-    not_checked: notChecked,
-    source: 'Snapshot hub (hub.snapshot.org): proposals, votes and voting power by Snapshot\'s own strategies',
-    note: 'RektBull never recommends how to vote. On-chain governor votes (Tally and similar) aren\'t covered yet.',
+    onchain: { governors: onchain.governors, proposals: onchain.proposals, source: onchain.source },
+    summary: {
+      active: open.length, to_vote: open.filter(canVote).length,
+      closing_within_24h: open.filter(i => canVote(i) && i.hours_left !== null && i.hours_left <= 24).length,
+      votes_counting_for_nobody: onchain.governors.filter(g => g.needs_delegation).length,
+    },
+    not_checked: [...notChecked, ...onchain.not_checked],
+    source: 'Snapshot hub (hub.snapshot.org) for off-chain votes; each governor and its voting token onchain (RPC) and their ProposalCreated logs for on-chain votes',
+    note: 'RektBull never recommends how to vote.',
   };
 }
 
@@ -132,10 +152,38 @@ What a voter would usually want to know that the text doesn't say (for example: 
 
 function parseProposalId(body = {}) {
   const id = String(body?.proposal_id || '').trim();
+  if (body?.governor) {
+    if (!EVM_CHAINS.includes(body.chain)) return { error: `chain must be one of ${EVM_CHAINS.join(', ')}` };
+    if (!isAddress(body.governor)) return { error: 'governor must be the governor contract\'s address' };
+    if (!/^\d{1,80}$/.test(id)) return { error: 'proposal_id must be the governor\'s proposal number' };
+    return { chain: body.chain, governor: body.governor.toLowerCase(), proposal_id: id };
+  }
   return isProposalId(id) ? { proposal_id: id } : { error: 'proposal_id must be a Snapshot proposal id' };
 }
 
-async function summarize({ proposal_id }) {
+/** An on-chain proposal's summary: its description and its decoded actions. */
+async function summarizeOnchain({ chain, governor, proposal_id }) {
+  const { gov, p } = await governors.proposal(chain, governor, proposal_id);
+  const actions = p.actions.map((a, i) => `${i + 1}. ${a.function} on ${a.target}${a.value_wei !== '0' ? `, sending ${ethers.formatEther(a.value_wei)} of the chain's coin` : ''}${a.args ? ` (${Array.isArray(a.args) ? a.args.join(', ') : a.args})` : ''}${a.flags ? ` [${a.flags.join('; ')}]` : ''}`).join('\n');
+  const body = p.description;
+  const hash = crypto.createHash('sha256').update(`${body}\n${actions}`).digest('hex').slice(0, 16);
+  return cached(`gov:summary:onchain:${chain}:${governor}:${p.id}:${hash}:${env.reportModel}`, 30 * 86400, async () => {
+    const text = [`Governor: ${gov.name || governor} on ${chain} (${gov.kind})`, `Title: ${p.title}`, 'Choices: For, Against, Abstain', '',
+      'What it does onchain if it passes (decoded from the proposal; trust these over the description where they differ, and say so):', actions || '(no actions)', '',
+      'Proposal text:', body.length > BODY_CHARS ? `${body.slice(0, BODY_CHARS)}\n[… the rest is cut]` : body].join('\n');
+    const ai = await claude.write({ system: SYSTEM, prompt: text, maxTokens: 1500 });
+    const { description, ...rest } = p;
+    return {
+      proposal: { ...rest, governor: { name: gov.name, chain, address: governor } }, summary_markdown: ai.text, written_by: ai.model,
+      source: `The proposal's text and its actions, from the governor's ProposalCreated log on ${chain}`,
+      note: 'An AI summary of the proposal\'s own text and actions, not advice and not a recommendation. Check the actions yourself before you vote.',
+    };
+  });
+}
+
+async function summarize(input) {
+  if (input.governor) return summarizeOnchain(input);
+  const { proposal_id } = input;
   const p = await snapshot.proposal(proposal_id);
   if (!p) throw Object.assign(new Error(`Snapshot has no proposal ${proposal_id}`), { status: 404 });
   const body = String(p.body || '');
@@ -257,6 +305,36 @@ async function removeSpace(accountId, spaceId) {
   return { spaces: await savedSpaces(accountId) };
 }
 
+/* ── governors an account adds by hand ── */
+
+async function addGovernor(accountId, { chain, address }) {
+  const gov = await governors.check(chain, address);
+  const { rows: [{ n }] } = await db.query('SELECT count(*)::int AS n FROM governance_governors WHERE account_id = $1', [accountId]);
+  if (n >= 20) throw new GovernanceRefused('at most 20 governors');
+  await db.query('INSERT INTO governance_governors (account_id, chain, address, name) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [accountId, chain, gov.address, gov.name]);
+  return { added: { chain, address: gov.address, name: gov.name, kind: gov.kind, symbol: gov.symbol }, governors: await savedGovernors(accountId) };
+}
+async function removeGovernor(accountId, chain, address) {
+  await db.query('DELETE FROM governance_governors WHERE account_id = $1 AND chain = $2 AND address = $3', [accountId, chain, String(address || '').toLowerCase()]);
+  return { governors: await savedGovernors(accountId) };
+}
+
+function parseOnchainVote(body = {}) {
+  const wallet = String(body?.wallet || '').trim();
+  if (!isAddress(wallet)) return { error: 'wallet must be a wallet address' };
+  const p = parseProposalId({ ...body, governor: body?.governor || '0x' });
+  if (p.error) return p;
+  return { wallet, ...p, support: Number(body.support), reason: String(body.reason || '').slice(0, 1000) };
+}
+function parseDelegate(body = {}) {
+  const wallet = String(body?.wallet || '').trim();
+  if (!isAddress(wallet)) return { error: 'wallet must be a wallet address' };
+  if (!EVM_CHAINS.includes(body?.chain)) return { error: `chain must be one of ${EVM_CHAINS.join(', ')}` };
+  if (!isAddress(body?.governor)) return { error: 'governor must be the governor contract\'s address' };
+  if (body.to && !isAddress(body.to)) return { error: 'to must be an address' };
+  return { wallet, chain: body.chain, governor: body.governor.toLowerCase(), to: body.to || null };
+}
+
 /* ── alerts for watched wallets (Safety Pro), hourly ── */
 
 /** New votes a watched wallet can cast, and ones closing within a day it hasn't voted on. */
@@ -268,14 +346,18 @@ async function alertTick() {
     if (!(await passes.covering(w.account_id, 'risk_monitor'))) continue;
     let c;
     try { c = await check(w.wallet, { accountId: w.account_id }); } catch { continue; }
-    for (const p of c.proposals.filter(x => !x.voted && x.your_voting_power > 0)) {
-      const closing = p.hours_left <= 24;
-      const title = closing ? `Vote closes in ${Math.max(1, Math.round(p.hours_left))} hours: ${p.title}` : `New vote in ${p.space.name || p.space.id}: ${p.title}`;
+    const open = [
+      ...c.proposals.map(p => ({ ...p, where: p.space.name || p.space.id, end: p.end, key: p.id, source: 'Snapshot hub', power: p.your_voting_power })),
+      ...c.onchain.proposals.filter(p => p.state === 'Active').map(p => ({ ...p, where: `${p.governor.name} (on ${p.governor.chain})`, end: p.deadline?.at || null, key: `${p.governor.chain}:${p.governor.address}:${p.id}`, source: `${p.governor.name}'s governor onchain`, power: Number(p.your_voting_power) })),
+    ];
+    for (const p of open.filter(x => !x.voted && x.power > 0)) {
+      const closing = p.hours_left !== null && p.hours_left <= 24;
+      const title = closing ? `Vote closes in ${Math.max(1, Math.round(p.hours_left))} hours: ${p.title}` : `New vote in ${p.where}: ${p.title}`;
       const { rows: ins } = await db.query(
         `INSERT INTO monitor_alerts (account_id, wallet_id, wallet, kind, severity, title, detail, dedupe_key)
          VALUES ($1, $2, $3, 'governance', 'medium', $4, $5, $6) ON CONFLICT (account_id, dedupe_key) DO NOTHING RETURNING id`,
-        [w.account_id, w.id, w.wallet, title.slice(0, 200), JSON.stringify({ reasons: [{ text: `Your voting power: ${p.your_voting_power.toLocaleString()}. Voting ends ${p.end.slice(0, 16).replace('T', ' ')} UTC.`, source: 'Snapshot hub' }], proposal: { id: p.id, space: p.space.id, link: p.link } }),
-          `${w.wallet}:gov:${closing ? 'closing' : 'new'}:${p.id}`],
+        [w.account_id, w.id, w.wallet, title.slice(0, 200), JSON.stringify({ reasons: [{ text: `Your voting power: ${Number(p.power).toLocaleString()}.${p.end ? ` Voting ends ${p.end.slice(0, 16).replace('T', ' ')} UTC${p.deadline?.estimated ? ' (estimated from block times)' : ''}.` : ''}${p.flags?.length ? ` It ${p.flags.join(', ')}.` : ''}`, source: p.source }], proposal: { id: p.id, key: p.key } }),
+          `${w.wallet}:gov:${closing ? 'closing' : 'new'}:${p.key}`],
       );
       if (ins.length) raised.push(ins[0].id);
     }
@@ -284,4 +366,4 @@ async function alertTick() {
   return raised.length;
 }
 
-module.exports = { check, summarize, prepareVote, submitVote, addSpace, removeSpace, savedSpaces, alertTick, parseProposalId, parseVote, choiceFor, voteTypes, shape, DOMAIN, APP, CHOICE_TYPE, GovernanceRefused };
+module.exports = { check, summarize, prepareVote, submitVote, addSpace, removeSpace, savedSpaces, addGovernor, removeGovernor, savedGovernors, parseOnchainVote, parseDelegate, alertTick, parseProposalId, parseVote, choiceFor, voteTypes, shape, DOMAIN, APP, CHOICE_TYPE, GovernanceRefused };
