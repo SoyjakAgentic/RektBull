@@ -144,7 +144,51 @@
     return ` · Paid with ${how}, charged because it completed`;
   }
 
+  /* Sending prepared calls from the wallet. */
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function receipt(hash) {
+    for (let k = 0; k < 90; k++) {
+      const r = await request('eth_getTransactionReceipt', [hash]).catch(() => null);
+      if (r) return r;
+      await sleep(2000);
+    }
+    throw new Error('The transaction hasn\'t confirmed yet. It may still go through; check your wallet.');
+  }
+  const unsupported = err => err && err.code !== 4001 && (err.code === 4200 || err.code === -32601 || err.code === 5700 || err.code === 5710 || /not supported|does not exist|unsupported|method not found/i.test(err.message || ''));
+
+  /**
+   * Sends prepared calls ({ chain_id, atomic, calls }): as one bundle where
+   * the wallet can (all or nothing when atomic), otherwise one at a time, in
+   * order, stopping at the first that fails. Returns the transaction hashes.
+   */
+  async function sendCalls(p, progress = () => {}) {
+    try {
+      const sent = await request('wallet_sendCalls', [{ version: '2.0.0', chainId: p.chain_id, from: state.address, atomicRequired: !!p.atomic, calls: p.calls.map(c => ({ to: c.to, data: c.data, value: c.value })) }]);
+      const id = typeof sent === 'string' ? sent : sent?.id;
+      for (let k = 0; k < 90; k++) {
+        const s = await request('wallet_getCallsStatus', [id]);
+        const code = Number(s?.status);
+        if (code === 200 || s?.status === 'CONFIRMED') return (s.receipts || []).map(r => r.transactionHash);
+        if (code >= 400) throw new Error('The wallet says it failed onchain. Nothing was changed.');
+        await sleep(2000);
+      }
+      throw new Error('It hasn\'t confirmed yet. Check your wallet.');
+    } catch (err) {
+      if (!unsupported(err)) throw err;
+    }
+    const hashes = [];
+    for (const c of p.calls) {
+      const hash = await request('eth_sendTransaction', [{ from: state.address, to: c.to, data: c.data, value: c.value }]);
+      hashes.push(hash);
+      progress(`Sent ${hashes.length} of ${p.calls.length}. Waiting for it to confirm…`);
+      const r = await receipt(hash);
+      if (Number(r.status) !== 1) throw new Error(hashes.length === 1 ? 'The first step failed onchain. Nothing else was sent.' : `Step ${hashes.length} (${c.label}) failed onchain; the steps before it went through, and nothing after it was sent.`);
+    }
+    return hashes;
+  }
+
   window.RB = {
+    sendCalls, sleep,
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,

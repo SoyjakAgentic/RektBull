@@ -19,12 +19,12 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim'],
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals'],
   fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
   included_per_month: { token_report: 5 },
   monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), and a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, and yield proposals: where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -70,6 +70,18 @@ const PRODUCTS = {
     price_cents: 0,
     fee_bps: 500,
     pro_fee_bps: 300,
+    x402: false,
+  },
+  // Yield proposals are in Safety Pro; each move RektBull prepares carries a
+  // 0.1% fee, a plain transfer in the moved asset that the user signs with
+  // the move (exits to the wallet are free).
+  yield_move: {
+    kind: 'fee',
+    title: 'Yield move fee',
+    description: 'Yield proposals are part of Safety Pro. Each move RektBull prepares carries 0.1% of the amount moved, sent to RektBull in a transfer you sign with the move. Withdrawals to your wallet are free.',
+    price_cents: 0,
+    fee_bps: 10,
+    pro_fee_bps: 10,
     x402: false,
   },
   pro_30d: {

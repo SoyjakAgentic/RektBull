@@ -69,6 +69,37 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   const confirmed = [];
   claims.confirm = async (id, hashes) => { confirmed.push(hashes); return { status: 'confirmed', received: {}, fee_paid: {} }; };
 
+  // Yield: stand-ins for the services (test/yield.e2e.js runs the real ones on a Base fork).
+  const yp = require('../../src/yield/proposals');
+  const yr = require('../../src/yield/rates');
+  const pos = [{ chain: 'base', asset: 'USDC', amount: '500.0', usd: 500, protocol: 'spark-susdc', name: 'Spark sUSDC (Sky Savings Rate)', status: 'open' }];
+  const idle = [{ chain: 'base', asset: 'USDC', amount: '200.0', usd: 200 }, { chain: 'base', asset: 'ETH', gas: true, amount: '0.01', usd: 25 }];
+  yr.listRates = async () => [{ protocol: 'compound-v3', chain: 'base', name: 'Compound v3 (USDC market)', asset: 'USDC', apy_pct: 7.03, utilization_pct: 91.1 }];
+  yp.summary = async w => ({ wallet: w, positions: pos, idle, total_in_positions_usd: 500, not_read: [], proposals_count: 1, extra_per_year_usd: 16.15, note: 'Safety Pro shows each proposal.' });
+  yp.scan = async w => ({
+    wallet: w, positions: pos, idle, not_read: [], fee: { bps: 10, rate: '0.1%' }, sources: ['Balances read onchain'], note: 'Not advice.',
+    proposals: [{ id: 'move:base:USDC:spark-susdc:compound-v3', kind: 'move', chain: 'base', chain_label: 'Base', asset: 'USDC', amount: '500.0', amount_usd: 500, from: { protocol: 'spark-susdc', name: 'Spark sUSDC', apy_pct: 3.8 }, to: { protocol: 'compound-v3', name: 'Compound v3 (USDC market)', apy_pct: 7.03, utilization_pct: 91.1 }, extra_per_year_usd: 16.15, gas_usd_max: 0.02, fee_usd: 0.5 }],
+    not_proposed: [{ chain: 'base', asset: 'USDC', to: 'Aave v3', reason: 'Aave v3 on base is 96% borrowed, at or above the 95% ceiling.' }],
+  });
+  const yAsked = [];
+  const yieldVenues = require('../../src/yield/venues');
+  yp.prepare = async (input, { accountId }) => {
+    yAsked.push(input);
+    if (input.to && !accountId) throw new yieldVenues.YieldRefused('Sign in with your wallet: yield proposals are part of Safety Pro.', 401);
+    const exit = !input.to;
+    return {
+      move_id: '00000000-0000-4000-8000-000000000002', wallet: input.wallet, chain: 'base', chain_id: '0x2105', asset: 'USDC', from: input.from, to: input.to || null,
+      calls: exit ? [{ step: 'withdraw', to: '0x' + '51'.repeat(20), data: '0x01', value: '0x0', label: 'Withdraw all your USDC from Spark' }]
+        : ['withdraw', 'fee', 'approve', 'deposit'].map((k, i) => ({ step: k, to: '0x' + String(i + 1).repeat(40), data: '0x0' + i, value: '0x0', label: k })),
+      atomic: !exit,
+      summary: exit ? { moved: '500.0', moved_usd: 500, fee: '0.0', fee_usd: 0, fee_reason: 'exits to your wallet are free', fee_to: null, deposited: null }
+        : { moved: '500.0', moved_usd: 500, fee: '0.5', fee_usd: 0.5, fee_reason: null, fee_to: FEE, deposited: '499.5', from_apy_pct: 3.8, to_apy_pct: 7.03, gain_pct: 3.23, extra_per_year_usd: 16.13, gas_usd_max: 0.02 },
+      note: exit ? 'One withdrawal, no fee.' : 'Your wallet shows 4 calls.',
+    };
+  };
+  const yConfirmed = [];
+  yp.confirm = async (id, h) => { yConfirmed.push(h); return { status: 'confirmed', fee_paid: '500000' }; };
+
   const server = require('../../src/app').createApp().listen(0);
   const url = `http://127.0.0.1:${server.address().port}`;
   const { chromium } = require('playwright');
@@ -111,7 +142,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
     await page.locator('#connect-msg', { hasText: 'Connected' }).waitFor();
     await page.fill('#f-wallet', wallet.address);
-    await page.getByRole('button', { name: 'Check for free' }).click();
+    await page.click('#f-check');
     await page.locator('#f-result', { hasText: 'Claimable now' }).waitFor();
     const text = await page.textContent('#f-result');
     assert.match(text, /1,000 RWD \(about \$1,000\.00, price from DefiLlama\)/);
@@ -146,7 +177,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     await page.locator('#f-result', { hasText: 'Nothing to claim' }).waitFor();
     checks.length = 0;
     await page.evaluate(() => { window.__batching = false; });
-    await page.getByRole('button', { name: 'Check for free' }).click();
+    await page.click('#f-check');
     await page.getByRole('button', { name: 'Prepare claim on Base' }).click();
     await page.getByRole('button', { name: 'Claim with my wallet' }).click();
     await page.locator('#c-msg', { hasText: 'Claimed.' }).waitFor();
@@ -157,11 +188,56 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     // Only the wallet it's owed to can claim.
     checks.length = 0;
     await page.fill('#f-wallet', '0x' + '99'.repeat(20));
-    await page.getByRole('button', { name: 'Check for free' }).click();
+    await page.click('#f-check');
     await page.getByRole('button', { name: 'Prepare claim on Base' }).click();
     await page.getByRole('button', { name: 'Claim with my wallet' }).click();
     await page.locator('#c-msg', { hasText: 'only it can claim what\'s owed to it' }).waitFor();
     console.log('✔ claiming for another wallet is stopped before the wallet is asked');
+
+    // Yield: the free check, then a free exit, then (signed in with Safety Pro) a proposal and its move.
+    await page.fill('#y-wallet', wallet.address);
+    await page.click('#y-check');
+    await page.locator('#y-result', { hasText: 'Moves that pass the rules' }).waitFor();
+    const ytext = await page.textContent('#y-result');
+    assert.match(ytext, /Could earn more a year\$16\.15/);
+    assert.match(ytext, /Spark sUSDC \(Sky Savings Rate\)Base500 USDC\$500\.00Withdraw to wallet \(free\)/);
+    assert.match(ytext, /Idle in the walletBase200 USDC/);
+    assert.ok(!/ETH/.test(ytext), 'gas money isn\'t listed as something to put to work');
+    await page.locator('#y-rates', { hasText: 'Compound v3 (USDC market)' }).waitFor({ state: 'attached' });
+    await page.getByRole('button', { name: 'Show proposals (Safety Pro)' }).click();
+    await page.locator('#y-msg', { hasText: 'Sign in with your wallet below' }).waitFor();
+    await page.getByRole('button', { name: 'Withdraw to wallet (free)' }).click();
+    await page.locator('#y-move', { hasText: 'comes back to your wallet on Base. No fee.' }).waitFor();
+    assert.deepEqual(yAsked.at(-1), { wallet: me, chain: 'base', asset: 'USDC', from: 'spark-susdc', to: null, amount_usd: null, all: true });
+    console.log('✔ yield: the free check shows positions, idle money and what more it could earn; withdrawals are free for anyone');
+
+    const acct = (await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [me])).rows[0];
+    await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) VALUES ($1, 'pro_30d', now(), now() + interval '30 days')`, [acct.id]);
+    const token = require('../../src/auth/siwe').issueToken(acct);
+    await page.evaluate(([t, a]) => { sessionStorage.setItem('rb_token', t); sessionStorage.setItem('rb_wallet', a); }, [token, wallet.address]);
+    await page.reload();
+    await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
+    await page.evaluate(() => { window.__batching = true; });
+    await page.fill('#y-wallet', wallet.address);
+    await page.getByRole('button', { name: 'Show proposals (Safety Pro)' }).click();
+    await page.locator('#y-result', { hasText: 'Proposed moves' }).waitFor();
+    const ptext = await page.textContent('#y-result');
+    assert.match(ptext, /Spark sUSDC \(3\.8%\) → Compound v3 \(USDC market\) \(7\.03%\)/);
+    assert.match(ptext, /About \$16\.15 more a year at today's rates\. Gas up to \$0\.02, fee \$0\.50 \(0\.1%\)/);
+    assert.match(ptext, /Not proposed \(1\)/);
+    await page.getByRole('button', { name: 'Prepare this move' }).click();
+    await page.locator('#y-move', { hasText: '499.5 deposited' }).waitFor();
+    assert.deepEqual(yAsked.at(-1), { wallet: me, chain: 'base', asset: 'USDC', from: 'spark-susdc', to: 'compound-v3', amount_usd: 500, all: false });
+    const mtext = await page.textContent('#y-move');
+    assert.match(mtext, /0\.5 USDC fee to RektBull \(0\.1%, about \$0\.50\)/);
+    assert.match(mtext, new RegExp(`Fee wallet: ${FEE}`));
+    await page.getByRole('button', { name: 'Move with my wallet' }).click();
+    await page.locator('#y-move-msg', { hasText: 'Done.' }).waitFor();
+    const ybundle = await page.evaluate(() => window.__bundle);
+    assert.equal(ybundle.atomicRequired, true);
+    assert.equal(ybundle.calls.length, 4);
+    assert.equal(yConfirmed.length, 1);
+    console.log('✔ yield (Safety Pro): proposals with their figures and what wasn\'t proposed and why; the move, its 0.1% fee, sent as one bundle');
 
     await page.setViewportSize({ width: 375, height: 800 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 375), 'no sideways scrolling at phone width');

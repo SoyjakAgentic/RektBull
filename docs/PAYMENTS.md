@@ -9,6 +9,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **Credits** | Everything; the main rail on the website | Yes (wallet sign-in) | `payments/credits.js`, `invoices.js`, `watcher.js` |
 | **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
+| **Yield move fee** | Each yield move RektBull prepares: 0.1% of the amount moved, in the moved asset (exits to the wallet are free) | No (proposals need Safety Pro) | `yield/proposals.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
 
 ## Order a run is paid in
@@ -142,6 +143,23 @@ The fee wallet fills with many different tokens: keep it cold and
 receive-only (a Safe or hardware wallet); only the owner sells from it.
 Tokens received as fees are likely income when they arrive in many places:
 ask an accountant.
+
+## Yield move fees
+
+Yield proposals are part of Safety Pro; the free check shows a wallet's
+positions, its idle money and how much more it could earn. Each move
+RektBull prepares (withdraw, then deposit elsewhere, or a deposit from the
+wallet) carries **0.1% of the amount moved**, in that asset, as a plain
+`transfer` to `YIELD_FEE_WALLET_EVM` (the claim fee wallet when unset),
+after the withdrawal and before the deposit. The same rules as the claim
+fee: no approval, nothing held, bundled with the move (`atomicRequired`)
+where the wallet can, skipped when worth less than its gas. The rules count
+the fee: a move must earn back its gas and fee within 30 days. Withdrawals to
+the wallet are free and never refused.
+
+When automatic rebalancing is switched on (built, off), its fee is the same
+0.1%, enforced onchain by the Yield Router: a constant cap in the contract,
+paid only to the fixed fee wallet.
 
 ## Refunds
 

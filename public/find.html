@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RektBull Find Money</title>
-  <meta name="description" content="Free check for airdrops and rewards your wallet hasn't claimed yet, each verified onchain. Claim from your own wallet.">
+  <meta name="description" content="Free checks for airdrops and rewards your wallet hasn't claimed, and for where your stablecoins could earn more. Verified onchain; you sign every move.">
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
@@ -35,6 +35,27 @@
       <p id="c-msg" class="msg"></p>
     </section>
 
+    <section class="card" id="yield-card">
+      <h2>Earn more on what you hold</h2>
+      <p class="muted">Stablecoins and ETH on Ethereum, Base and Arbitrum, in Aave, Compound and Spark. RektBull reads each venue's rate from its own contracts and proposes only the moves that pass its rules at today's rates and gas: the destination must take deposits, be less than 95% borrowed, pay at least 1 point more, earn back its gas and fee within 30 days, and leave no protocol with more than 60% of your yield money.</p>
+      <div class="grid">
+        <label class="wide">Wallet address
+          <input id="y-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button id="y-check" class="primary">Check for free</button><button id="y-proposals">Show proposals (Safety Pro)</button></div>
+      <p id="y-msg" class="msg"></p>
+      <div id="y-result" hidden></div>
+      <div id="y-move" hidden>
+        <h3>Your move</h3>
+        <div id="y-move-summary"></div>
+        <div class="row"><button id="y-send" class="primary">Move with my wallet</button><button id="y-cancel">Cancel</button></div>
+        <p id="y-move-msg" class="msg"></p>
+      </div>
+      <details class="small"><summary>Today's rates</summary><div id="y-rates" class="muted">Loading…</div></details>
+      <p class="small muted">Not advice: rates change every block, and every venue carries smart-contract risk. You sign each move yourself; withdrawals to your wallet are always free. Each move RektBull prepares carries a 0.1% fee, shown before you sign.</p>
+    </section>
+
     <section class="card" id="fee-card">
       <h2>What it costs</h2>
       <p id="fee-what" class="small">Checking is free.</p>
@@ -55,7 +76,7 @@
 
     <section class="card" id="account-card">
       <h2>Your wallet</h2>
-      <p class="muted small">Connect the wallet you're claiming for, to sign the claim. Sign in (free) for more checks a day, and for the Safety Pro rate if you have it.</p>
+      <p class="muted small">Connect the wallet you're claiming or moving for, to sign. Sign in (free) for more checks a day; Safety Pro (on the <a href="/safety#pro-card">Safety page</a>) for the 3% claim rate and yield proposals.</p>
       <div id="wallets" class="row"></div>
       <button id="signin" disabled>Sign in with this wallet</button>
       <p id="connect-msg" class="msg"></p>
@@ -63,7 +84,7 @@
 
     <section class="card">
       <h2>For bots and AI agents</h2>
-      <p class="muted small"><code>POST /v1/claims/check</code> with <code>{"wallet"}</code> (free, limited per day); <code>POST /v1/claims/prepare</code> with <code>{"wallet", "chain", "ids"}</code> returns the calls to sign; <code>POST /v1/claims/{id}/confirm</code> with <code>{"tx_hashes"}</code>. The airdrops covered: <a href="/v1/claims/programs"><code>/v1/claims/programs</code></a>.</p>
+      <p class="muted small"><code>POST /v1/claims/check</code> with <code>{"wallet"}</code> (free, limited per day); <code>POST /v1/claims/prepare</code> with <code>{"wallet", "chain", "ids"}</code> returns the calls to sign; <code>POST /v1/claims/{id}/confirm</code> with <code>{"tx_hashes"}</code>. Yield: <a href="/v1/yield/rates"><code>GET /v1/yield/rates</code></a>; <code>POST /v1/yield/wallet</code> with <code>{"wallet"}</code>; with Safety Pro, <code>POST /v1/yield/proposals</code> and <code>POST /v1/yield/moves/prepare</code> with <code>{"wallet", "chain", "asset", "from", "to", "amount_usd" | "all"}</code> (no <code>to</code>: a free withdrawal to the wallet). The airdrops covered: <a href="/v1/claims/programs"><code>/v1/claims/programs</code></a>.</p>
     </section>
   </main>
 
@@ -71,5 +92,6 @@
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/find.js"></script>
+  <script src="/yield.js"></script>
 </body>
 </html>

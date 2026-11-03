@@ -57,7 +57,7 @@ finds or saves**, and show that figure in the result.
 | Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
 | Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs; alerts by Telegram, email and browser notifications | in Safety Pro | ✅ built, on `/safety` |
 | Find | **Airdrop and unclaimed-funds finder**: Merkl rewards on six chains and Merkle airdrops RektBull checked, each verified onchain; claims prepared for the wallet to sign | Check free; 5% of what's claimed (3% with Safety Pro), in the claimed tokens | ✅ built, on `/find` |
-| Find | Yield proposals (agent proposes, user approves) | pass | later |
+| Find | **Yield proposals**: Aave v3, Compound v3 and Spark sUSDC on Ethereum, Base and Arbitrum, rates read onchain; moves that pass the rules, prepared for the wallet to sign; risk alerts | In Safety Pro; 0.1% of each move | ✅ built, on `/find` (automatic rebalancing next, built but off) |
 | Save | Tax and profit report | $29–99 / year | after paid data |
 | Save | Governance assistant | pass | later |
 | Business | Sybil filtering for airdrops, team reports, contract monitoring, pre-audit check | $49–5k | after paid data |

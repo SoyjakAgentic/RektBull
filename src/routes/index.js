@@ -161,6 +161,40 @@ router.post('/v1/claims/:id/confirm', claimCall(req => {
 }));
 router.get('/v1/claims/programs', claimCall(async () => ({ programs: await claims.programs() })));
 
+// ── Find money: yield proposals (Safety Pro), moves the wallet signs with a 0.1% fee ──
+const yieldProposals = require('../yield/proposals');
+const yieldVenues = require('../yield/venues');
+const YIELD_LIMITS = { wallet: { account: 30, anonymous: 5 }, prepare: { account: 30, anonymous: 10 } };
+const yieldCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof yieldVenues.YieldRefused) return res.status(err.status).json({ error: err.status === 402 ? 'safety_pro_required' : 'refused', message: err.message, ...(err.offer ? { offer: err.offer } : {}) });
+    throw err;
+  }
+};
+const yieldLimit = kind => async (req, res, next) => {
+  const limits = YIELD_LIMITS[kind];
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, limits.account] : [require('../privacy/ipKey').ipSubject(req.ip), limits.anonymous];
+  if (!env.databaseUrl || await takeAllowance(subject, `yield_${kind}`, limit)) return next();
+  res.status(429).json({ error: 'daily_limit', message: `This is limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+};
+router.get('/v1/yield/rates', yieldCall(async () => ({
+  rates: await require('../yield/rates').listRates(),
+  ...(env.databaseUrl ? await require('../yield/risk').current() : { warnings: [] }),
+  sources: ['Each venue\'s own contracts onchain', 'DefiLlama yields (a cross-check, and reward APYs, which the rules don\'t count)'],
+})));
+router.post('/v1/yield/wallet', validated(claims.parseWallet), yieldLimit('wallet'), yieldCall(req => yieldProposals.summary(req.input.wallet)));
+router.post('/v1/yield/proposals', validated(claims.parseWallet), yieldCall(async req => {
+  await yieldProposals.requirePro(req.account?.id);
+  return yieldProposals.scan(req.input.wallet);
+}));
+router.post('/v1/yield/moves/prepare', validated(yieldProposals.parseMove), yieldLimit('prepare'), yieldCall(req => yieldProposals.prepare(req.input, { accountId: req.account?.id || null })));
+router.post('/v1/yield/moves/:id/confirm', yieldCall(req => {
+  if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new yieldVenues.YieldRefused('No such move.', 404);
+  return yieldProposals.confirm(req.params.id, req.body?.tx_hashes);
+}));
+
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');
 const monitorCall = fn => async (req, res) => {

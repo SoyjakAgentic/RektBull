@@ -27,6 +27,13 @@ async function main() {
     setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);
     // Deletes data past the periods on the privacy page (src/privacy/retention.js).
     setInterval(() => require('./privacy/retention').purge().catch(err => logger.warn('retention purge failed', { error: err.message })), 60 * 60 * 1000);
+    // The yield risk watcher: every venue, every 5 minutes (src/yield/risk.js).
+    let watching = false;
+    setInterval(async () => {
+      if (watching) return;
+      watching = true;
+      try { await require('./yield/risk').tick(); } catch (err) { logger.error('yield risk tick failed', { error: err.message }); } finally { watching = false; }
+    }, 5 * 60 * 1000);
     // The risk monitor: a few due wallets every 5 minutes (each is checked once a day).
     let monitoring = false;
     setInterval(async () => {
