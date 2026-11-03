@@ -76,6 +76,12 @@ const env = {
   cdpApiKeyId: process.env.CDP_API_KEY_ID || '',
   cdpApiKeySecret: process.env.CDP_API_KEY_SECRET || '',
 
+  // Payments: NOWPayments, a hosted checkout in many coins, forwarded to the payout wallet set in its dashboard.
+  nowpaymentsEnabled: process.env.NOWPAYMENTS_ENABLED === 'true',
+  nowpaymentsApiKey: process.env.NOWPAYMENTS_API_KEY || '',
+  nowpaymentsIpnSecret: process.env.NOWPAYMENTS_IPN_SECRET || '',
+  nowpaymentsApiBase: process.env.NOWPAYMENTS_API_BASE || 'https://api.nowpayments.io/v1',
+
   // Payments: stablecoin deposits (credits top-ups)
   depositXpub: process.env.CRYPTO_DEPOSIT_XPUB || '',
   paymentChains: list(process.env.PAYMENT_CHAINS || 'ethereum,bsc,base'),

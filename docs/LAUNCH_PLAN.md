@@ -74,6 +74,7 @@ private key, an xprv, or a KMS key. Secrets go straight into Secret Manager.
 | 0x | Sell tests in token checks | Free plan |
 | RPC provider (Alchemy, QuickNode, or similar) | Your own endpoints for each chain (`RPC_URLS_*`); public RPCs are the fallback | Free plans |
 | Resend | Alert and confirmation email | Free up to 3,000 emails/month |
+| NOWPayments (optional) | A second checkout in any coin, forwarded to your Safe | A fee per payment (see its dashboard) |
 | Telegram bot (@BotFather) | Telegram alerts | Free |
 | Domain registrar | `rektbull.com` (owned), `rektbull.app` (to register) | ≈ $15/year for `.app` |
 
@@ -111,6 +112,7 @@ land where you can't reach them.
 | `rektbull-telegram-bot-token` | From @BotFather | api, worker |
 | `rektbull-telegram-webhook-secret` | `openssl rand -hex 32` | api |
 | `rektbull-resend-api-key` | Resend key (sending only) | api, worker |
+| `rektbull-nowpayments-api-key`, `rektbull-nowpayments-ipn-secret` | From the NOWPayments dashboard. Not using it yet? Create both with the value `unused` and leave `NOWPAYMENTS_ENABLED` unset | api, worker |
 | `rektbull-vapid-private-key` | From `npx web-push generate-vapid-keys`. **Never change the pair** once live: it ends every browser subscription | api, worker |
 
 ```bash
@@ -138,6 +140,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT` | ✔ | ✔ | From the same pair; `mailto:` an address you read |
 | `REPORT_MODEL`, `REPORT_EFFORT` | ✔ | | The defaults unless we choose otherwise |
 | `NEW_WALLET_CHECK_CHAINS` | ✔ | | Default |
+| `NOWPAYMENTS_ENABLED` | ✔ | ✔ | `true` once NOWPayments is set up (payout wallet, crypto only, IPN secret, IPN URL `https://rektbull.com/v1/nowpayments/ipn`) |
 | `TRADING_ENABLED` | | | **Unset** |
 | `YIELD_AUTO_ENABLED`, `YIELD_ROUTERS` | | | **Unset** (automatic rebalancing stays off) |
 
@@ -227,6 +230,7 @@ By hand (you, with a real wallet and small amounts):
 - [ ] Top up $5 of USDC on Base: the invoice address matches your own
       derivation; credits arrive after confirmations.
 - [ ] Buy Safety Pro (30 days) from credits; the page shows it.
+- [ ] If NOWPayments is on: a $5 top-up in another coin; the credits arrive, and the payment reaches your Safe.
 - [ ] Run an approval cleanup on a wallet with one old approval; sign the revoke.
 - [ ] Add a wallet to the risk monitor; link Telegram, email (confirm the
       link, check it isn't in spam) and browser push; send a test alert to each.

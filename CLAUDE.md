@@ -1,7 +1,8 @@
 # RektBull: working rules
 
 - **Crypto payments only.** No card processors (no Stripe). Rails: x402 (USDC on
-  Base), USDT/USDC credit top-ups, prepaid passes, and in-kind fees on claims
+  Base), USDT/USDC credit top-ups, NOWPayments' hosted crypto checkout (no card
+  or fiat options), prepaid passes, and in-kind fees on claims
   and yield moves (a share of what's claimed or moved, in a plain transfer the
   user signs next to it; see docs/PAYMENTS.md). No recurring pulls and no
   token approvals asked of users for billing.

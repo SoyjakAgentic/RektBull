@@ -7,6 +7,7 @@ Crypto only. Every paid run goes through the same payment gate
 |---|---|---|---|
 | **x402** | Runs up to about $1, bots, other agents | No | `payments/x402.js`, `payments/facilitator.js` |
 | **Credits** | Everything; the main rail on the website | Yes (wallet sign-in) | `payments/credits.js`, `invoices.js`, `watcher.js` |
+| **NOWPayments** | Credits or a pass, paid in any coin NOWPayments takes, on its own page; forwarded to RektBull's payout wallet. A fee per payment | Yes | `payments/nowpayments.js` |
 | **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
 | **Yield move fee** | Each yield move RektBull prepares: 0.1% of the amount moved, in the moved asset (exits to the wallet are free) | No (proposals need Safety Pro) | `yield/proposals.js` |
@@ -160,6 +161,43 @@ the wallet are free and never refused.
 When automatic rebalancing is switched on (built, off), its fee is the same
 0.1%, enforced onchain by the Yield Router: a constant cap in the contract,
 paid only to the fixed fee wallet.
+
+## NOWPayments (a second checkout)
+
+RektBull's own top-ups (USDT/USDC to a deposit address) cost nothing, but a
+deposit address holding USDT needs gas sent to it before it can be swept,
+and only the payment chains' stablecoins are taken. NOWPayments' hosted
+invoice takes whatever coins and networks are enabled in its dashboard and
+forwards each payment to the payout wallet set there (RektBull's Safe). It
+charges a fee per payment (shown in its dashboard); USDT/USDC top-ups stay
+the no-fee option, shown first.
+
+- `POST /v1/checkout/nowpayments` with `{ amount_cents }` (credits) or
+  `{ product }` (a pass, at its price) returns NOWPayments' `invoice_url`.
+- **Nothing is credited on a notification's word.** The notification to
+  `/v1/nowpayments/ipn` must carry a valid `x-nowpayments-sig` (HMAC-SHA512
+  of the body with its keys sorted, with the IPN secret); then the payment is
+  read back from NOWPayments' API; it must be this order's (and this
+  NOWPayments invoice's), priced at least the invoice in USD, and `finished`.
+  The credit is one ledger entry (`nowpayments:<id>`), so it can't happen twice.
+- The worker re-reads payments under way every 5 minutes, so a lost
+  notification is caught up. `partially_paid` is never credited
+  automatically: it shows as underpaid, and admins see it at
+  `GET /v1/admin/hosted-invoices?status=underpaid`.
+- Setup: a NOWPayments merchant account; enable only crypto (no card or fiat
+  options, per CLAUDE.md); set the payout wallet to RektBull's Safe; set the
+  IPN callback secret; secrets `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`,
+  then `NOWPAYMENTS_ENABLED=true`. Test against the sandbox first
+  (`NOWPAYMENTS_API_BASE=https://api-sandbox.nowpayments.io/v1`). Check the
+  API's field names against NOWPayments' current documentation.
+
+## Renewal reminders
+
+Passes never renew by themselves, so the worker reminds (hourly check,
+`payments/reminders.js`): 7 days before a pass ends, 1 day before, and when
+it has ended, once each per end date, and not while a later pass extends it.
+Each is a risk monitor alert (`pass_renewal`), so it goes to the account's
+Telegram, email and push channels, with a link to renew.
 
 ## Refunds
 
