@@ -44,6 +44,8 @@ const CALLS = new ethers.Interface([
   'function safeTransferFrom(address from, address to, uint256 id)',
   'function approve(address token, address spender, uint160 amount, uint48 expiration)', // Permit2
   'function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
+  'function castVote(uint256 proposalId, uint8 support)', 'function castVoteWithReason(uint256 proposalId, uint8 support, string reason)',
+  'function delegate(address delegatee)',
 ]);
 const ERC20_META = new ethers.Interface(['function symbol() view returns (string)', 'function decimals() view returns (uint8)']);
 
@@ -174,7 +176,11 @@ async function checkTransactions(chain, from, calls, add, notChecked, decoded) {
       else if (d.name === 'approve' && d.args.length === 2 && big(d.args[1]) > 0n) await rateApproval(chain, 'erc20', to, d.args[0], big(d.args[1]), add, notChecked, 'Token approval');
       else if (d.name === 'increaseAllowance') await rateApproval(chain, 'erc20', to, d.args[0], big(d.args[1]), add, notChecked, 'Token approval');
       else if (d.name === 'approve' && d.args.length === 4) await rateApproval(chain, 'permit2', d.args[0], d.args[1], big(d.args[2]), add, notChecked, 'Permit2 approval');
-      else if (d.name === 'transfer') {
+      else if (d.name === 'castVote' || d.name === 'castVoteWithReason') add('info', `A governance vote onchain (${['Against', 'For', 'Abstain'][Number(d.args[1])] || `support ${d.args[1]}`})`, 'It costs gas and can\'t be changed afterwards; it moves no tokens and approves nothing.', 'the request (decoded)');
+      else if (d.name === 'delegate') {
+        if (lower(d.args[0]) === lower(from)) add('info', 'Delegates your voting power to yourself', 'Your tokens stay in your wallet and count as your votes.', 'the request (decoded)');
+        else { add('medium', `Gives your voting power to ${short(lower(d.args[0]))}`, 'Your tokens stay in your wallet, but that address votes with them until you delegate again.', 'the request (decoded)'); await rateRecipient(chain, d.args[0], add, 'The delegation'); }
+      } else if (d.name === 'transfer') {
         if (lower(d.args[0]) === to) add('high', 'Tokens sent to the token\'s own contract', 'Tokens sent to a token contract are almost always lost for good.', 'the request');
         await rateRecipient(chain, d.args[0], add, 'The transfer');
       }

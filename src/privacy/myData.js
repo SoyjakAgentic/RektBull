@@ -33,6 +33,7 @@ const TABLES = {
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
   governance_spaces: 'SELECT space_id, created_at FROM governance_spaces WHERE account_id = $1',
+  governance_governors: 'SELECT chain, address, name, created_at FROM governance_governors WHERE account_id = $1',
   governance_votes: 'SELECT wallet, space_id, proposal_id, choice, receipt_id, created_at FROM governance_votes WHERE account_id = $1 ORDER BY created_at',
   hosted_checkouts: 'SELECT gateway, amount_cents, product, status, pay_currency, created_at, paid_at FROM hosted_invoices WHERE account_id = $1 ORDER BY created_at',
   yield_moves: 'SELECT wallet, chain, asset, from_protocol, to_protocol, amount_raw, fee_raw, fee_bps, fee_wallet, status, tx_hashes, fee_paid_raw, created_at, confirmed_at FROM yield_moves WHERE account_id = $1 ORDER BY created_at',
@@ -71,6 +72,7 @@ async function deleteMine(account, { confirm } = {}) {
     require('../auth/extensionTokens').forget(links.map(l => l.jti)); // stop them working at once
     await run('trade_settings', 'DELETE FROM trade_settings WHERE account_id = $1');
     await run('governance_spaces', 'DELETE FROM governance_spaces WHERE account_id = $1');
+    await run('governance_governors', 'DELETE FROM governance_governors WHERE account_id = $1');
     await run('governance_votes', 'DELETE FROM governance_votes WHERE account_id = $1'); // the votes themselves are public on Snapshot
     await run('free_use_counters', `DELETE FROM free_usage WHERE subject = 'account:' || $1`);
     await run('email', 'UPDATE accounts SET email = NULL WHERE id = $1 AND email IS NOT NULL');

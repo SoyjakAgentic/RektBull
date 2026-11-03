@@ -264,6 +264,19 @@ router.post('/v1/governance/summary', paidRoute('governance_summary', {
 }));
 router.post('/v1/governance/votes/prepare', validated(governance.parseVote), govCall(req => governance.prepareVote(req.input)));
 router.post('/v1/governance/votes', govCall(req => governance.submitVote(req.body || {}, { accountId: req.account?.id || null }), 201));
+// On-chain governors: votes and delegations are transactions the wallet sends; prepared and simulated here.
+const governorsSvc = require('../services/governors');
+const onchainCall = fn => async (req, res) => {
+  try { res.json(await fn(req)); } catch (err) {
+    if (err instanceof governorsSvc.GovernorRefused || err instanceof governance.GovernanceRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.post('/v1/governance/onchain/votes/prepare', validated(governance.parseOnchainVote), onchainCall(req => governorsSvc.prepareVote(req.input)));
+router.post('/v1/governance/onchain/delegate/prepare', validated(governance.parseDelegate), onchainCall(req => governorsSvc.prepareDelegate(req.input)));
+router.get('/v1/governance/governors', requireAuth, onchainCall(async req => ({ registry: governorsSvc.REGISTRY, governors: await governance.savedGovernors(req.account.id) })));
+router.post('/v1/governance/governors', requireAuth, onchainCall(req => governance.addGovernor(req.account.id, { chain: req.body?.chain, address: req.body?.address })));
+router.delete('/v1/governance/governors/:chain/:address', requireAuth, onchainCall(req => governance.removeGovernor(req.account.id, req.params.chain, req.params.address)));
 router.get('/v1/governance/spaces', requireAuth, govCall(async req => ({ spaces: await governance.savedSpaces(req.account.id) })));
 router.post('/v1/governance/spaces', requireAuth, govCall(req => governance.addSpace(req.account.id, req.body?.space), 201));
 router.delete('/v1/governance/spaces/:space', requireAuth, govCall(req => governance.removeSpace(req.account.id, req.params.space)));

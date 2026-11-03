@@ -76,14 +76,14 @@ const LOGS_PER_PAGE = 1000; // both Etherscan and Blockscout return at most this
 const blockOf = l => Number(l.blockNumber);
 
 /**
- * Every log matching { address?, topic0?, topic1? } from block 0, paged by
+ * Every log matching { address?, topic0?, topic1? } from fromBlock (default 0), paged by
  * block range (works the same on every explorer). Returns { logs, complete }:
  * complete is false when maxPages ran out first (the oldest logs are read).
  */
-async function explorerLogs(chain, { address, topic0, topic1 }, { maxPages = 5 } = {}) {
+async function explorerLogs(chain, { address, topic0, topic1 }, { maxPages = 5, fromBlock = 0 } = {}) {
   const logs = [];
   const seen = new Set();
-  let from = 0;
+  let from = Number(fromBlock) || 0;
   for (let page = 0; page < maxPages; page++) {
     const params = { module: 'logs', action: 'getLogs', fromBlock: from, toBlock: 'latest' };
     if (address) params.address = address;
@@ -106,4 +106,15 @@ async function explorerLogs(chain, { address, topic0, topic1 }, { maxPages = 5 }
   return { logs, complete: false };
 }
 
-module.exports = { explorerGet, explorerLogs, blockscoutSourceRow, refusedForPlan, ExplorerError, UNVERIFIED };
+/** The block at or just before a unix time, from the explorer (cached an hour). */
+async function blockAt(chain, unixSeconds) {
+  const t = Math.floor(unixSeconds / 3600) * 3600; // to the hour, so the cache is shared
+  return require('../lib/cache').cached(`explorer:blockat:${chain}:${t}`, 3600, async () => {
+    const data = await module.exports.explorerGet(chain, { module: 'block', action: 'getblocknobytime', timestamp: t, closest: 'before' });
+    const n = Number(typeof data?.result === 'object' ? data.result?.blockNumber : data?.result);
+    if (!Number.isFinite(n) || n <= 0) throw new ExplorerError(`block at ${t} on ${chain}: ${data?.message || 'no answer'}`);
+    return n;
+  });
+}
+
+module.exports = { explorerGet, explorerLogs, blockAt, blockscoutSourceRow, refusedForPlan, ExplorerError, UNVERIFIED };
