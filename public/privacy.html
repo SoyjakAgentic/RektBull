@@ -32,9 +32,10 @@
         <thead><tr><th>When you…</th><th>We keep</th><th>Why</th></tr></thead>
         <tbody>
           <tr><td>Sign in with your wallet</td><td>Your wallet address; the sign-in message (deleted a day after it expires)</td><td>Your account is your wallet</td></tr>
-          <tr><td>Top up credits, buy a pass</td><td>The deposit address we gave you, the deposits it received (amount, sending address, transaction), your credit balance and history, your passes</td><td>To credit what you paid and keep payment records</td></tr>
+          <tr><td>Top up credits, buy a pass</td><td>The deposit address we gave you, the deposits it received (amount, sending address, transaction), your credit balance and history, your passes; for payments through NOWPayments, the amount, the coin you paid in and NOWPayments' payment number</td><td>To credit what you paid and keep payment records</td></tr>
           <tr><td>Check a token, clean up approvals</td><td>The token or wallet address you checked, the result and how it was paid (for pay-per-call with x402, the paying address and transaction)</td><td>To run the check, charge only when it succeeds, and refund it when it fails</td></tr>
           <tr><td>Use free points or previews</td><td>Monthly counters on your account; for limits on use without an account, a counter keyed by a <strong>hashed</strong> IP address (we don't store the IP address itself)</td><td>To give free use fairly and stop abuse</td></tr>
+          <tr><td>Have Safety Pro</td><td>Which renewal reminders we've sent (7 days, 1 day, ended)</td><td>To remind you once each, since nothing renews by itself</td></tr>
           <tr><td>Watch wallets with the risk monitor</td><td>The wallets you watch (and the names you give them), what the last check saw, and the alerts raised</td><td>To tell you what changed since the last check</td></tr>
           <tr><td>Get alerts by Telegram, email or browser notification</td><td>Your Telegram chat ID and username, or your email address, or your browser's push subscription; which alerts each one gets; delivery records</td><td>To send you alerts, and stop when a channel stops working</td></tr>
           <tr><td>Use the browser extension or the MetaMask Snap</td><td>A link to your account (which you can revoke), when it was last used, and for each check only the kind of request and the chain. <strong>Not</strong> what you were signing or which site asked</td><td>To check requests before you sign, and count your free checks</td></tr>
@@ -80,6 +81,7 @@
           <tr><td>Aave, Compound, Spark (their contracts, through our RPC providers)</td><td>Yield rates and positions</td><td>Wallet addresses being checked</td></tr>
           <tr><td>Merkl</td><td>Rewards a wallet can claim</td><td>The wallet address being checked</td></tr>
           <tr><td>Anthropic</td><td>Writing AI token reports</td><td>The token's check results (no account data)</td></tr>
+          <tr><td>NOWPayments</td><td>Payments in other coins, if you choose it</td><td>The amount and an order number from us; on its own payment page, whatever you give it there (its privacy policy applies)</td></tr>
           <tr><td>Coinbase (x402 facilitator)</td><td>Pay-per-call payments in USDC</td><td>The payment authorization you sign</td></tr>
           <tr><td>Telegram, Resend (email), your browser's push service</td><td>Delivering alerts you turned on</td><td>The alert, and your chat ID, email address or push subscription</td></tr>
         </tbody>

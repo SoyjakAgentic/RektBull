@@ -32,6 +32,7 @@ const TABLES = {
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
+  hosted_checkouts: 'SELECT gateway, amount_cents, product, status, pay_currency, created_at, paid_at FROM hosted_invoices WHERE account_id = $1 ORDER BY created_at',
   yield_moves: 'SELECT wallet, chain, asset, from_protocol, to_protocol, amount_raw, fee_raw, fee_bps, fee_wallet, status, tx_hashes, fee_paid_raw, created_at, confirmed_at FROM yield_moves WHERE account_id = $1 ORDER BY created_at',
   yield_permissions: 'SELECT wallet, chain_id, router, status, expires_at, created_at, revoked_at FROM yield_permissions WHERE account_id = $1',
   yield_auto_actions: 'SELECT a.kind, a.from_venue, a.to_venue, a.asset, a.amount_raw, a.reason, a.status, a.tx_hash, a.created_at FROM yield_auto_actions a JOIN yield_permissions p ON p.id = a.permission_id WHERE p.account_id = $1 ORDER BY a.created_at',

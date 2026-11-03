@@ -33,6 +33,7 @@ router.get('/v1/catalog', (_req, res) => res.json({ products: publicCatalog(), f
 
 router.get('/v1/payment-methods', (_req, res) => res.json({
   x402: { enabled: x402.enabled(), network: env.x402Network, asset: 'USDC' },
+  nowpayments: { enabled: require('../payments/nowpayments').enabled(), note: 'Any coin NOWPayments takes, on its own payment page; it charges a fee per payment. USDT/USDC top-ups here have none.' },
   stablecoin_top_ups: { enabled: !!env.depositXpub, min_cents: env.minTopUpCents, chains: methods(env.paymentChains) },
 }));
 
@@ -88,6 +89,30 @@ router.post('/v1/invoices', requireAuth, async (req, res) => {
 });
 router.get('/v1/invoices', requireAuth, async (req, res) => res.json({ invoices: await invoices.list(req.account.id) }));
 router.get('/v1/invoices/:id', requireAuth, async (req, res) => res.json(await invoices.get(req.account.id, req.params.id)));
+
+// NOWPayments: a hosted checkout for credits or a pass; its notifications are signed, and every payment is read back before crediting.
+const nowpayments = require('../payments/nowpayments');
+const npCall = fn => async (req, res) => {
+  try { res.status(201).json(await fn(req)); } catch (err) {
+    if (err instanceof nowpayments.NowPaymentsError) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.post('/v1/checkout/nowpayments', requireAuth, npCall(req => nowpayments.createCheckout(req.account.id, req.body || {})));
+router.get('/v1/checkout/:id', requireAuth, async (req, res) => {
+  try { res.json(await nowpayments.get(req.account.id, req.params.id)); } catch (err) {
+    if (err instanceof nowpayments.NowPaymentsError) return res.status(err.status).json({ error: 'not_found', message: err.message });
+    throw err;
+  }
+});
+router.post('/v1/nowpayments/ipn', async (req, res) => {
+  const { status, result } = await nowpayments.handleIpn(req.body, req.get('x-nowpayments-sig'));
+  res.status(status).json({ result });
+});
+router.get('/v1/admin/hosted-invoices', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await db.query(`SELECT h.*, a.wallet FROM hosted_invoices h JOIN accounts a ON a.id = h.account_id WHERE ($1::text IS NULL OR h.status = $1) ORDER BY h.created_at DESC LIMIT 200`, [req.query.status || null]);
+  res.json({ invoices: rows });
+});
 
 router.post('/v1/passes/:product', requireAuth, async (req, res) => {
   try {

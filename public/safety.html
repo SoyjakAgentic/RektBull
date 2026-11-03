@@ -102,7 +102,8 @@
           <label>Coin<select id="t-coin"></select></label>
           <label>Amount (USD)<input id="t-amount" type="number" min="5" step="1" value="10"></label>
         </div>
-        <button id="t-create">Get a deposit address</button>
+        <div class="row"><button id="t-create">Get a deposit address</button><button id="t-np" hidden>Pay with any coin (NOWPayments)</button></div>
+        <p id="t-np-note" class="small muted" hidden>NOWPayments takes many coins and networks on its own payment page, and charges a fee per payment; USDT and USDC sent here have none.</p>
         <div id="invoice" hidden></div>
         <p id="topup-msg" class="msg"></p>
 

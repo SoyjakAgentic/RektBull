@@ -19,6 +19,9 @@ function reasons(alert) {
 
 /** { subject, text, url } for an alert. */
 function message(alert) {
+  if (alert.kind === 'pass_renewal') {
+    return { subject: `RektBull: ${alert.title}`.slice(0, 150), text: [alert.title, ...(alert.detail?.reasons || []).map(r => r.text)].join('\n'), url: `${env.publicUrl}/safety#pro-card`, action: 'Renew Safety Pro' };
+  }
   const lines = [
     `${SEVERITY[alert.severity] || alert.severity}: ${alert.title}`,
     `Wallet ${short(alert.wallet)}`,

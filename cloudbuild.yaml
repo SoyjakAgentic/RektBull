@@ -30,7 +30,7 @@ steps:
       - --allow-unauthenticated
       - --service-account=rektbull-api@$PROJECT_ID.iam.gserviceaccount.com
       - --update-env-vars=SERVICE_ROLE=web
-      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ANTHROPIC_API_KEY=rektbull-anthropic-api-key:latest,CDP_API_KEY_ID=rektbull-cdp-api-key-id:latest,CDP_API_KEY_SECRET=rektbull-cdp-api-key-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,ZEROEX_API_KEY=rektbull-zeroex-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,TELEGRAM_WEBHOOK_SECRET=rektbull-telegram-webhook-secret:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ANTHROPIC_API_KEY=rektbull-anthropic-api-key:latest,CDP_API_KEY_ID=rektbull-cdp-api-key-id:latest,CDP_API_KEY_SECRET=rektbull-cdp-api-key-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,ZEROEX_API_KEY=rektbull-zeroex-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,TELEGRAM_WEBHOOK_SECRET=rektbull-telegram-webhook-secret:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest,NOWPAYMENTS_API_KEY=rektbull-nowpayments-api-key:latest,NOWPAYMENTS_IPN_SECRET=rektbull-nowpayments-ipn-secret:latest
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -45,7 +45,7 @@ steps:
       - --no-cpu-throttling
       - --service-account=rektbull-worker@$PROJECT_ID.iam.gserviceaccount.com
       - --update-env-vars=SERVICE_ROLE=worker
-      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest
+      - --set-secrets=DATABASE_URL=rektbull-database-url:latest,JWT_SECRET=rektbull-jwt-secret:latest,ETHERSCAN_API_KEY=rektbull-etherscan-api-key:latest,BLOCKSCOUT_API_KEY=rektbull-blockscout-api-key:latest,TELEGRAM_BOT_TOKEN=rektbull-telegram-bot-token:latest,RESEND_API_KEY=rektbull-resend-api-key:latest,VAPID_PRIVATE_KEY=rektbull-vapid-private-key:latest,NOWPAYMENTS_API_KEY=rektbull-nowpayments-api-key:latest,NOWPAYMENTS_IPN_SECRET=rektbull-nowpayments-ipn-secret:latest
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:

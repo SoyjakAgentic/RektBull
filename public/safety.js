@@ -154,12 +154,18 @@
   }
 
   let methods = [];
+  let npEnabled = false;
   async function loadPaymentMethods() {
     const pm = await api('GET', '/v1/payment-methods');
     const top = pm.stablecoin_top_ups;
-    $('topup-form').hidden = $('t-create').hidden = !top.enabled;
-    $('topup-off').hidden = top.enabled;
-    if (!top.enabled) { $('topup-off').textContent = 'Top-ups aren\'t switched on on this server yet.'; return; }
+    npEnabled = !!pm.nowpayments?.enabled;
+    $('t-np').hidden = $('t-np-note').hidden = !npEnabled;
+    $('topup-form').hidden = !top.enabled && !npEnabled;
+    $('t-create').hidden = !top.enabled;
+    for (const id of ['t-chain', 't-coin']) $(id).closest('label').hidden = !top.enabled;
+    $('topup-off').hidden = top.enabled || npEnabled;
+    renderPasses();
+    if (!top.enabled) { if (!npEnabled) $('topup-off').textContent = 'Top-ups aren\'t switched on on this server yet.'; return; }
     methods = top.chains;
     $('t-amount').min = Math.ceil(top.min_cents / 100);
     $('t-chain').replaceChildren(...methods.map(m => el('option', { value: m.chain }, CHAIN_NAMES[m.chain] || m.chain)));
@@ -217,7 +223,38 @@
   function renderPasses() {
     const passes = Object.values(catalog).filter(p => p.kind === 'pass');
     if (passes[0]) $('pro-what').textContent = passes[0].description;
-    $('passes').replaceChildren(...passes.map(p => el('button', { class: p.days === 30 ? 'primary' : '', onclick: () => buyPass(p) }, `${p.title}: ${p.price_usd}`)));
+    $('passes').replaceChildren(
+      ...passes.map(p => el('button', { class: p.days === 30 ? 'primary' : '', onclick: () => buyPass(p) }, `${p.title}: ${p.price_usd}`)),
+      ...(npEnabled ? passes.map(p => el('button', { class: 'link', onclick: () => payWithNowPayments({ product: p.id }, 'pass-msg') }, `or pay ${p.price_usd} with any coin (${p.days} days)`)) : []),
+    );
+  }
+
+  /* NOWPayments: off to its payment page, back here with ?paid=<id>. */
+  async function payWithNowPayments(body, msgId) {
+    if (!window.RB.signedIn()) return say(msgId, 'Sign in first.', 'bad');
+    try {
+      say(msgId, 'Opening NOWPayments…');
+      const c = await api('POST', '/v1/checkout/nowpayments', body);
+      location.href = c.invoice_url;
+    } catch (err) { say(msgId, err.message, 'bad'); }
+  }
+  $('t-np').addEventListener('click', () => payWithNowPayments({ amount_cents: Math.round(Number($('t-amount').value) * 100) }, 'topup-msg'));
+  const paidId = new URLSearchParams(location.search).get('paid');
+  if (paidId && /^[0-9a-f-]{36}$/.test(paidId)) {
+    const NP_STATUS = {
+      pending: 'Waiting for NOWPayments to see your payment…', confirming: 'NOWPayments has your payment and is confirming it. Credits appear when it\'s done.',
+      paid: 'Paid: it\'s in your credits (and your pass, if you bought one, is active).', expired: 'That NOWPayments payment expired or was refunded. Nothing was charged here.',
+    };
+    const check = async (tries = 0) => {
+      if (!window.RB.signedIn()) return;
+      try {
+        const c = await api('GET', '/v1/checkout/' + paidId);
+        say('topup-msg', c.note || NP_STATUS[c.status] || c.status, c.status === 'paid' ? 'ok' : c.status === 'underpaid' || c.status === 'expired' ? 'bad' : '');
+        if (c.status === 'paid') { loadAccount(); document.dispatchEvent(new Event('rb:account-changed')); return; }
+        if (['pending', 'confirming'].includes(c.status) && tries < 40) setTimeout(() => check(tries + 1), 15000);
+      } catch (err) { say('topup-msg', err.message, 'bad'); }
+    };
+    window.RB.onSignedIn(() => check());
   }
   async function buyPass(p) {
     if (!window.RB.signedIn()) return say('pass-msg', 'Sign in first.', 'bad');
