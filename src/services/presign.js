@@ -249,6 +249,8 @@ async function checkTypedData(chain, from, td, add, notChecked, decoded) {
     const toMe = [].concat(msg.consideration || []).filter(c => lower(c.recipient) === lower(msg.offerer || from));
     if (offer.length && !toMe.length) add('critical', 'This lists your items for nothing', `The order gives away ${offer.length} item${offer.length === 1 ? '' : 's'} and pays you nothing. This is the classic NFT phishing signature.`, 'Seaport order (decoded)');
     else if (offer.length) add('low', `A Seaport order: ${offer.length} item(s) offered, ${toMe.length} payment(s) to you`, 'Check the price in your wallet before signing.', 'Seaport order (decoded)');
+  } else if (domain.name === 'snapshot' && type === 'Vote' && msg.space && msg.proposal) {
+    add('info', `A Snapshot vote in ${String(msg.space).slice(0, 60)}`, 'An off-chain vote: it moves no funds and approves nothing. Snapshot records it with your address.', 'Snapshot vote (decoded)');
   } else {
     add('low', `A signature for ${domain.name || 'an app'} (${type || 'typed data'})`, 'Not a known approval or order type.', 'the request');
   }

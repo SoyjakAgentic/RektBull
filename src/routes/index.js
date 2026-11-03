@@ -242,6 +242,32 @@ router.post('/v1/yield/auto/permissions', requireAuth, autoCall(async req => {
 router.get('/v1/yield/auto/permissions', requireAuth, autoCall(async req => ({ permissions: await yieldAuto.list(req.account) })));
 router.delete('/v1/yield/auto/permissions/:id', requireAuth, autoCall(req => yieldAuto.revoke(req.account, req.params.id)));
 
+// ── Save money: the governance assistant (Snapshot votes; summaries are a paid run; votes are signed by the wallet) ──
+const governance = require('../services/governance');
+const govCall = (fn, status = 200) => async (req, res) => {
+  try {
+    res.status(status).json(await fn(req));
+  } catch (err) {
+    if (err instanceof governance.GovernanceRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+const GOV_CHECKS = { account: 60, anonymous: 10 };
+router.post('/v1/governance/check', validated(claims.parseWallet), async (req, res, next) => {
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, GOV_CHECKS.account] : [require('../privacy/ipKey').ipSubject(req.ip), GOV_CHECKS.anonymous];
+  if (!env.databaseUrl || await takeAllowance(subject, 'governance_check', limit)) return next();
+  res.status(429).json({ error: 'daily_limit', message: `Free checks are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+}, govCall(req => governance.check(req.input.wallet, { accountId: req.account?.id || null })));
+router.post('/v1/governance/summary', paidRoute('governance_summary', {
+  validate: req => (claude.available() ? governance.parseProposalId(req.body) : { error: 'Summaries are not available yet: the AI key is not configured' }),
+  run: input => governance.summarize(input),
+}));
+router.post('/v1/governance/votes/prepare', validated(governance.parseVote), govCall(req => governance.prepareVote(req.input)));
+router.post('/v1/governance/votes', govCall(req => governance.submitVote(req.body || {}, { accountId: req.account?.id || null }), 201));
+router.get('/v1/governance/spaces', requireAuth, govCall(async req => ({ spaces: await governance.savedSpaces(req.account.id) })));
+router.post('/v1/governance/spaces', requireAuth, govCall(req => governance.addSpace(req.account.id, req.body?.space), 201));
+router.delete('/v1/governance/spaces/:space', requireAuth, govCall(req => governance.removeSpace(req.account.id, req.params.space)));
+
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');
 const monitorCall = fn => async (req, res) => {

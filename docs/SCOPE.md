@@ -59,7 +59,7 @@ finds or saves**, and show that figure in the result.
 | Find | **Airdrop and unclaimed-funds finder**: Merkl rewards on six chains and Merkle airdrops RektBull checked, each verified onchain; claims prepared for the wallet to sign | Check free; 5% of what's claimed (3% with Safety Pro), in the claimed tokens | ✅ built, on `/find` |
 | Find | **Yield proposals**: Aave v3, Compound v3 and Spark sUSDC on Ethereum, Base and Arbitrum, rates read onchain; moves that pass the rules, prepared for the wallet to sign; risk alerts | In Safety Pro; 0.1% of each move | ✅ built, on `/find`; automatic rebalancing built and switched off ([YIELD_ROUTER.md](YIELD_ROUTER.md)) |
 | Save | Tax and profit report | $29–99 / year | after paid data |
-| Save | Governance assistant | pass | later |
+| Save | **Governance assistant**: the Snapshot votes a wallet can cast, its voting power, summaries of each proposal's own text (never a recommendation), votes signed by the wallet; alerts when a vote opens or closes | Free check and voting; summary 1 point or $0.10; alerts in Safety Pro | ✅ built, on `/governance` (on-chain governors later) |
 | Business | Sybil filtering for airdrops, team reports, contract monitoring, pre-audit check | $49–5k | after paid data |
 
 **Free:** rankings, safety-score summaries, the airdrop and rewards check,

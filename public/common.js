@@ -144,6 +144,39 @@
     return ` · Paid with ${how}, charged because it completed`;
   }
 
+  /* A small Markdown reader for AI-written text (reports, summaries): headings, lists, paragraphs, bold and code.
+   * Builds text nodes only; the report's text is never parsed as HTML. */
+  function markdown(text) {
+    const out = [];
+    let list = null;
+    const inline = s => {
+      const nodes = [];
+      const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+      let last = 0, m;
+      while ((m = re.exec(s))) {
+        if (m.index > last) nodes.push(s.slice(last, m.index));
+        nodes.push(m[0].startsWith('**') ? el('strong', {}, m[0].slice(2, -2)) : el('code', {}, m[0].slice(1, -1)));
+        last = re.lastIndex;
+      }
+      if (last < s.length) nodes.push(s.slice(last));
+      return nodes;
+    };
+    for (const raw of String(text).split('\n')) {
+      const line = raw.trimEnd();
+      const h = /^(#{1,4})\s+(.*)$/.exec(line);
+      const li = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
+      if (li) {
+        if (!list) { list = el(/^\s*\d/.test(line) ? 'ol' : 'ul', {}); out.push(list); }
+        list.append(el('li', {}, inline(li[1])));
+        continue;
+      }
+      list = null;
+      if (h) out.push(el(h[1].length <= 2 ? 'h3' : 'h4', {}, inline(h[2])));
+      else if (line.trim()) out.push(el('p', {}, inline(line)));
+    }
+    return out;
+  }
+
   /* Sending prepared calls from the wallet. */
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   async function receipt(hash) {
@@ -188,7 +221,7 @@
   }
 
   window.RB = {
-    sendCalls, sleep,
+    sendCalls, sleep, markdown,
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,

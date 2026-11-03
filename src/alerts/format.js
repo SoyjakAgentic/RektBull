@@ -28,13 +28,15 @@ function message(alert) {
     ...reasons(alert),
   ];
   const yieldRisk = alert.kind === 'yield_risk';
+  const governance = alert.kind === 'governance';
   const url = alert.kind === 'depeg' ? `${env.publicUrl}/safety#monitor-card`
-    : yieldRisk ? `${env.publicUrl}/find?wallet=${encodeURIComponent(alert.wallet)}#yield-card` : reviewUrl(alert);
+    : yieldRisk ? `${env.publicUrl}/find?wallet=${encodeURIComponent(alert.wallet)}#yield-card`
+      : governance ? `${env.publicUrl}/governance?wallet=${encodeURIComponent(alert.wallet)}` : reviewUrl(alert);
   return {
     subject: `RektBull ${alert.severity === 'info' ? '' : `${SEVERITY[alert.severity]} `}alert: ${alert.title}`.slice(0, 150),
     text: lines.join('\n'),
     url,
-    action: alert.kind === 'depeg' ? 'Open RektBull' : yieldRisk ? 'Review and withdraw' : 'Review and revoke',
+    action: alert.kind === 'depeg' ? 'Open RektBull' : yieldRisk ? 'Review and withdraw' : governance ? 'Review and vote' : 'Review and revoke',
   };
 }
 
