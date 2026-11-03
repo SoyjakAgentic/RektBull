@@ -82,10 +82,7 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   };
 
   // ── The pages ──
-  const home = await fetch(base + '/', { redirect: 'manual' });
-  assert.equal(home.status, 302);
-  assert.equal(home.headers.get('location'), '/safety');
-  for (const page of ['/safety', '/trade']) {
+  for (const page of ['/', '/safety', '/trade']) {
     const r = await fetch(base + page);
     assert.equal(r.status, 200, page);
     assert.match(await r.text(), /<nav class="nav">/);

@@ -19,6 +19,10 @@
     try {
       const [{ chains }] = await Promise.all([api('GET', '/v1/tokens/chains'), window.RB.catalog.ready]);
       $('chain').replaceChildren(...chains.map(c => el('option', { value: c }, CHAIN_NAMES[c] || c)));
+      // A link from Home (…/safety?chain=base&token=0x…) fills the form; checking is still the user's click.
+      const link = new URLSearchParams(location.search);
+      if (chains.includes(link.get('chain'))) $('chain').value = link.get('chain');
+      if (/^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/.test(link.get('token') || '')) $('token').value = link.get('token');
       Object.assign(catalog, window.RB.catalog.products);
       $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
       $('report-price').textContent = window.RB.priceLabel(catalog.token_report);

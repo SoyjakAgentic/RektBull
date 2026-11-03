@@ -281,6 +281,26 @@ router.get('/v1/governance/spaces', requireAuth, govCall(async req => ({ spaces:
 router.post('/v1/governance/spaces', requireAuth, govCall(req => governance.addSpace(req.account.id, req.body?.space), 201));
 router.delete('/v1/governance/spaces/:space', requireAuth, govCall(req => governance.removeSpace(req.account.id, req.params.space)));
 
+// ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
+const home = require('../services/home');
+const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };
+const homeLimit = kind => async (req, res, next) => {
+  const limits = HOME_LIMITS[kind];
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, limits.account] : [require('../privacy/ipKey').ipSubject(req.ip), limits.anonymous];
+  if (!env.databaseUrl || await takeAllowance(subject, `home_${kind}`, limit)) return next();
+  res.status(429).json({ error: 'daily_limit', message: `Free ${kind === 'lookup' ? 'lookups' : 'checkups'} are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+};
+const homeCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof home.HomeRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.post('/v1/lookup', validated(home.parseQuery), homeLimit('lookup'), homeCall(req => home.identify(req.input)));
+router.post('/v1/checkup', validated(claims.parseWallet), homeLimit('checkup'), homeCall(req => home.checkup(req.input.wallet, { accountId: req.account?.id || null })));
+
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');
 const monitorCall = fn => async (req, res) => {

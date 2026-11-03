@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull: Don't get rekt</title>
+  <meta name="description" content="Paste a wallet, a token or a contract. RektBull says what it is and checks it for free: what apps can still take, money you haven't claimed, where your stablecoins earn, and DAO votes. Every check names its source.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-current="page">RektBull <span>Don't get rekt.</span></a>
+    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
+    <div id="who" class="who">Not signed in</div>
+  </header>
+
+  <main>
+    <section class="card hero" id="ask-card">
+      <h1>Paste an address. See what it is, and what it could cost you.</h1>
+      <p class="muted">A wallet gets a free checkup from every desk at once: what apps can still take from it, money it hasn't claimed, where its stablecoins could earn more, and DAO votes it can cast. A token goes to the safety check before you buy. Every check names its source, and anything it couldn't check is said.</p>
+      <form id="ask-form" class="ask" autocomplete="off">
+        <label class="sr" for="ask">Wallet, token or contract address</label>
+        <input id="ask" placeholder="0x… wallet, token or contract (or a Solana token mint)" spellcheck="false">
+        <button id="ask-go" class="primary" type="submit">Check for free</button>
+      </form>
+      <div class="row small"><button type="button" class="link" id="ask-mine" hidden>Use my connected wallet</button></div>
+      <p id="ask-msg" class="msg"></p>
+      <div id="ask-result" hidden></div>
+    </section>
+
+    <section class="card" id="checkup-card" hidden>
+      <h2>Free checkup <span id="c-wallet" class="muted small"></span></h2>
+      <div id="c-parts" class="parts"></div>
+      <p id="c-note" class="small muted"></p>
+    </section>
+
+    <section class="card" id="desks-card">
+      <h2>What RektBull does</h2>
+      <div class="desks">
+        <a class="desk" href="/safety"><strong>Safety</strong><span>Check a token before you buy it, clean up approvals, and get alerts when something changes in your wallet.</span><em id="p-safety"></em></a>
+        <a class="desk" href="/find"><strong>Find money</strong><span>Airdrops and rewards you haven't claimed, and where your stablecoins and ETH could earn more.</span><em id="p-find"></em></a>
+        <a class="desk" href="/governance"><strong>Governance</strong><span>The DAO votes your wallet can cast, on Snapshot and onchain, each proposal explained from its own text.</span><em id="p-gov"></em></a>
+        <a class="desk" href="/extension"><strong>Pre-sign check</strong><span>In your browser or MetaMask: what a transaction or signature would do, before you sign it.</span><em id="p-presign"></em></a>
+      </div>
+    </section>
+
+    <section class="card" id="pricing-card">
+      <h2>What it costs</h2>
+      <ul class="plain" id="pricing">
+        <li>Checking is free: this checkup, the approval preview, the airdrop and rewards check, and DAO votes.</li>
+      </ul>
+      <p class="muted small">You pay only for work that's delivered: a run that fails is given back. Pay with USDT or USDC (or many other coins through NOWPayments); bots pay per call with x402. Nothing renews automatically, and RektBull never asks your wallet for a spending approval to bill you.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>How it stays on your side</h2>
+      <ul class="plain">
+        <li><strong>Your wallet signs everything.</strong> RektBull prepares transactions and shows what each one does; it never holds your funds or keys.</li>
+        <li><strong>Every finding names its source</strong>, and a check that couldn't run says why. Nothing found means nothing in those sources, not nothing anywhere.</li>
+        <li><strong>No recommendations on how to vote,</strong> and AI summaries only explain the text they're given.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small"><code>POST /v1/lookup</code> with <code>{"query"}</code> (an address) says what it is on each chain; <code>POST /v1/checkup</code> with <code>{"wallet"}</code> runs the free checks of every desk. Both are free, with a daily limit. Paid runs take <a href="https://www.x402.org/">x402</a> (USDC on Base); prices at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
+    </section>
+  </main>
+
+  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/home.js"></script>
+</body>
+</html>

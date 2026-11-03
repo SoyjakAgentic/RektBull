@@ -28,7 +28,7 @@ function createApp() {
 
   // The pages and their files (the wallet signs everything; no page holds a key).
   const pub = path.join(__dirname, '..', 'public');
-  app.get('/', (_req, res) => res.redirect(302, '/safety'));
+  app.get('/', (_req, res) => res.sendFile(path.join(pub, 'home.html')));
   app.get('/safety', (_req, res) => res.sendFile(path.join(pub, 'safety.html')));
   app.get('/find', (_req, res) => res.sendFile(path.join(pub, 'find.html')));
   app.get('/governance', (_req, res) => res.sendFile(path.join(pub, 'governance.html')));

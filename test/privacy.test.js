@@ -36,7 +36,7 @@ test('privacy: the page, download, delete, retention, hashed IPs, minimal pre-si
     assert.match(html, /mailto:privacy@rektbull\.test/);
     assert.ok(!html.includes('{{'), 'no placeholder left');
     assert.equal((await call('GET', '/privacy.html')).location, '/privacy', 'the raw file is never served');
-    for (const page of ['/safety', '/extension', '/trade']) assert.match(await (await fetch(base + page)).text(), /href="\/privacy"/, `${page} links to it`);
+    for (const page of ['/', '/safety', '/extension', '/trade']) assert.match(await (await fetch(base + page)).text(), /href="\/privacy"/, `${page} links to it`);
   });
 
   // Data across features.

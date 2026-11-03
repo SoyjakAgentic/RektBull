@@ -131,8 +131,7 @@ Object.assign(process.env, {
   const msg = () => page.textContent('#check-msg');
 
   try {
-    await page.goto(url + '/');
-    assert.match(page.url(), /\/safety$/, 'the home page is the Safety page for now');
+    await page.goto(url + '/safety');
     await page.getByText('· 1 point or $0.25').waitFor();
     await page.getByText('· $3.00 (5 a month with Safety Pro)').waitFor();
     await page.getByText('· 5 points or $1.00').waitFor();
