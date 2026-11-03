@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RektBull Governance</title>
+  <meta name="description" content="The DAO votes your wallet can cast, what each proposal would change in plain English, and votes signed by your own wallet. Never a recommendation.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">RektBull <span>Don't get rekt.</span></div>
+    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance" aria-current="page">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
+    <div id="who" class="who">Not signed in</div>
+  </header>
+
+  <main>
+    <section class="card" id="gov-card">
+      <h2>Your DAO votes</h2>
+      <p class="muted">Open Snapshot votes in the DAOs your wallet follows or has voted in, with your voting power in each (Snapshot's own count, at the proposal's snapshot block) and whether you've voted. RektBull never tells you how to vote.</p>
+      <div class="grid">
+        <label class="wide">Wallet address
+          <input id="g-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button id="g-check" class="primary">Check for free</button></div>
+      <p id="g-msg" class="msg"></p>
+      <div id="g-result" hidden></div>
+    </section>
+
+    <section class="card" id="spaces-card">
+      <h2>DAOs you follow here</h2>
+      <p class="muted small">Add a Snapshot space your wallet holds tokens in but hasn't followed or voted in yet (its id, e.g. <code>aave.eth</code>). Sign in first.</p>
+      <div class="grid"><label class="wide">Snapshot space id<input id="s-id" placeholder="e.g. uniswapgovernance.eth" autocomplete="off" spellcheck="false"></label></div>
+      <div class="row"><button id="s-add">Add</button></div>
+      <div id="s-list" class="small"></div>
+      <p id="s-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="account-card">
+      <h2>Your wallet</h2>
+      <p class="muted small">Connect the wallet you're voting with, to sign. A vote is a signature, not a transaction: it costs no gas and moves nothing. Sign in (free) for more checks a day and for summaries with your points; Safety Pro adds alerts when a vote opens or is about to close.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small"><code>POST /v1/governance/check</code> with <code>{"wallet"}</code> (free); <code>POST /v1/governance/summary</code> with <code>{"proposal_id"}</code> (1 point, $0.10 by x402, or Safety Pro); <code>POST /v1/governance/votes/prepare</code> with <code>{"wallet", "proposal_id", "choice", "reason"}</code> returns EIP-712 typed data to sign; <code>POST /v1/governance/votes</code> with <code>{"message", "sig"}</code> sends it to Snapshot.</p>
+    </section>
+  </main>
+
+  <footer class="muted">Summaries explain each proposal's own text. Not advice, and never a recommendation. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/governance.js"></script>
+</body>
+</html>

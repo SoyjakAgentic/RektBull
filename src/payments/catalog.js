@@ -19,12 +19,12 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals'],
-  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals', 'governance_summary'],
+  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500, governance_summary: 50 },
   included_per_month: { token_report: 5 },
   monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, and yield proposals: where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), and DAO votes: proposal summaries, and alerts when a vote opens or is about to close for a wallet you watch.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -47,6 +47,14 @@ const PRODUCTS = {
     kind: 'run',
     title: 'Pre-sign check',
     description: 'Before you sign: what a transaction or signature would do, simulated, with every spender, recipient and the site itself checked.',
+    price_cents: 10,
+    points: 1,
+    x402: true,
+  },
+  governance_summary: {
+    kind: 'run',
+    title: 'Proposal summary',
+    description: 'A DAO proposal in plain English, from its own text: what would change, what money and powers it moves, what each choice does, and what the text doesn\'t say. Never a recommendation.',
     price_cents: 10,
     points: 1,
     x402: true,

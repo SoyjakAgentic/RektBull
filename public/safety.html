@@ -10,7 +10,7 @@
 <body>
   <header class="top">
     <div class="brand">RektBull <span>Don't get rekt.</span></div>
-    <nav class="nav"><a href="/safety" aria-current="page">Safety</a><a href="/find">Find money</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
+    <nav class="nav"><a href="/safety" aria-current="page">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
     <div id="who" class="who">Not signed in</div>
   </header>
 
@@ -127,7 +127,7 @@
 
     <section class="card">
       <h2>For bots and AI agents</h2>
-      <p class="muted small">No account needed: pay per call with <a href="https://www.x402.org/">x402</a> (USDC on Base). <code>POST /v1/tokens/quick-check</code> and <code>POST /v1/tokens/report</code> with <code>{"chain", "token_address"}</code>; <code>POST /v1/approvals/cleanup</code> with <code>{"wallet"}</code>; <code>POST /v1/presign/check</code> with a wallet request (<code>{"chain_id", "from", "origin", "method", "params"}</code>); prices and payment options at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
+      <p class="muted small">No account needed: pay per call with <a href="https://www.x402.org/">x402</a> (USDC on Base). <code>POST /v1/tokens/quick-check</code> and <code>POST /v1/tokens/report</code> with <code>{"chain", "token_address"}</code>; <code>POST /v1/approvals/cleanup</code> with <code>{"wallet"}</code>; <code>POST /v1/governance/summary</code> with <code>{"proposal_id"}</code> (a Snapshot proposal); <code>POST /v1/presign/check</code> with a wallet request (<code>{"chain_id", "from", "origin", "method", "params"}</code>); prices and payment options at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
     </section>
   </main>
 

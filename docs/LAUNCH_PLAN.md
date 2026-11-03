@@ -35,7 +35,9 @@ are built before we deploy. Each is its own PR, in this order unless we change i
    Needs the legal review in section 7 before it goes live. ✅ Automatic
    rebalancing (the Yield Router and session keys) is built and switched off
    ([YIELD_ROUTER.md](YIELD_ROUTER.md)).
-3. **Save money: governance assistant.**
+3. ✅ **Save money: governance assistant** (`/governance`). Snapshot votes only
+   for now; on-chain governors (Tally and similar) later. Needs the legal
+   review in section 7 like yield proposals, although it never recommends a vote.
 4. **Site desks** from [SCOPE.md](SCOPE.md) section 5: Home, Discover,
    Markets, Opportunities, Portfolio, Research, Agents, Developers.
    Free data first, each with its "Ask / Act" panel.

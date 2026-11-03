@@ -100,38 +100,7 @@
       el('div', { class: 'source' }, 'Source: ', m.source || 'DexScreener'));
   }
 
-  /* A small Markdown reader for the report: headings, lists, paragraphs, bold and code.
-   * Builds text nodes only; the report's text is never parsed as HTML. */
-  function markdown(text) {
-    const out = [];
-    let list = null;
-    const inline = s => {
-      const nodes = [];
-      const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-      let last = 0, m;
-      while ((m = re.exec(s))) {
-        if (m.index > last) nodes.push(s.slice(last, m.index));
-        nodes.push(m[0].startsWith('**') ? el('strong', {}, m[0].slice(2, -2)) : el('code', {}, m[0].slice(1, -1)));
-        last = re.lastIndex;
-      }
-      if (last < s.length) nodes.push(s.slice(last));
-      return nodes;
-    };
-    for (const raw of String(text).split('\n')) {
-      const line = raw.trimEnd();
-      const h = /^(#{1,4})\s+(.*)$/.exec(line);
-      const li = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
-      if (li) {
-        if (!list) { list = el(/^\s*\d/.test(line) ? 'ol' : 'ul', {}); out.push(list); }
-        list.append(el('li', {}, inline(li[1])));
-        continue;
-      }
-      list = null;
-      if (h) out.push(el(h[1].length <= 2 ? 'h3' : 'h4', {}, inline(h[2])));
-      else if (line.trim()) out.push(el('p', {}, inline(line)));
-    }
-    return out;
-  }
+  const markdown = window.RB.markdown;
 
   /* ── account: credits, free points, Safety Pro ── */
   document.addEventListener('rb:account-changed', () => { if (window.RB.signedIn()) loadAccount(); });

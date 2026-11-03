@@ -29,6 +29,8 @@ async function main() {
     setInterval(() => require('./privacy/retention').purge().catch(err => logger.warn('retention purge failed', { error: err.message })), 60 * 60 * 1000);
     // NOWPayments: payments under way, read back every 5 minutes so a lost notification is caught up.
     setInterval(() => require('./payments/nowpayments').reconcile().catch(err => logger.warn('NOWPayments re-check failed', { error: err.message })), 5 * 60 * 1000);
+    // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
+    setInterval(() => require('./services/governance').alertTick().catch(err => logger.warn('governance alerts failed', { error: err.message })), 60 * 60 * 1000);
     // Safety Pro renewal reminders, hourly.
     setInterval(() => require('./payments/reminders').tick().catch(err => logger.warn('pass reminders failed', { error: err.message })), 60 * 60 * 1000);
     // The yield risk watcher: every venue, every 5 minutes (src/yield/risk.js).

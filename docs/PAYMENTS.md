@@ -29,6 +29,7 @@ charged.
 |---|---|---|---|
 | Token quick check | 1 | $0.25 | Included (fair use 200 a day) |
 | Approval cleanup | 5 | $1 | Included (fair use 20 a day) |
+| Proposal summary (AI, governance) | 1 | $0.10 | Included (fair use 50 a day) |
 | Token report (AI) | — (each costs real AI money) | $3 | 5 a month included, then $3 |
 
 **Free points** (`FREE_POINTS` in `payments/catalog.js`): 30 a month (UTC),
