@@ -59,6 +59,29 @@ const VENUES = [
 ];
 
 const SPARK_SSR_SOURCE = VENUES.find(v => v.kind === 'spark' && v.chain === 'ethereum').vault;
+// On the L2s, the Sky Savings Rate comes from Sky's SSR oracle (the vault's rateProvider()), checked onchain on 2 November 2026.
+const SPARK_RATE_PROVIDER = { base: '0x65d946e533748a998b1f0e430803e39a6388f7a1', arbitrum: '0xee2816c1e1eed14d444552654ed3027abc033a36' };
+
+/**
+ * The Yield Router's venue list for a chain, in the order it's deployed
+ * with: a venue's id onchain is its index here. One entry per venue and
+ * asset, as RektBullYieldRouter.Venue { kind, target, asset, position, rateSource }.
+ */
+function routerVenues(chain) {
+  const out = [];
+  for (const v of VENUES.filter(x => x.chain === chain && x.status === 'open')) {
+    for (const asset of v.assets) {
+      const kind = v.kind === 'aave' ? 1 : v.kind === 'comet' ? 2 : chain === 'ethereum' ? 3 : 4;
+      out.push({
+        id: out.length, protocol: v.protocol, asset, kind,
+        target: v.kind === 'aave' ? v.pool : v.kind === 'comet' ? v.comet : v.vault,
+        assetAddress: TOKENS[chain][asset].address, position: positionToken(v, asset),
+        rateSource: kind === 4 ? SPARK_RATE_PROVIDER[chain] : '0x0000000000000000000000000000000000000000',
+      });
+    }
+  }
+  return out;
+}
 
 class YieldRefused extends Error {
   constructor(message, status = 422, extra = {}) { super(message); this.status = status; Object.assign(this, extra); }
@@ -84,4 +107,4 @@ const venueAddress = v => (v.kind === 'aave' ? v.pool : v.kind === 'comet' ? v.c
 /** The token a position is held in: the aToken, the Comet balance, or the vault's shares. */
 const positionToken = (v, asset) => (v.kind === 'aave' ? v.aTokens[asset] : v.kind === 'comet' ? v.comet : v.vault);
 
-module.exports = { CHAINS, TOKENS, VENUES, SPARK_SSR_SOURCE, YieldRefused, chainOf, tokenOf, venue, venueAddress, positionToken };
+module.exports = { CHAINS, TOKENS, VENUES, SPARK_SSR_SOURCE, SPARK_RATE_PROVIDER, YieldRefused, chainOf, tokenOf, venue, venueAddress, positionToken, routerVenues };

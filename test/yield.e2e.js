@@ -19,7 +19,12 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { ethers } = require('ethers');
 
+const fs = require('fs');
+const core = require('@metamask/delegation-core');
+const { DELEGATOR_CONTRACTS } = require('@metamask/delegation-deployments');
+
 const DB = process.env.TEST_DATABASE_URL;
+const ROUTER_ARTIFACT = path.join(__dirname, '..', 'contracts', 'artifacts', 'contracts', 'RektBullYieldRouter.sol', 'RektBullYieldRouter.json');
 const CONTRACTS = path.join(__dirname, '..', 'contracts');
 const PORT = 8550;
 const FORK = process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org';
@@ -202,5 +207,93 @@ test('yield proposals, end to end on a Base fork', { skip: !DB && 'set TEST_DATA
     assert.match(p.body.summary.fee_reason, /free/);
     await send(p.body);
     assert.ok(await usdc.balanceOf(me) - before > 498n * 10n ** 6n, 'the money is back in the wallet');
+  });
+  await t.test('automatic rebalancing (switched off by default): a delegation to the Yield Router only; the trade service deposits within the user\'s limits, and exits on a critical warning', { skip: !fs.existsSync(ROUTER_ARTIFACT) && 'build the contracts first' }, async () => {
+    const env = require('../src/config/env');
+    const auto = require('../src/yield/auto');
+    const venuesList = venues.routerVenues('base');
+    const art = JSON.parse(fs.readFileSync(ROUTER_ARTIFACT, 'utf8'));
+    const deployer = new ethers.NonceManager(new ethers.JsonRpcSigner(provider, reserve));
+    const yr = await new ethers.ContractFactory(art.abi, art.bytecode, deployer).deploy(feeWallet, 10, 1, 86400, venuesList.map(v => ({ kind: v.kind, target: v.target, asset: v.assetAddress, position: v.position, rateSource: v.rateSource })));
+    await yr.waitForDeployment();
+    const routerAddress = (await yr.getAddress()).toLowerCase();
+    const session = ethers.Wallet.createRandom().connect(provider);
+    await fund(session.address);
+    Object.assign(env, { yieldRouters: { 8453: routerAddress }, sessionKeyAddress: session.address.toLowerCase() });
+    require('../src/trade/signers').sessionSigner = async () => session;
+    await db.query(`DELETE FROM yield_risk_state WHERE key = 'warnings'`);
+
+    // The user's wallet becomes a MetaMask smart account, then signs the setup: approvals to the router, Comet's allow, a 600 USDC limit.
+    const MM = DELEGATOR_CONTRACTS['1.3.0'][8453];
+    const auth = await wallet.authorize({ address: MM.EIP7702StatelessDeleGatorImpl, nonce: await wallet.getNonce(), chainId: 8453 });
+    await (await new ethers.JsonRpcSigner(provider, reserve).sendTransaction({ type: 4, to: me, data: '0x', authorizationList: [auth], gasLimit: 200000 })).wait();
+    const setup = await call(null, 'GET', '/v1/yield/auto/setup?chain_id=8453&USDC=600');
+    assert.equal(setup.status, 200, JSON.stringify(setup.body));
+    // Every approval and Comet's allow name the router; the limits are set on the router; nothing else.
+    const setupIface = new ethers.Interface(['function approve(address,uint256)', 'function allow(address,bool)', 'function setLimits(address[],uint256[],uint64)']);
+    for (const c of setup.body.calls) {
+      const d = setupIface.parseTransaction({ data: c.data });
+      if (d.name === 'setLimits') assert.equal(c.to, routerAddress);
+      else assert.equal(d.args[0].toLowerCase(), routerAddress, `${c.label}: only to the router`);
+    }
+    for (const c of setup.body.calls) await (await wallet.sendTransaction({ to: c.to, data: c.data })).wait();
+
+    const expiry = (await provider.getBlock('latest')).timestamp + 7 * 86400;
+    const caveats = [
+      { enforcer: MM.RedeemerEnforcer, terms: core.createRedeemerTerms({ redeemers: [session.address] }), args: '0x' },
+      { enforcer: MM.TimestampEnforcer, terms: core.createTimestampTerms({ afterThreshold: 0, beforeThreshold: expiry }), args: '0x' },
+      { enforcer: MM.AllowedTargetsEnforcer, terms: core.createAllowedTargetsTerms({ targets: [routerAddress] }), args: '0x' },
+      { enforcer: MM.AllowedMethodsEnforcer, terms: core.createAllowedMethodsTerms({ selectors: auto.SELECTORS }), args: '0x' },
+    ];
+    const types = { Delegation: [{ name: 'delegate', type: 'address' }, { name: 'delegator', type: 'address' }, { name: 'authority', type: 'bytes32' }, { name: 'caveats', type: 'Caveat[]' }, { name: 'salt', type: 'uint256' }], Caveat: [{ name: 'enforcer', type: 'address' }, { name: 'terms', type: 'bytes' }] };
+    const value = { delegate: session.address, delegator: wallet.address, authority: core.ROOT_AUTHORITY, caveats: caveats.map(c => ({ enforcer: c.enforcer, terms: c.terms })), salt: 7n };
+    const signature = await wallet.signTypedData({ name: 'DelegationManager', version: '1', chainId: 8453, verifyingContract: MM.DelegationManager }, types, value);
+    const delegation = { delegate: session.address, delegator: wallet.address, authority: core.ROOT_AUTHORITY, caveats, salt: '7', signature };
+
+    // Switched off: refused, and the trade service does nothing.
+    env.yieldAutoEnabled = false;
+    const off = await call(proToken, 'POST', '/v1/yield/auto/permissions', { chain_id: 8453, delegation });
+    assert.equal(off.status, 503);
+    assert.match(off.body.message, /switched off/);
+    assert.deepEqual(await auto.tick(), { off: true });
+
+    env.yieldAutoEnabled = true;
+    t.after(() => { env.yieldAutoEnabled = false; auto.close(); });
+    const wide = { ...delegation, caveats: caveats.map((c, i) => (i === 3 ? { ...c, terms: core.createAllowedMethodsTerms({ selectors: [...auto.SELECTORS, auto.ROUTER.getFunction('setLimits').selector] }) } : c)) };
+    assert.equal((await call(proToken, 'POST', '/v1/yield/auto/permissions', { chain_id: 8453, delegation: wide })).status, 422, 'a delegation allowing more than deposit, move and withdraw is refused');
+    const reg = await call(proToken, 'POST', '/v1/yield/auto/permissions', { chain_id: 8453, delegation });
+    assert.equal(reg.status, 200, JSON.stringify(reg.body));
+
+    // The trade service: the best deposit, capped at the user's 600 USDC limit, sent by the session key through the router.
+    const fees = await usdc.balanceOf(feeWallet);
+    const pass1 = await auto.tick();
+    assert.equal(pass1.done[0]?.kind, 'deposit', JSON.stringify(pass1));
+    assert.equal(pass1.done[0].status, 'sent');
+    await auto.tick(); // reads the receipt
+    const { rows: [a1] } = await db.query('SELECT * FROM yield_auto_actions ORDER BY created_at LIMIT 1');
+    assert.equal(a1.status, 'confirmed');
+    assert.equal(a1.amount_raw, String(600n * 10n ** 6n), 'capped at the user\'s limit');
+    const target = venuesList[a1.to_venue];
+    assert.equal(await usdc.balanceOf(feeWallet) - fees, 600000n, '0.1%, enforced by the router');
+    const held = await yr.positionOf(a1.to_venue, me);
+    assert.ok(held >= 599n * 10n ** 6n, `the position is the user's own (${held})`);
+
+    // The router allows one deposit or move a day: nothing more now.
+    const pass2 = await auto.tick();
+    assert.deepEqual(pass2.done, []);
+
+    // A critical warning on that venue: everything comes back to the wallet, at once, free.
+    await db.query(`INSERT INTO yield_risk_state (key, value) VALUES ('warnings', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify({ [`${target.protocol}:base:USDC`]: { severity: 'critical', reason: 'test: 99% borrowed', protocol: target.protocol, chain: 'base', asset: 'USDC', name: target.protocol } })]);
+    const before = await usdc.balanceOf(me);
+    const pass3 = await auto.tick();
+    assert.equal(pass3.done[0]?.kind, 'withdraw', JSON.stringify(pass3));
+    await auto.tick();
+    assert.ok(await usdc.balanceOf(me) - before >= 599n * 10n ** 6n, 'back in the wallet');
+    assert.ok(await yr.positionOf(a1.to_venue, me) <= 1n);
+
+    // Revoked in RektBull: the trade service stops using it.
+    assert.equal((await call(proToken, 'DELETE', `/v1/yield/auto/permissions/${reg.body.id}`)).status, 200);
+    await db.query(`DELETE FROM yield_risk_state WHERE key = 'warnings'`);
+    assert.deepEqual((await auto.tick()).done, []);
   });
 });

@@ -195,6 +195,28 @@ router.post('/v1/yield/moves/:id/confirm', yieldCall(req => {
   return yieldProposals.confirm(req.params.id, req.body?.tx_hashes);
 }));
 
+// Automatic rebalancing: built, switched off (YIELD_AUTO_ENABLED); permissions are refused while it's off.
+const yieldAuto = require('../yield/auto');
+const autoCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof yieldAuto.AutoRefused || err instanceof yieldVenues.YieldRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/yield/auto', (_req, res) => res.json({
+  enabled: env.yieldAutoEnabled, routers: env.yieldRouters,
+  note: env.yieldAutoEnabled ? 'Automatic rebalancing uses a limited, revocable permission that may only call the RektBull Yield Router.' : 'Automatic rebalancing is built and switched off until the Yield Router is audited. Proposals you sign yourself work now.',
+}));
+router.get('/v1/yield/auto/setup', autoCall(req => yieldAuto.setupCalls(Number(req.query.chain_id), { limits: Object.fromEntries(['USDC', 'USDT', 'WETH'].filter(a => Number(req.query[a]) > 0).map(a => [a, Number(req.query[a])])), days: Number(req.query.days) || 30 })));
+router.post('/v1/yield/auto/permissions', requireAuth, autoCall(async req => {
+  await yieldProposals.requirePro(req.account.id);
+  return yieldAuto.register(req.account, req.body || {}, { sessionKey: env.sessionKeyAddress });
+}));
+router.get('/v1/yield/auto/permissions', requireAuth, autoCall(async req => ({ permissions: await yieldAuto.list(req.account) })));
+router.delete('/v1/yield/auto/permissions/:id', requireAuth, autoCall(req => yieldAuto.revoke(req.account, req.params.id)));
+
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');
 const monitorCall = fn => async (req, res) => {

@@ -10,7 +10,8 @@ fixed or explicitly accepted.*
 |---|---|---|
 | `contracts/contracts/RektBullTradeRouter.sol` | 227 | 327 |
 | `contracts/contracts/RektBullSafeModule.sol` | 46 | 81 |
-| **Total** | **273** | |
+| `contracts/contracts/RektBullYieldRouter.sol` (automatic yield rebalancing; [YIELD_ROUTER.md](YIELD_ROUTER.md) states its guarantees, `contracts/test/yieldRouter.test.js` tries to break them on a Base mainnet fork) | — | ~280 |
+| **Total** | **273 + the Yield Router** | |
 
 - **Commit:** `31c9c8c` on `main` of `SoyjakAgentic/RektBull` (or the commit we
   freeze when the audit is booked).
@@ -24,6 +25,7 @@ fixed or explicitly accepted.*
   - Safe 1.4.1.
   - Coinbase Smart Wallet and Coinbase's Spend Permission Manager.
   - 0x's AllowanceHolder.
+  - Aave v3, Compound v3 and Spark's sUSDC vaults (the Yield Router's venues).
   - Chainlink feeds.
   - Test mocks (`contracts/contracts/test/Mocks.sol`).
   - `contracts/contracts/SignInCheck6492.sol`: optional, low priority. It is

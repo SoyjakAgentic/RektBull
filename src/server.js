@@ -59,6 +59,7 @@ async function main() {
         await tradePositions.tick(); // approve-each trades the user's wallet sent
         await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
         await require('./trade/autonomous').tick(); // send and confirm automatic trades
+        await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
       } catch (err) { logger.error('trade tick failed', { error: err.message }); } finally { busy = false; }
     }, env.tradeTickMs);
     logger.info('trade service started');
