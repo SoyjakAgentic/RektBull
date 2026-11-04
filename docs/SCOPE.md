@@ -84,7 +84,9 @@ Details: [PAYMENTS.md](PAYMENTS.md).
 
 Built so far: **Home** (`/`, the ask box and the free wallet checkup), **Discover**
 (`/discover`: rankings with safety facts, trending and new tokens), **Markets**
-(`/markets`: DeFi today, stablecoin pegs, RWA, prediction markets, largest tokens), Safety
+(`/markets`: DeFi today, stablecoin pegs, RWA, prediction markets, largest tokens),
+**Opportunities** (`/opportunities`: a wallet's own, live reward campaigns; Find money and
+Governance sit under it in the menu), Safety
 (`/safety`), Find money (`/find`, under Opportunities), Trade (`/trade`),
 Governance (`/governance`, under Opportunities), the pre-sign check
 (`/extension`). Every page shares one header and footer (`src/pages/`).

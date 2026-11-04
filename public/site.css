@@ -388,3 +388,14 @@ a.act { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration:
 @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .tiles { grid-template-columns: 1fr; } .plot { height: 180px; } }
 .plot .ylab { position: absolute; left: 0; transform: translateY(-115%); font: 11px var(--mono); color: var(--muted); pointer-events: none; }
+.eyebrow a { color: inherit; text-decoration: none; } .eyebrow a:hover { text-decoration: underline; }
+
+/* opportunities */
+.cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.camp-name { min-width: 0; flex: 1 1 320px; }
+.camp-apr { text-align: right; display: grid; }
+.camp-apr strong { font: 700 22px var(--display); color: var(--accent); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.camp .how { margin: 0; }
+.camp .tok-acts { flex-wrap: wrap; }
+#o-guard a { font-weight: 600; }
+@media (max-width: 960px) { .cards.three { grid-template-columns: 1fr; } }

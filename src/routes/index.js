@@ -324,6 +324,20 @@ router.get('/v1/markets/overview', marketsCall(() => markets.overview()));
 router.get('/v1/markets/stablecoins', marketsCall(() => markets.stablecoinList()));
 router.get('/v1/markets/tokens', marketsCall(() => markets.tokens()));
 
+// ── Opportunities: live incentive campaigns (Merkl), each with what it would cost to take part (free, cached) ──
+const opportunities = require('../services/opportunities');
+router.get('/v1/opportunities/campaigns', async (req, res) => {
+  const input = opportunities.parseCampaigns(req.query);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  try {
+    res.set('cache-control', 'public, max-age=60');
+    res.json(await opportunities.campaigns(input));
+  } catch (err) {
+    if (err instanceof opportunities.OpportunitiesRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+});
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };
