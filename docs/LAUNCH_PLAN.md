@@ -80,6 +80,12 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      reward tokens and early ends; links to claim, earn and vote. Points
      programs are left out: no reliable free source, and guessing would
      break "every check names its source". Nothing to set at deploy.
+   - ✅ **Portfolio** (`/portfolio`): a wallet's tokens and DeFi positions on
+     six chains at DefiLlama's prices, by chain; facts on holdings (lookalike
+     tokens, links in names, only ever received, stablecoins off peg),
+     unpriced tokens kept out of the total with a scam-airdrop warning, and
+     approvals at risk. Free, 5 a day without signing in. Nothing to set at
+     deploy beyond the Etherscan key already listed.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
@@ -303,6 +309,12 @@ revision still works against the newer database.
 ## 6. After launch: extension and Snap
 
 **Browser extension** (`npm run extension:zip`):
+
+*Rule (decided 4 November 2026): the extension keeps one purpose, checking a
+transaction or signature before the wallet signs it, and nothing is added that
+could risk store rejection. Features that live on the site (portfolio, claims,
+yield, trading, voting) stay there; the extension may only link to them.*
+
 1. Chrome Web Store: developer account ($5 once), listing (Claude writes the
    text, the permission reasons and the screenshots), privacy policy link
    `https://rektbull.com/privacy`, single-purpose statement. Review takes

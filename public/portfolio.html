@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull Portfolio</title>
+  <meta name="description" content="What a wallet holds on six chains and what it's worth, with the facts that matter for each holding: lookalike tokens, scam-airdrop names, stablecoins off their peg, risky approvals. Every fact names its source.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Portfolio</span>
+      <h1>What you hold, <em>and what to watch</em></h1>
+      <p>Every token and DeFi position a wallet holds on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain, valued at current prices, with the facts that matter: lookalike tokens, scam-airdrop names, stablecoins off their peg, and what apps can still take. Free; nothing to connect.</p>
+      <form id="p-form" class="mini-ask" autocomplete="off">
+        <label class="sr" for="p-wallet">Wallet address</label>
+        <input id="p-wallet" placeholder="0x… wallet" spellcheck="false">
+        <button id="p-go" class="btn primary" type="submit">Read it</button>
+      </form>
+      <p id="p-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <div id="p-result" hidden>
+      <section class="card" id="sum-card">
+        <h2>Overview <span class="mono muted small" id="p-who"></span></h2>
+        <div class="tiles">
+          <div class="tile-stat"><span>Total value</span><strong id="s-total">–</strong><em id="s-total-sub"></em></div>
+          <div class="tile-stat"><span>Tokens</span><strong id="s-tokens">–</strong><em id="s-tokens-sub"></em></div>
+          <div class="tile-stat"><span>In DeFi (Aave, Compound, Spark)</span><strong id="s-defi">–</strong><em id="s-defi-sub"></em></div>
+          <div class="tile-stat"><span>In stablecoins</span><strong id="s-stable">–</strong><em>of the total</em></div>
+        </div>
+        <p id="p-risk" class="worst" hidden></p>
+        <h3>By chain</h3>
+        <div id="by-chain" class="bars"></div>
+      </section>
+
+      <section class="card" id="holdings-card">
+        <h2>Holdings</h2>
+        <div class="tablewrap"><table class="rank" id="holdings"><thead><tr><th>Asset</th><th class="num">Amount</th><th class="num">Price</th><th class="num">Value</th><th class="num">Share</th><th>Facts</th><th></th></tr></thead><tbody></tbody></table></div>
+      </section>
+
+      <section class="card" id="positions-card" hidden>
+        <h2>DeFi positions</h2>
+        <div class="tablewrap"><table class="rank" id="positions"><thead><tr><th>Position</th><th class="num">Amount</th><th class="num">Value</th><th>Facts</th></tr></thead><tbody></tbody></table></div>
+        <p class="small"><a href="/find#yield-card">Could it earn more? See yield proposals →</a></p>
+      </section>
+
+      <section class="card" id="unpriced-card" hidden>
+        <h2>Not priced <span class="tag" id="unpriced-n"></span></h2>
+        <p class="muted small">Tokens DefiLlama has no price for. They aren't counted in the total. <strong>Tokens you didn't buy are often scam airdrops: don't approve, swap or send them, and don't visit links in their names.</strong></p>
+        <details><summary class="small">Show them</summary><div class="tablewrap"><table class="rank" id="unpriced"><thead><tr><th>Token</th><th class="num">Amount</th><th>Facts</th><th></th></tr></thead><tbody></tbody></table></div></details>
+      </section>
+
+      <section class="card" id="next-card">
+        <h2>Keep it safe</h2>
+        <div class="cards three">
+          <a class="tile" id="n-approvals" href="/safety#approvals-card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 6v6c0 4.6-3.3 8-8 9-4.7-1-8-4.4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg></span><h3>Clean up approvals</h3><p>See which apps can still take from this wallet, and revoke them from your wallet.</p><span class="price">Free preview; cleanup 5 points or $1</span></a>
+          <a class="tile" href="/safety#monitor-card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span><h3>Watch it every day</h3><p>The risk monitor checks this wallet daily and alerts you by Telegram, email or browser when something changes, including a stablecoin you hold losing its peg.</p><span class="price">In Safety Pro</span></a>
+          <a class="tile" id="n-opps" href="/opportunities"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7ZM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7Z"/></svg></span><h3>What's yours to claim</h3><p>Unclaimed rewards, better yield and DAO votes for this wallet.</p><span class="price">Free to check</span></a>
+        </div>
+      </section>
+
+      <section class="card" id="src-card">
+        <details id="notread-box" hidden><summary class="small" id="notread-sum"></summary><ul class="small muted" id="notread"></ul></details>
+        <p class="source" id="p-src"></p>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small">Free, with a daily limit: <code>POST /v1/portfolio</code> with <code>{"wallet"}</code> returns holdings, positions, unpriced tokens, by-chain totals, approvals at risk and what couldn't be read.</p>
+    </section>
+  </main>
+
+  <!--#footer:Values are at DefiLlama's current prices; a token it doesn't price isn't counted. Not advice.-->
+  <script src="/common.js"></script>
+  <script src="/portfolio.js"></script>
+</body>
+</html>

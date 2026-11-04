@@ -44,6 +44,15 @@ page after that is about 40 KB. At Cloud Run's list prices that is roughly
 $0.00002 for a first visit, mostly bandwidth; the data behind the free pages is
 fetched on timers, so it costs the same whatever the traffic.
 
+## A portfolio read's cost
+
+One read is one explorer call per chain (the wallet's token transfers), one
+Multicall3 batch per chain for balances, one DefiLlama price call, plus the
+yield desk's position read and the approval preview (both shared with their
+desks' caches). It's cached 5 minutes per wallet and limited to 5 a day
+without signing in, 30 signed in. A slow part (a wallet with thousands of
+approvals) is cut off after 25 seconds and named, so the page still answers.
+
 ## The risk monitor's cost
 
 Each watched wallet gets one fresh approval scan a day (about 18 explorer

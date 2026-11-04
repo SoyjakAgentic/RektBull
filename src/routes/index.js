@@ -338,6 +338,17 @@ router.get('/v1/opportunities/campaigns', async (req, res) => {
   }
 });
 
+// ── Portfolio: what a wallet holds on six chains, its value, and the facts on each holding (free, a daily limit) ──
+const portfolio = require('../services/portfolio');
+const PORTFOLIO_PER_DAY = { account: 30, anonymous: 5 };
+router.post('/v1/portfolio', validated(claims.parseWallet), async (req, res) => {
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, PORTFOLIO_PER_DAY.account] : [require('../privacy/ipKey').ipSubject(req.ip), PORTFOLIO_PER_DAY.anonymous];
+  if (env.databaseUrl && !(await takeAllowance(subject, 'portfolio', limit))) {
+    return res.status(429).json({ error: 'daily_limit', message: `Free portfolio reads are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}.` });
+  }
+  res.json(await portfolio.portfolio(req.input.wallet));
+});
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };
