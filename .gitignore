@@ -6,3 +6,5 @@ node_modules/
 deposit-keys*.json
 coverage/
 rektbull-extension.zip
+# Private keys (e.g. the MCP Registry key, docs/MCP_REGISTRY.md) never belong in the repo
+*.pem

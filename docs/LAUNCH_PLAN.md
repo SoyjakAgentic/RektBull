@@ -29,6 +29,7 @@ owner's audit of the Trade Router passed). It opens in two stages:
 | Automatic trading (stage 2 above) | The Trade Router isn't deployed on Base yet | `AUTO_TRADING_NETWORKS={}`; `rektbull-trade` isn't deployed (`_DEPLOY_TRADE=false` in `cloudbuild.yaml`); no KMS key is made yet |
 | Browser extension in the stores | Its listing must point at a live site and privacy page | Section 6, after launch |
 | MetaMask Snap | Same, and MetaMask allowlisting needs a live API | Section 6, after launch |
+| Listing in the MCP Registry | The registry needs `rektbull.com/mcp` live, and a DNS record proving the domain | Section 6, after launch ([MCP_REGISTRY.md](MCP_REGISTRY.md)) |
 | Solana payments | Not built | Solana stays token checks only |
 
 ## 1. Before deployment: finish the planned desks
@@ -151,10 +152,8 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      checks every documented endpoint is a real route. Tested with the
      official MCP SDK client. The header menu drops Home (the logo is home)
      and puts Extension and Developers under More, so it stays one row.
-     **After launch:** list it in the official MCP Registry with
-     `mcp-publisher` and the repo's `server.json` (`com.rektbull/mcp`,
-     proved by a DNS TXT record on rektbull.com), and in Claude's and
-     Cursor's directories if they'll take it.
+     **After launch:** list it in the official MCP Registry (section 6,
+     step by step in [MCP_REGISTRY.md](MCP_REGISTRY.md)).
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
@@ -379,7 +378,7 @@ last good one (`gcloud run services update-traffic rektbull-api --to-revisions=R
 then fix forward in a PR. Migrations only ever add (CLAUDE.md), so the older
 revision still works against the newer database.
 
-## 6. After launch: extension and Snap
+## 6. After launch: extension, Snap and the MCP Registry
 
 **Browser extension** (`npm run extension:zip`):
 
@@ -405,6 +404,23 @@ yield, trading, voting) stay there; the extension may only link to them.*
    their form, with a short demo video you record. No audit is required for
    these permissions.
 5. Until it's allowlisted, only Flask can install it; say so on `/extension`.
+
+**MCP Registry** (`server.json`; the full guide is [MCP_REGISTRY.md](MCP_REGISTRY.md)):
+
+*You run the commands and add the DNS record; Claude guides each step and
+checks the record and the listing. About 30 minutes, free.*
+
+- [ ] Once `https://rektbull.com/mcp` answers in public, install
+      `mcp-publisher`.
+- [ ] Make the key pair outside the repo, and keep `key.pem` in your password
+      manager (never in the repo, a chat or the server).
+- [ ] Add a **new** TXT record on the root of `rektbull.com`:
+      `v=MCPv1; k=ed25519; p=…` (alongside the SPF record, not replacing it).
+      Claude checks it.
+- [ ] `mcp-publisher login dns --domain rektbull.com …`, then
+      `mcp-publisher validate` and `mcp-publisher publish` from the repo.
+- [ ] Claude checks that `com.rektbull/mcp` is listed and its address answers.
+- [ ] Later, with your go-ahead: other MCP directories (Claude's, Cursor's).
 
 ## 7. Legal and before telling the public
 
