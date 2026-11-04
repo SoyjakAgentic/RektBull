@@ -17,6 +17,7 @@ async function call(chain, method, params, { timeout = 12000 } = {}) {
   const urls = rpcUrls(chain);
   if (!urls.length) throw new RpcError(`no RPC endpoint for ${chain}`);
   let lastErr;
+  let transient = false; // a network error, a timeout, a rate limit or a 5xx: worth asking again shortly
   for (const url of urls) {
     try {
       const data = await track(providerName(url), async () => {
@@ -32,9 +33,11 @@ async function call(chain, method, params, { timeout = 12000 } = {}) {
     } catch (err) {
       if (err.fromNode) throw err;
       lastErr = err;
+      const status = err.response?.status;
+      if (!err.isProviderLimit && (!status || status === 429 || status >= 500)) transient = true;
     }
   }
-  throw new RpcError(`${method} on ${chain}: every endpoint failed (${lastErr?.message || 'unknown error'})`);
+  throw Object.assign(new RpcError(`${method} on ${chain}: every endpoint failed (${lastErr?.message || 'unknown error'})`), { transient });
 }
 
 const evmRpc = (chain, method, params, opts) => call(chain, method, params, opts);

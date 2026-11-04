@@ -30,6 +30,11 @@ const RAY = 10n ** 27n;
 const RATE_TTL = 60;
 const LLAMA_TTL = 15 * 60;
 const LLAMA_CHAIN = { ethereum: 'Ethereum', base: 'Base', arbitrum: 'Arbitrum' };
+// A read that failed for a passing reason (a public endpoint's rate limit, a
+// timeout, a 5xx) is asked again after these waits; each try goes through
+// providers/usage.track() like any other call. A contract that answered but
+// couldn't give the value isn't retried.
+const READ_RETRY = { delaysMs: [500, 1500] };
 
 const I = {
   aave: new ethers.Interface([
@@ -110,7 +115,10 @@ async function cometRate(v, asset) {
 
 async function sparkRate(v) {
   const [[ssr], [maxDeposit, totalAssets, perShare]] = await Promise.all([
-    multicall('ethereum', [{ target: venues.SPARK_SSR_SOURCE, iface: I.spark, fn: 'ssr', args: [] }]),
+    // On Ethereum, whatever chain the vault is on: name it, so an L2 rate that couldn't be read says where it failed.
+    multicall('ethereum', [{ target: venues.SPARK_SSR_SOURCE, iface: I.spark, fn: 'ssr', args: [] }]).catch(err => {
+      throw Object.assign(new Error(`the Sky Savings Rate couldn't be read on Ethereum: ${err.message}`), { transient: err.transient === true });
+    }),
     multicall(v.chain, [
       { target: v.vault, iface: I.spark, fn: 'maxDeposit', args: [ethers.ZeroAddress] },
       { target: v.vault, iface: I.spark, fn: 'totalAssets', args: [] },
@@ -149,15 +157,35 @@ async function llamaRows() {
   }).catch(() => null);
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** read(), asked again after a transient RPC failure; the last error says how many tries it took. */
+async function withRetry(read) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await read();
+    } catch (err) {
+      const wait = READ_RETRY.delaysMs[attempt - 1];
+      if (err?.transient !== true || wait === undefined) {
+        if (attempt > 1) err.message = `${err.message} (tried ${attempt} times)`;
+        throw err;
+      }
+      await sleep(wait);
+    }
+  }
+}
+
 /**
  * One venue's rate for one asset. An unreadable rate comes back with
- * `error` and apy_pct null.
+ * `error` (why) and apy_pct null, and isn't cached: the next request reads
+ * the contracts again instead of serving the failure for a minute.
  */
 async function venueRate(v, asset, { crossCheck = true } = {}) {
   const base = { protocol: v.protocol, chain: v.chain, chain_label: venues.CHAINS[v.chain].label, name: v.name, asset, status: v.status };
-  const value = await cached(`yield:rate:${v.protocol}:${v.chain}:${asset}`, RATE_TTL, async () => {
-    try {
-      const r = v.kind === 'aave' ? await aaveRate(v, asset) : v.kind === 'comet' ? await cometRate(v, asset) : await sparkRate(v);
+  let value;
+  try {
+    value = await cached(`yield:rate:${v.protocol}:${v.chain}:${asset}`, RATE_TTL, async () => {
+      const r = await withRetry(() => (v.kind === 'aave' ? aaveRate(v, asset) : v.kind === 'comet' ? cometRate(v, asset) : sparkRate(v)));
       return {
         ...base, apy_pct: pct(r.apy), source: `${v.name}'s contracts onchain`,
         utilization_pct: r.utilization === null ? null : pct(r.utilization),
@@ -166,10 +194,10 @@ async function venueRate(v, asset, { crossCheck = true } = {}) {
         supply_open: v.status === 'open' && r.supplyOpen, withdraw_open: r.withdrawOpen, flags: r.flags,
         read_at: new Date().toISOString(),
       };
-    } catch (err) {
-      return { ...base, apy_pct: null, source: null, supply_open: false, error: err.message, read_at: new Date().toISOString() };
-    }
-  });
+    });
+  } catch (err) {
+    value = { ...base, apy_pct: null, source: null, supply_open: false, error: err.message, read_at: new Date().toISOString() };
+  }
   if (!crossCheck) return value;
   const llama = await llamaRows();
   const row = llama?.[`${v.protocol}|${v.chain}|${asset}`];
@@ -197,4 +225,4 @@ async function priceUsd(chain, asset) {
   });
 }
 
-module.exports = { SECONDS_PER_YEAR, I, aaveFlags, venueRate, listRates, priceUsd, llamaRows };
+module.exports = { SECONDS_PER_YEAR, READ_RETRY, I, aaveFlags, venueRate, listRates, priceUsd, llamaRows };
