@@ -27,22 +27,45 @@ function createApp() {
   app.use(routes);
 
   // The pages and their files (the wallet signs everything; no page holds a key).
+  // Every page shares one header and footer (src/pages), put in when the app starts.
   const pub = path.join(__dirname, '..', 'public');
-  app.get('/', (_req, res) => res.sendFile(path.join(pub, 'home.html')));
-  app.get('/safety', (_req, res) => res.sendFile(path.join(pub, 'safety.html')));
-  app.get('/find', (_req, res) => res.sendFile(path.join(pub, 'find.html')));
-  app.get('/governance', (_req, res) => res.sendFile(path.join(pub, 'governance.html')));
-  app.get('/extension', (_req, res) => res.sendFile(path.join(pub, 'extension.html')));
+  const fs = require('fs');
+  const partial = name => fs.readFileSync(path.join(__dirname, 'pages', name), 'utf8');
+  const HEADER = partial('header.html');
+  const FOOTER = partial('footer.html');
+  const NOTE = 'An automated check of known patterns, not financial advice or proof of safety.';
+  const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
+    .replace('<!--#header-->', HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
+    .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
+  const PAGES = { '/': 'home.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
+  for (const [route, file] of Object.entries(PAGES)) {
+    const html = render(file, route);
+    app.get(route, (_req, res) => res.type('html').send(html));
+  }
   // The privacy page names who runs RektBull and how to reach them (OPERATOR_NAME, PRIVACY_CONTACT).
-  const privacy = require('fs').readFileSync(path.join(pub, 'privacy.html'), 'utf8');
+  const privacy = render('privacy.html', '/privacy');
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   app.get('/privacy.html', (_req, res) => res.redirect(301, '/privacy'));
   app.get('/privacy', (_req, res) => {
     const env = require('./config/env');
     res.type('html').send(privacy.replaceAll('{{OPERATOR}}', esc(env.operatorName)).replaceAll('{{CONTACT}}', esc(env.privacyContact)));
   });
-  app.get('/trade', (_req, res) => res.sendFile(path.join(pub, 'trade.html')));
   app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
+  // Fonts are served from here, not a font CDN, so no visitor's address goes to a third party.
+  const FONTS = {
+    'bricolage.woff2': ['@fontsource-variable/bricolage-grotesque', 'bricolage-grotesque-latin-wght-normal.woff2'],
+    'plex-sans-400.woff2': ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-400-normal.woff2'],
+    'plex-sans-500.woff2': ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-500-normal.woff2'],
+    'plex-sans-600.woff2': ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-600-normal.woff2'],
+    'plex-mono-400.woff2': ['@fontsource/ibm-plex-mono', 'ibm-plex-mono-latin-400-normal.woff2'],
+    'plex-mono-500.woff2': ['@fontsource/ibm-plex-mono', 'ibm-plex-mono-latin-500-normal.woff2'],
+  };
+  app.get('/fonts/:file', (req, res) => {
+    const f = FONTS[req.params.file];
+    if (!f) return res.status(404).end();
+    res.set('cache-control', 'public, max-age=31536000, immutable');
+    res.sendFile(path.join(path.dirname(require.resolve(`${f[0]}/package.json`)), 'files', f[1]));
+  });
   app.use(express.static(pub, { index: false }));
 
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));

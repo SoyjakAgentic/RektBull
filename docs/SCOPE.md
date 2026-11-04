@@ -83,8 +83,9 @@ Details: [PAYMENTS.md](PAYMENTS.md).
 ## 5. Site structure (target)
 
 Built so far: **Home** (`/`, the ask box and the free wallet checkup), Safety
-(`/safety`), Find money (`/find`, under Opportunities), Governance
-(`/governance`, under Opportunities), the pre-sign check (`/extension`).
+(`/safety`), Find money (`/find`, under Opportunities), Trade (`/trade`),
+Governance (`/governance`, under Opportunities), the pre-sign check
+(`/extension`). Every page shares one header and footer (`src/pages/`).
 
 ```
 Home
@@ -99,6 +100,8 @@ Home
 ```
 
 ## 6. Roadmap
+
+**Trade desk back on (decided 2026-11-04):** it launches with trades the user signs on Base; automatic trading follows the Trade Router's deployment ([LAUNCH_PLAN.md](LAUNCH_PLAN.md)).
 
 **Order of work (decided 2026-11-02):** the trade desk is paused where
 [TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md) says, and the **Safety desk**

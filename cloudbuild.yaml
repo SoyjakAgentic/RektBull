@@ -4,8 +4,9 @@
 #                                          alert delivery, data retention)
 #   rektbull-trade   SERVICE_ROLE=trade   (one always-on instance, its own service account:
 #                                          the only identity allowed to sign with RektBull's KMS keys)
-#                    Deployed only when _DEPLOY_TRADE=true. The launch is the Safety desk alone
-#                    (docs/LAUNCH_PLAN.md), so it stays off until the trade desk is resumed.
+#                    Deployed only when _DEPLOY_TRADE=true: it runs automatic trading, which
+#                    opens after the Trade Router is deployed on Base (docs/LAUNCH_PLAN.md
+#                    section 8). Trades users sign themselves run in rektbull-api and need it not.
 #
 # Secrets come from Secret Manager (every one named here must exist; docs/LAUNCH_PLAN.md).
 # Other settings are set on each service once and kept: --update-env-vars only sets

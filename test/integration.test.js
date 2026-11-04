@@ -85,8 +85,16 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   for (const page of ['/', '/safety', '/trade']) {
     const r = await fetch(base + page);
     assert.equal(r.status, 200, page);
-    assert.match(await r.text(), /<nav class="nav">/);
+    const html = await r.text();
+    assert.match(html, /<nav class="nav"/);
+    assert.ok(html.includes(`<a href="${page}" aria-current="page">`), `${page}: the shared header marks this page`);
+    assert.match(html, /<footer class="site">/);
+    assert.ok(!html.includes('<!--#'), `${page}: every placeholder is filled`);
   }
+  const font = await fetch(base + '/fonts/bricolage.woff2');
+  assert.equal(font.status, 200);
+  assert.match(font.headers.get('cache-control'), /immutable/);
+  assert.equal((await fetch(base + '/fonts/nope.woff2')).status, 404);
   assert.ok((await call('GET', '/v1/tokens/chains')).body.chains.includes('base'));
 
   // ── Sign in with a wallet ──

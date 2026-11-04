@@ -4,7 +4,6 @@
   const { ethers } = window;
   const $ = id => document.getElementById(id);
   const BASE = '0x2105';
-  const BASE_SEPOLIA = '0x14a34';
   const DEFAULT_LIMITS = { trade: 500, day: 10000 };
   const ROUTER_ABI = [
     'function setLimits(uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)',
@@ -12,85 +11,20 @@
     'function limits(address) view returns (uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)',
   ];
 
-  const state = { wallets: [], provider: null, address: null, token: null, config: null, proposal: null };
-  try { state.token = sessionStorage.getItem('rb_token'); state.address = sessionStorage.getItem('rb_wallet'); } catch { /* storage blocked */ }
+  // The wallet connection and sign-in are the shared ones (common.js); this page adds its own state.
+  const RB = window.RB;
+  const state = Object.assign(RB.state, { config: null, proposal: null });
+  const { el, say, api, short, switchChain } = RB;
+  const req = RB.request;
 
-  /* ── helpers ── */
-  function el(tag, attrs, ...children) {
-    const e = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
-    }
-    for (const c of children.flat()) e.append(c instanceof Node ? c : document.createTextNode(String(c ?? '')));
-    return e;
-  }
-  function say(id, text, kind) { const m = $(id); m.textContent = text || ''; m.className = 'msg' + (kind ? ' ' + kind : ''); }
-  async function api(method, path, body) {
-    const res = await fetch(path, {
-      method, headers: { 'content-type': 'application/json', ...(state.token ? { authorization: 'Bearer ' + state.token } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.message || data.error || res.statusText), { status: res.status, data });
-    return data;
-  }
-  const req = (method, params = []) => state.provider.request({ method, params });
-  const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
-
-  /* ── 1. wallets (EIP-6963, with window.ethereum as a fallback) ── */
-  window.addEventListener('eip6963:announceProvider', e => {
-    const { info, provider } = e.detail || {};
-    if (!info || state.wallets.some(w => w.info.uuid === info.uuid)) return;
-    state.wallets.push({ info, provider });
-    renderWallets();
-  });
-  window.dispatchEvent(new Event('eip6963:requestProvider'));
-  setTimeout(() => {
-    if (!state.wallets.length && window.ethereum) { state.wallets.push({ info: { uuid: 'injected', name: 'Browser wallet' }, provider: window.ethereum }); renderWallets(); }
-    if (!state.wallets.length) say('connect-msg', 'No wallet found. Install MetaMask, Coinbase Wallet or Phantom, or open this page in your wallet\'s browser.', 'bad');
-  }, 400);
-
-  function renderWallets() {
-    $('wallets').replaceChildren(...state.wallets.map(w => el('button', { onclick: () => connect(w) }, 'Connect ' + w.info.name)));
-  }
-
-  async function connect(w) {
-    try {
-      state.provider = w.provider;
-      const [addr] = await req('eth_requestAccounts');
-      if (state.address && state.address.toLowerCase() !== addr.toLowerCase()) { state.token = null; }
-      state.address = addr;
-      $('who').textContent = `${w.info.name}: ${short(addr)}`;
-      $('signin').disabled = false;
-      say('connect-msg', state.token ? 'Signed in.' : 'Connected. Now sign in: it only proves you own this wallet, and costs nothing.');
-      if (state.token) await afterSignIn();
-    } catch (err) { say('connect-msg', err.message, 'bad'); }
-  }
-
-  /* ── sign in (EIP-4361) ── */
-  $('signin').addEventListener('click', async () => {
-    try {
-      const chainId = Number(await req('eth_chainId'));
-      const ch = await api('POST', '/v1/auth/nonce', { address: state.address, chain_id: chainId });
-      const signature = await req('personal_sign', [ethers.hexlify(ethers.toUtf8Bytes(ch.message)), state.address]);
-      const out = await api('POST', '/v1/auth/verify', { challenge_id: ch.challenge_id, signature });
-      state.token = out.token;
-      try { sessionStorage.setItem('rb_token', out.token); sessionStorage.setItem('rb_wallet', state.address); } catch { /* fine */ }
-      say('connect-msg', 'Signed in.', 'ok');
-      await afterSignIn();
-    } catch (err) { say('connect-msg', err.message, 'bad'); }
-  });
-
+  RB.onSignedIn(afterSignIn);
   async function afterSignIn() {
+    if (!state.provider) return; // signed in on an earlier page: wait until the wallet is connected here
     state.config = await api('GET', '/v1/trading/config');
     for (const id of ['trade-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
+    showAutoNetwork();
     await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
-  }
-
-  async function switchChain(chainId) {
-    if ((await req('eth_chainId')).toLowerCase() === chainId) return;
-    await req('wallet_switchEthereumChain', [{ chainId }]);
   }
 
   /* ── 2. trade ── */
@@ -231,8 +165,21 @@
   });
 
   /* ── automatic trading limits (written onchain by the user's wallet) ── */
-  const AUTO_CHAIN = '84532';
+  // Base once the audited router is deployed there (AUTO_TRADING_NETWORKS), else the test network.
+  let AUTO_CHAIN = null;
   const net = () => state.config?.automatic_trading?.networks?.[AUTO_CHAIN];
+  const autoHex = () => '0x' + Number(AUTO_CHAIN).toString(16);
+  const testnet = () => /test/i.test(net()?.label || '');
+  function showAutoNetwork() {
+    const ids = Object.keys(state.config?.automatic_trading?.networks || {});
+    AUTO_CHAIN = ids.includes('8453') ? '8453' : ids[0] || null;
+    $('auto-net').textContent = net() ? net().label : 'not open yet';
+    $('auto-where').textContent = !net()
+      ? 'Automatic trading opens when the audited Trade Router is deployed. Trades you sign yourself work now.'
+      : testnet() ? 'Until the audited router is deployed on Base, this runs on the test network with test tokens.' : '';
+    $('auto-steps').hidden = !net();
+    for (const e of document.querySelectorAll('.only-testnet')) e.hidden = !testnet();
+  }
   const router = () => net()?.router;
   const ERC20 = ['function approve(address spender, uint256 amount)', 'function mint(address to, uint256 amount)'];
 
@@ -248,18 +195,18 @@
   async function loadLimits() {
     if (!router()) { $('limits-now').textContent = 'Automatic trading isn\'t set up on this server yet.'; return; }
     try {
-      const l = await api('GET', '/v1/trading/limits?chain_id=84532');
-      $('smart-status').textContent = l.smart_account ? '✓ This wallet is a MetaMask smart account on the test network.' : 'Not yet: this wallet is a plain account on the test network.';
+      const l = await api('GET', '/v1/trading/limits?chain_id=' + AUTO_CHAIN);
+      $('smart-status').textContent = l.smart_account ? `✓ This wallet is a MetaMask smart account on ${net().label}.` : `Not yet: this wallet is a plain account on ${net().label}.`;
       $('limits-now').textContent = l.active
         ? `Now: $${l.per_trade_usd.toLocaleString()} per trade, $${l.per_day_usd.toLocaleString()} per day, until ${new Date(l.valid_until * 1000).toLocaleString()}.`
         : 'No limits set: automatic trading is off for this wallet.';
-    } catch { $('limits-now').textContent = 'Couldn\'t read your current limits from the test network.'; }
+    } catch { $('limits-now').textContent = `Couldn't read your current limits from ${net().label}.`; }
     await loadAuto();
   }
   $('smart-refresh').addEventListener('click', () => loadLimits());
 
   async function sendTo(to, data, label) {
-    await switchChain(BASE_SEPOLIA);
+    await switchChain(autoHex());
     const hash = await req('eth_sendTransaction', [{ from: state.address, to, data }]);
     say('limits-msg', `${label}: sent ${short(hash)}…`);
     await waitFor(hash);
@@ -282,7 +229,7 @@
         if (!t.amount) continue;
         await sendTo(t.address, new ethers.Interface(ERC20).encodeFunctionData('approve', [a.router, BigInt(t.amount)]), `Allow ${t.symbol}`);
       }
-      $('allow-status').textContent = `The router may trade up to $${a.covers_usd.toLocaleString()} of each test token: your daily limit times the days left. It still enforces your limits on every trade.`;
+      $('allow-status').textContent = `The router may trade up to $${a.covers_usd.toLocaleString()} of each token: your daily limit times the days left. It still enforces your limits on every trade.`;
       say('limits-msg', 'Approvals done.', 'ok');
     } catch (err) { say('limits-msg', err.message, 'bad'); }
   });
@@ -290,7 +237,7 @@
   $('grant').addEventListener('click', async () => {
     try {
       const tpl = await api('GET', '/v1/trading/auto/delegation?chain_id=' + AUTO_CHAIN);
-      await switchChain(BASE_SEPOLIA);
+      await switchChain(autoHex());
       say('limits-msg', 'Check the permission in your wallet, then sign…');
       const signature = await req('eth_signTypedData_v4', [state.address, JSON.stringify(tpl.typed_data)]);
       const out = await api('POST', '/v1/trading/permissions', { chain_id: Number(AUTO_CHAIN), wallet_type: 'metamask', delegation: { ...tpl.delegation, signature } });
@@ -347,9 +294,9 @@
     try {
       checkTypedConfirmation();
       cbSetup = await api('GET', `/v1/trading/auto/setup?chain_id=${AUTO_CHAIN}&wallet_type=coinbase&${limitsQuery()}`);
-      await switchChain(BASE_SEPOLIA);
+      await switchChain(autoHex());
       say('limits-msg', 'Confirm the setup in your wallet…');
-      await sendCalls({ chainId: BASE_SEPOLIA, calls: cbSetup.calls });
+      await sendCalls({ chainId: autoHex(), calls: cbSetup.calls });
       say('limits-msg', 'Setup sent. Now press "Link my wallet".', 'ok');
     } catch (err) { say('limits-msg', err.message, 'bad'); }
   });
@@ -378,7 +325,7 @@
   }
 
   async function routerTx(data) {
-    await switchChain(BASE_SEPOLIA);
+    await switchChain(autoHex());
     const hash = await req('eth_sendTransaction', [{ from: state.address, to: router(), data }]);
     say('limits-msg', `Sent ${short(hash)}…`);
     await waitFor(hash);

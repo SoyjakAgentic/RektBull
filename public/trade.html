@@ -7,13 +7,16 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade" aria-current="page">Trade</a></nav>
-    <div id="who" class="who">Not connected</div>
-  </header>
+  <!--#header-->
 
-  <main>
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Trade desk</span>
+      <h1>Trade with <em>limits you set</em></h1>
+      <p>Every token is checked before you buy. Your wallet signs each trade, or gives RektBull a limited permission that can only trade inside limits your wallet writes onchain, and that you can revoke at any time. RektBull can never withdraw.</p>
+    </div>
+  </section>
+  <main class="tool">
     <section class="card" id="connect-card">
       <h2>1. Connect your wallet</h2>
       <p class="muted">Your funds stay in your wallet. RektBull checks each trade and builds it; your wallet shows it and you sign it.</p>
@@ -69,8 +72,9 @@
     </section>
 
     <section class="card" id="limits-card" hidden>
-      <h2>Automatic trading <span class="tag">Base Sepolia test network</span></h2>
-      <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. The router isn't audited yet, so this runs on the test network only, with test tokens. Only tokens the router has a reference price for can be traded automatically.</p>
+      <h2>Automatic trading <span class="tag" id="auto-net">Base Sepolia test network</span></h2>
+      <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. Only tokens the router has a reference price for can be traded automatically. <strong id="auto-where"></strong></p>
+      <div id="auto-steps">
       <label>Your wallet
         <select id="w-type">
           <option value="metamask">MetaMask (smart account)</option>
@@ -108,10 +112,10 @@
           <button id="cb-setup" class="primary">Set up from my wallet</button>
           <button id="cb-link">Link my wallet</button>
         </li>
-        <li class="only-metamask"><strong>Test tokens, and let the router trade them</strong>
+        <li class="only-metamask"><strong>Let the router trade your tokens</strong>
           <div class="row">
-            <button id="faucet">Get 1,000 test tUSDC</button>
-            <button id="allow">Let the router trade my test tokens</button>
+            <button id="faucet" class="only-testnet">Get 1,000 test tUSDC</button>
+            <button id="allow">Let the router trade my tokens</button>
           </div>
           <div id="allow-status" class="muted small"></div>
         </li>
@@ -131,12 +135,14 @@
       <div class="row">
         <button id="l-revoke" class="danger">Stop all automatic trading</button>
       </div>
+      </div>
       <p id="limits-msg" class="msg"></p>
     </section>
   </main>
 
-  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. <a href="/privacy">Privacy</a></footer>
+  <!--#footer:An automated check of known patterns, not financial advice or proof of safety.-->
   <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
   <script src="/trade.js"></script>
 </body>
 </html>

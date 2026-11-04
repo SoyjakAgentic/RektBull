@@ -109,7 +109,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     await page.getByText('1,000 more test tUSDC').waitFor();
     assert.equal(sent.length, 4);
     assert.equal(sent[3].to.toLowerCase(), require('../../src/trade/networks').network(84532).tokens.tUSDC.address, 'mint on the test tUSDC');
-    await page.getByRole('button', { name: 'Let the router trade my test tokens' }).click();
+    await page.getByRole('button', { name: 'Let the router trade my tokens' }).click();
     await page.getByText('Save your limits first').waitFor();
     await page.getByRole('button', { name: 'Sign the permission' }).click();
     await page.getByText('Set your trading limits on the router first').waitFor();

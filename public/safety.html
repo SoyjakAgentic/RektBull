@@ -8,13 +8,17 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety" aria-current="page">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
-    <div id="who" class="who">Not signed in</div>
-  </header>
+  <!--#header-->
 
-  <main>
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Safety desk</span>
+      <h1>Check it before it <em>costs you</em></h1>
+      <p>Check a token before you buy it, clean up what apps can still take from your wallet, and get alerts when something changes. Every finding names its source.</p>
+      <nav class="jump" aria-label="On this page"><a href="#check-card">Token check</a><a href="#approvals-card">Approvals</a><a href="#monitor-card">Risk monitor</a><a href="#account-card">Account and Safety Pro</a></nav>
+    </div>
+  </section>
+  <main class="tool">
     <section class="card" id="check-card">
       <h2>Check a token before you buy it</h2>
       <p class="muted">Can it be sold back? What does it tax? What can its owner change? Who holds it? Every finding names its source, and anything we couldn't check is listed as such.</p>
@@ -131,7 +135,7 @@
     </section>
   </main>
 
-  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <!--#footer:An automated check of known patterns, not financial advice or proof of safety.-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/safety.js"></script>

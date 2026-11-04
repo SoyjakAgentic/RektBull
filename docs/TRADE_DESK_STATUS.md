@@ -1,8 +1,10 @@
 # Trade desk: where we stopped
 
-*Paused on 2026-11-02 so the Safety desk (the paid services in
-[SCOPE.md](SCOPE.md)) can catch up. This is the handoff note for picking the
-trade desk back up. Design: [SESSION_KEYS.md](SESSION_KEYS.md).*
+*Paused on 2026-11-02 so the Safety desk could catch up; **switched back on
+for launch on 2026-11-04**. Trades the user signs open at launch on Base;
+automatic trading opens once the Trade Router is deployed on Base
+([LAUNCH_PLAN.md](LAUNCH_PLAN.md) sections 0 and 8). Design:
+[SESSION_KEYS.md](SESSION_KEYS.md).*
 
 ## Done
 
@@ -27,8 +29,9 @@ All green in CI when we stopped.
    - Does Coinbase let a website add the Spend Permission Manager as an owner
      (step 4.3)? If not, the Coinbase path needs Coinbase's own permission screen.
    - How MetaMask actually shows the delegation signature (step 2.7).
-2. **The audit** (milestone 0b). Send [AUDIT_BRIEF.md](AUDIT_BRIEF.md) to firms
-   for quotes. No mainnet router before every finding is fixed.
+2. ✅ **The audit** (milestone 0b): the owner reports the Trade Router
+   passed (November 2026). The Yield Router's audit is next; both are then
+   deployed together, guided.
 3. **Google Cloud KMS.** The KMS signer has only run against a stand-in.
    Create the key ring and key, give only the trade service's account
    signing rights, and sign one Base Sepolia transaction with it.
@@ -44,7 +47,8 @@ All green in CI when we stopped.
 | Milestone 4: Ethereum and Arbitrum | Router per chain with that chain's feeds (no sequencer feed on Ethereum); Flashbots Protect for sends on Ethereum; `src/trade/networks.js` entries |
 | Milestone 5: Solana with Phantom | Squads Smart Account or Swig; needs a devnet proof first (SESSION_KEYS section 3) |
 | Phantom (EVM side) for automatic trading | Approve-each works; automatic depends on Phantom supporting EIP-7702 delegations |
-| Share the wallet code between pages | `public/trade.js` has its own connect and sign-in; the Safety pages use `public/common.js`. Move `/trade` onto `common.js` when next touching it |
+| ✅ Share the wallet code between pages | Done: `/trade` uses `public/common.js` and the shared header |
+| ✅ Automatic trading's network from settings | Done: `/trade` uses Base when `AUTO_TRADING_NETWORKS` has it, the test network otherwise, and says it isn't open when there's none |
 
 ## Known issues
 

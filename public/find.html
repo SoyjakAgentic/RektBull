@@ -8,13 +8,17 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find" aria-current="page">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
-    <div id="who" class="who">Not signed in</div>
-  </header>
+  <!--#header-->
 
-  <main>
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Find money</span>
+      <h1>Money you're <em>owed</em>, and money that could earn more</h1>
+      <p>Airdrops and rewards your wallet hasn't claimed, verified onchain, and where your stablecoins and ETH could earn more. Checking is free; you pay a share only of what you claim through RektBull.</p>
+      <nav class="jump" aria-label="On this page"><a href="#find-card">Unclaimed rewards</a><a href="#yield-card">Yield</a><a href="#fee-card">What it costs</a><a href="#programs-card">Airdrops checked</a></nav>
+    </div>
+  </section>
+  <main class="tool">
     <section class="card" id="find-card">
       <h2>Find airdrops and rewards you haven't claimed</h2>
       <p class="muted">Rewards from Merkl campaigns (Uniswap, Aave, Morpho, Euler and many more) on six chains, and airdrops RektBull has checked. Each one is verified onchain before it's shown: the proof, the distributor's root, and whether it's already claimed.</p>
@@ -88,7 +92,7 @@
     </section>
   </main>
 
-  <footer class="muted">Found means verified in these sources, not a promise of value. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <!--#footer:Found means verified in these sources, not a promise of value.-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/find.js"></script>
