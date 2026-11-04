@@ -58,8 +58,8 @@ const VENUES = [
   { protocol: 'spark-susdc', chain: 'arbitrum', kind: 'spark', name: 'Spark sUSDC (Sky Savings Rate)', vault: '0x940098b108fb7d0a7e374f6eded7760787464609', assets: ['USDC'], status: 'open' },
 ];
 
-const SPARK_SSR_SOURCE = VENUES.find(v => v.kind === 'spark' && v.chain === 'ethereum').vault;
-// On the L2s, the Sky Savings Rate comes from Sky's SSR oracle (the vault's rateProvider()), checked onchain on 2 November 2026.
+// On the L2s, the Sky Savings Rate comes from Sky's SSR oracle (the vault's rateProvider()), checked onchain on 2 November 2026;
+// its getSSR() matched the Ethereum vault's ssr() on 4 November 2026. src/yield/rates.js and the Yield Router both read it.
 const SPARK_RATE_PROVIDER = { base: '0x65d946e533748a998b1f0e430803e39a6388f7a1', arbitrum: '0xee2816c1e1eed14d444552654ed3027abc033a36' };
 
 /**
@@ -107,4 +107,4 @@ const venueAddress = v => (v.kind === 'aave' ? v.pool : v.kind === 'comet' ? v.c
 /** The token a position is held in: the aToken, the Comet balance, or the vault's shares. */
 const positionToken = (v, asset) => (v.kind === 'aave' ? v.aTokens[asset] : v.kind === 'comet' ? v.comet : v.vault);
 
-module.exports = { CHAINS, TOKENS, VENUES, SPARK_SSR_SOURCE, SPARK_RATE_PROVIDER, YieldRefused, chainOf, tokenOf, venue, venueAddress, positionToken, routerVenues };
+module.exports = { CHAINS, TOKENS, VENUES, SPARK_RATE_PROVIDER, YieldRefused, chainOf, tokenOf, venue, venueAddress, positionToken, routerVenues };

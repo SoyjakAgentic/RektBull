@@ -20,6 +20,93 @@ test('Aave\'s configuration word: active, frozen, paused and the supply cap', ()
   assert.equal(rates.aaveFlags(1n << 60n).paused, true);
 });
 
+test('a rate read: Spark on an L2 from its own chain, retried after a rate limit, never cached when it fails, and the failure says why', async t => {
+  const axios = require('axios');
+  const { ethers } = require('ethers');
+  const env = require('../src/config/env');
+  const cache = require('../src/lib/cache');
+  const usage = require('../src/providers/usage');
+  const { rpcUrls } = require('../src/providers/chains');
+  const venues = require('../src/yield/venues');
+  const saved = { post: axios.post, delays: rates.READ_RETRY.delaysMs, db: env.databaseUrl, eth: process.env.RPC_URLS_ETHEREUM, base: process.env.RPC_URLS_BASE };
+  t.after(() => {
+    axios.post = saved.post; rates.READ_RETRY.delaysMs = saved.delays; env.databaseUrl = saved.db;
+    for (const [k, v] of [['RPC_URLS_ETHEREUM', saved.eth], ['RPC_URLS_BASE', saved.base]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  });
+  delete process.env.RPC_URLS_ETHEREUM; delete process.env.RPC_URLS_BASE; // each chain's public endpoint only
+  env.databaseUrl = ''; // the in-process cache only
+  rates.READ_RETRY.delaysMs = [0, 0];
+  const [ETH] = rpcUrls('ethereum'); const [BASE] = rpcUrls('base');
+  const day = new Date().toISOString().slice(0, 10);
+  const callsTo = url => () => usage._counts.get(`rpc:${new URL(url).hostname}|${day}`) || 0;
+  const ethCalls = callsTo(ETH); const baseCalls = callsTo(BASE);
+
+  // Multicall3's aggregate3, answered with one uint256 per call (every Spark read returns one).
+  const MC = new ethers.Interface(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
+  const word = x => ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [x]);
+  const SSR = 1000000001243680656318820312n; // about 4% a year, per second in ray
+  const asked = []; // the first call of each aggregate3: where the rate came from
+  const answer = (data, ok = true) => {
+    const [calls] = MC.decodeFunctionData('aggregate3', data);
+    asked.push({ target: calls[0].target.toLowerCase(), selector: calls[0].callData.slice(0, 10) });
+    return { data: { jsonrpc: '2.0', id: 1, result: MC.encodeFunctionResult('aggregate3', [calls.map(() => [ok, ok ? word(SSR) : '0x'])]) } };
+  };
+  const limited = () => Promise.reject(Object.assign(new Error('Request failed with status code 429'), { response: { status: 429 } }));
+  let next = []; // what the endpoint does next, one entry per call; then it answers
+  axios.post = async (url, body) => {
+    if (url !== BASE && url !== ETH) throw new Error(`unexpected RPC ${url}`);
+    const step = next.shift();
+    return step ? step(body) : answer(body.params[0].data);
+  };
+  const spark = venues.venue('spark-susdc', 'base');
+  const KEY = 'yield:rate:spark-susdc:base:USDC';
+  const read = (v = spark) => { cache._memory.delete(`yield:rate:spark-susdc:${v.chain}:USDC`); return rates.venueRate(v, 'USDC', { crossCheck: false }); };
+
+  // Base's rate comes from Sky's SSR oracle on Base, in one call to Base: Ethereum isn't asked.
+  let eth0 = ethCalls(); let before = baseCalls();
+  let r = await read();
+  assert.equal(r.error, undefined, r.error);
+  assert.ok(r.apy_pct > 3 && r.apy_pct < 5, String(r.apy_pct));
+  assert.deepEqual(asked.at(-1), { target: venues.SPARK_RATE_PROVIDER.base, selector: rates.I.ssrOracle.getFunction('getSSR').selector });
+  assert.equal(baseCalls() - before, 1);
+  assert.equal(ethCalls() - eth0, 0, 'an L2 rate doesn\'t wait on Ethereum');
+  // Ethereum's own vault still gives its ssr().
+  r = await read(venues.venue('spark-susdc', 'ethereum'));
+  assert.equal(r.error, undefined, r.error);
+  assert.deepEqual(asked.at(-1), { target: venues.venue('spark-susdc', 'ethereum').vault, selector: rates.I.spark.getFunction('ssr').selector });
+
+  // Rate-limited once: asked again, counted both times, read.
+  next = [limited];
+  before = baseCalls();
+  r = await read();
+  assert.equal(r.error, undefined, r.error);
+  assert.ok(r.apy_pct > 3);
+  assert.equal(baseCalls() - before, 2, 'both tries went through usage.track()');
+
+  // Rate-limited every time: three tries, then the reason.
+  next = [limited, limited, limited];
+  before = baseCalls();
+  r = await read();
+  assert.equal(r.apy_pct, null);
+  assert.equal(r.supply_open, false);
+  assert.equal(r.error, 'eth_call on base: every endpoint failed (Request failed with status code 429) (tried 3 times)');
+  assert.equal(baseCalls() - before, 3);
+  assert.equal(cache._memGet(KEY), undefined, 'a failed read isn\'t cached');
+  // ...so the next request reads again, and gets the rate once the endpoint answers.
+  const again = await rates.venueRate(spark, 'USDC', { crossCheck: false });
+  assert.equal(again.error, undefined, again.error);
+  assert.ok(again.apy_pct > 3);
+  assert.ok(cache._memGet(KEY), 'a good read is cached');
+
+  // The oracle answered but couldn't give the rate: not a passing failure, so asked once, and named.
+  next = [body => Promise.resolve(answer(body.params[0].data, false))];
+  before = baseCalls();
+  r = await read();
+  assert.equal(r.apy_pct, null);
+  assert.equal(r.error, 'the Sky Savings Rate couldn\'t be read from Sky\'s SSR oracle on Base');
+  assert.equal(baseCalls() - before, 1);
+});
+
 test('rules: each one refuses with its reason and figures; a move that passes says why', async t => {
   const table = { 'aave-v3': rate(5), 'compound-v3': rate(7), 'spark-susdc': rate(3.8) };
   const realRate = rates.venueRate; const realGas = rules.gasCostUsd;

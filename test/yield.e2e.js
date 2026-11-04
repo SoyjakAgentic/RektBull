@@ -111,8 +111,10 @@ test('yield proposals, end to end on a Base fork', { skip: !DB && 'set TEST_DATA
   };
 
   // The venues at the fork block, worst and best paying for USDC.
-  const rates = (await call(null, 'GET', '/v1/yield/rates')).body.rates.filter(r => r.chain === 'base' && r.asset === 'USDC' && r.apy_pct !== null);
-  assert.equal(rates.length, 3, 'Aave, Compound and Spark rates read from their contracts');
+  const baseUsdc = (await call(null, 'GET', '/v1/yield/rates')).body.rates.filter(r => r.chain === 'base' && r.asset === 'USDC');
+  const rates = baseUsdc.filter(r => r.apy_pct !== null);
+  const unread = baseUsdc.filter(r => r.apy_pct === null).map(r => `${r.name}: ${r.error || 'no reason given'}`);
+  assert.equal(rates.length, 3, `Aave, Compound and Spark rates read from their contracts (listed: ${baseUsdc.map(r => r.protocol).join(', ') || 'none'}; not read: ${unread.join('; ') || 'none'})`);
   rates.sort((a, b) => a.apy_pct - b.apy_pct);
   const [low, , high] = rates;
 

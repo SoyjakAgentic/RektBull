@@ -8,8 +8,10 @@
  *     ReserveConfiguration.sol: bits 56, 57, 60, 116-151).
  *   - Compound v3: getSupplyRate(getUtilization()), per second with 18
  *     decimals; isSupplyPaused / isWithdrawPaused.
- *   - Spark sUSDC: the Sky Savings Rate, ssr(), per second in ray, read from
- *     the Ethereum vault (the L2 vaults pay the same rate); maxDeposit.
+ *   - Spark sUSDC: the Sky Savings Rate, per second in ray, read on the
+ *     vault's own chain: ssr() on the Ethereum vault, getSSR() on Sky's SSR
+ *     oracle on an L2 (the vault's rateProvider(), the rate it converts by;
+ *     the Yield Router's rateOf reads the same); maxDeposit.
  * DefiLlama's yields API is a cross-check, and the only source for reward
  * APYs (COMP, Aave incentives), which are shown but never counted by the
  * rules. It's never required: when it can't be reached, the onchain figures
@@ -30,6 +32,11 @@ const RAY = 10n ** 27n;
 const RATE_TTL = 60;
 const LLAMA_TTL = 15 * 60;
 const LLAMA_CHAIN = { ethereum: 'Ethereum', base: 'Base', arbitrum: 'Arbitrum' };
+// A read that failed for a passing reason (a public endpoint's rate limit, a
+// timeout, a 5xx) is asked again after these waits; each try goes through
+// providers/usage.track() like any other call. A contract that answered but
+// couldn't give the value isn't retried.
+const READ_RETRY = { delaysMs: [500, 1500] };
 
 const I = {
   aave: new ethers.Interface([
@@ -45,6 +52,7 @@ const I = {
     'function ssr() view returns (uint256)', 'function maxDeposit(address) view returns (uint256)', 'function totalAssets() view returns (uint256)',
     'function convertToAssets(uint256 shares) view returns (uint256)',
   ]),
+  ssrOracle: new ethers.Interface(['function getSSR() view returns (uint256)']),
   oracle: new ethers.Interface(['function getAssetPrice(address asset) view returns (uint256)']),
 };
 
@@ -109,15 +117,17 @@ async function cometRate(v, asset) {
 }
 
 async function sparkRate(v) {
-  const [[ssr], [maxDeposit, totalAssets, perShare]] = await Promise.all([
-    multicall('ethereum', [{ target: venues.SPARK_SSR_SOURCE, iface: I.spark, fn: 'ssr', args: [] }]),
-    multicall(v.chain, [
-      { target: v.vault, iface: I.spark, fn: 'maxDeposit', args: [ethers.ZeroAddress] },
-      { target: v.vault, iface: I.spark, fn: 'totalAssets', args: [] },
-      { target: v.vault, iface: I.spark, fn: 'convertToAssets', args: [10n ** 18n] },
-    ]),
+  // Everything from the vault's own chain: an L2 rate never waits on Ethereum.
+  const l1 = v.chain === 'ethereum';
+  const oracle = l1 ? null : venues.SPARK_RATE_PROVIDER[v.chain];
+  if (!l1 && !oracle) throw new Error(`no Sky SSR oracle is listed for ${venues.CHAINS[v.chain].label}`);
+  const [ssr, maxDeposit, totalAssets, perShare] = await multicall(v.chain, [
+    l1 ? { target: v.vault, iface: I.spark, fn: 'ssr', args: [] } : { target: oracle, iface: I.ssrOracle, fn: 'getSSR', args: [] },
+    { target: v.vault, iface: I.spark, fn: 'maxDeposit', args: [ethers.ZeroAddress] },
+    { target: v.vault, iface: I.spark, fn: 'totalAssets', args: [] },
+    { target: v.vault, iface: I.spark, fn: 'convertToAssets', args: [10n ** 18n] },
   ]);
-  if (!ssr.ok) throw new Error('the Sky Savings Rate couldn\'t be read');
+  if (!ssr.ok) throw new Error(l1 ? 'the Sky Savings Rate couldn\'t be read from the vault' : `the Sky Savings Rate couldn't be read from Sky's SSR oracle on ${venues.CHAINS[v.chain].label}`);
   const room = ok(maxDeposit) === null ? null : BigInt(ok(maxDeposit));
   return {
     apy: Math.pow(Number(BigInt(ssr.value[0]) * 10n ** 12n / RAY) / 1e12, SECONDS_PER_YEAR) - 1,
@@ -149,15 +159,35 @@ async function llamaRows() {
   }).catch(() => null);
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** read(), asked again after a transient RPC failure; the last error says how many tries it took. */
+async function withRetry(read) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await read();
+    } catch (err) {
+      const wait = READ_RETRY.delaysMs[attempt - 1];
+      if (err?.transient !== true || wait === undefined) {
+        if (attempt > 1) err.message = `${err.message} (tried ${attempt} times)`;
+        throw err;
+      }
+      await sleep(wait);
+    }
+  }
+}
+
 /**
  * One venue's rate for one asset. An unreadable rate comes back with
- * `error` and apy_pct null.
+ * `error` (why) and apy_pct null, and isn't cached: the next request reads
+ * the contracts again instead of serving the failure for a minute.
  */
 async function venueRate(v, asset, { crossCheck = true } = {}) {
   const base = { protocol: v.protocol, chain: v.chain, chain_label: venues.CHAINS[v.chain].label, name: v.name, asset, status: v.status };
-  const value = await cached(`yield:rate:${v.protocol}:${v.chain}:${asset}`, RATE_TTL, async () => {
-    try {
-      const r = v.kind === 'aave' ? await aaveRate(v, asset) : v.kind === 'comet' ? await cometRate(v, asset) : await sparkRate(v);
+  let value;
+  try {
+    value = await cached(`yield:rate:${v.protocol}:${v.chain}:${asset}`, RATE_TTL, async () => {
+      const r = await withRetry(() => (v.kind === 'aave' ? aaveRate(v, asset) : v.kind === 'comet' ? cometRate(v, asset) : sparkRate(v)));
       return {
         ...base, apy_pct: pct(r.apy), source: `${v.name}'s contracts onchain`,
         utilization_pct: r.utilization === null ? null : pct(r.utilization),
@@ -166,10 +196,10 @@ async function venueRate(v, asset, { crossCheck = true } = {}) {
         supply_open: v.status === 'open' && r.supplyOpen, withdraw_open: r.withdrawOpen, flags: r.flags,
         read_at: new Date().toISOString(),
       };
-    } catch (err) {
-      return { ...base, apy_pct: null, source: null, supply_open: false, error: err.message, read_at: new Date().toISOString() };
-    }
-  });
+    });
+  } catch (err) {
+    value = { ...base, apy_pct: null, source: null, supply_open: false, error: err.message, read_at: new Date().toISOString() };
+  }
   if (!crossCheck) return value;
   const llama = await llamaRows();
   const row = llama?.[`${v.protocol}|${v.chain}|${asset}`];
@@ -197,4 +227,4 @@ async function priceUsd(chain, asset) {
   });
 }
 
-module.exports = { SECONDS_PER_YEAR, I, aaveFlags, venueRate, listRates, priceUsd, llamaRows };
+module.exports = { SECONDS_PER_YEAR, READ_RETRY, I, aaveFlags, venueRate, listRates, priceUsd, llamaRows };
