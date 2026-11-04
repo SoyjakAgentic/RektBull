@@ -32,6 +32,7 @@ async function main() {
     // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
     setInterval(() => require('./services/governance').alertTick().catch(err => logger.warn('governance alerts failed', { error: err.message })), 60 * 60 * 1000);
     // Research: last week's digest, made once on Monday from 06:00 UTC (checked hourly).
+    setInterval(() => require('./services/newsletter').tick().catch(err => logger.warn('newsletter send failed', { error: err.message })), 5 * 60 * 1000);
     setInterval(() => require('./services/research').tick().catch(err => logger.warn('weekly digest failed', { error: err.message })), 60 * 60 * 1000);
     // Safety Pro renewal reminders, hourly.
     setInterval(() => require('./payments/reminders').tick().catch(err => logger.warn('pass reminders failed', { error: err.message })), 60 * 60 * 1000);

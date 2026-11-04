@@ -76,8 +76,15 @@ time as their limits are reached (`GET /v1/admin/provider-usage` shows which).
 
 ## The weekly digest's cost
 
-One Claude call a week (about 1,500 tokens in and 600 out at the default
-model: cents a month), plus the cached data the other desks already read.
+Two Claude calls a week, the writer and the fact-check (about 4,000 tokens
+in and 1,500 out in all at the default model: cents a month), plus the
+cached data the other desks already read.
+
+## The newsletter's cost
+
+Resend's free plan: 100 emails a day, 3,000 a month, which covers about
+100 confirmed subscribers (plus confirmation emails). Beyond that, its
+paid plan (from about $20 a month for 50,000 emails).
 
 ## AI cost
 

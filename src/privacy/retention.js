@@ -12,6 +12,7 @@ const RULES = [
   ['monthly points and pass counters, after 13 months', `DELETE FROM period_usage WHERE period < to_char(now() - interval '13 months', 'YYYY-MM')`],
   ['alert delivery records, after 90 days', `DELETE FROM alert_deliveries WHERE COALESCE(sent_at, next_attempt_at) < now() - interval '90 days'`],
   ['risk monitor alerts, after a year', `DELETE FROM monitor_alerts WHERE created_at < now() - interval '1 year'`],
+  ['newsletter sign-ups never confirmed, after 7 days', `DELETE FROM newsletter_subscribers WHERE confirmed_at IS NULL AND created_at < now() - interval '7 days'`],
   ['revoked or expired extension links, after 30 days', `DELETE FROM extension_tokens WHERE COALESCE(revoked_at, expires_at) < now() - interval '30 days'`],
 ];
 

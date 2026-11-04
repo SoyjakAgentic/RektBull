@@ -69,8 +69,8 @@ button:disabled { opacity: .5; cursor: default; }
 button.link { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; font-weight: 500; border-radius: 0; }
 label { display: grid; gap: 5px; font-size: 13px; font-weight: 500; color: var(--muted); }
 label.wide { grid-column: 1 / -1; }
-input, select { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); min-width: 0; }
-input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input, select, textarea { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); min-width: 0; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 12px 0; }
 .msg { min-height: 1.2em; margin: 8px 0 0; } .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
@@ -416,6 +416,12 @@ label.inline { display: inline-flex; flex-direction: row; align-items: center; g
 .bar-btn:hover, .bar-btn.on { background: var(--soft); }
 .bar-btn .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bars:has(.bar-btn) .bar-row { grid-template-columns: minmax(120px, 240px) minmax(0, 1fr) auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#review textarea { width: 100%; box-sizing: border-box; font-family: var(--mono, ui-monospace, monospace); font-size: 13.5px; line-height: 1.5; resize: vertical; margin: 4px 0 8px; }
+#review .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+#review .notes { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--soft); border-radius: 0 8px 8px 0; font-size: 13.5px; }
+#review .notes ul { margin: 4px 0 0; padding-left: 18px; }
+#n-form input { flex: 1 1 220px; }
 .fact-group h4 { margin: 12px 0 4px; font-size: 14px; }
 .fact-group ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 @media (max-width: 620px) { .tiles:has(> .tile-stat:nth-child(3):last-child) { grid-template-columns: 1fr; } .bars:has(.bar-btn) .bar-row { grid-template-columns: minmax(0, 1fr); } }

@@ -4,16 +4,26 @@
  * The hack tracker is DefiLlama's record of exploits, newest first, with
  * totals and the techniques that keep recurring.
  *
- * The weekly digest is written in two steps, so the AI can't add anything:
- *   1. Facts: gathered from RektBull's own data (hacks that week, stablecoins
- *      off their peg or losing supply, DeFi's money and fees, the biggest
- *      movers among large dapps, live reward campaigns), each with its source.
- *      Stored as they were.
- *   2. Text: Claude writes those facts up, told to use only them, cite each
- *      fact's source, and never predict or recommend. With no AI available the
- *      digest is the facts alone; the page shows them either way.
- * One digest a week, for the Monday-to-Monday week (UTC) just ended; the
- * worker makes it on Monday from 06:00 UTC.
+ * The weekly digest is made the way Soyjak's content agents work (draft, a
+ * separate check, then a person approves before anything is published), so
+ * nothing in it rests on the AI's word:
+ *   1. Facts: gathered from RektBull's own data, each with its source (the
+ *      week's hacks; stablecoins off their peg or losing supply; DeFi's money
+ *      and fees and the biggest movers; opportunities: new and large reward
+ *      campaigns with their protocol's record, the best stablecoin rates on
+ *      the venues RektBull reads, open votes in the DAOs it tracks). Stored
+ *      as they were.
+ *   2. Draft: the writer turns only those facts into the digest, citing each
+ *      fact's source, never predicting or recommending.
+ *   3. Fact-check: a separate pass removes every sentence the facts don't
+ *      support, and any prediction or recommendation; what it removed is kept
+ *      for the reviewer.
+ *   4. Review: the owner is alerted, reads it on /research, may edit it, and
+ *      publishes it or skips the week. Only then is it shown (as "Written by
+ *      RektBull Research") and emailed to newsletter subscribers.
+ * With no AI available, the facts alone can be published. One digest a week,
+ * for the Monday-to-Monday week (UTC) just ended; the worker drafts it on
+ * Monday from 06:00 UTC.
  */
 const db = require('../config/db');
 const env = require('../config/env');
@@ -25,6 +35,7 @@ class ResearchRefused extends Error {
 }
 
 const DAY = 86400000;
+const BYLINE = 'Written by RektBull Research';
 const usd = v => {
   if (v === null || v === undefined) return 'an amount not recorded';
   const a = Math.abs(v);
@@ -72,7 +83,7 @@ async function hacks({ days = 90, technique = null } = {}, now = Date.now()) {
   };
 }
 
-/* ── the weekly digest: facts first ── */
+/* ── 1. the facts ── */
 
 async function gatherFacts(start, end) {
   const facts = { week_start: iso(start), week_end: iso(end), items: [], not_checked: [] };
@@ -107,19 +118,44 @@ async function gatherFacts(start, end) {
     for (const x of moved.slice(0, 3)) if (x.change_7d_pct < -5) add('Where the money is', `${x.name} (${x.category}): TVL ${usd(x.tvl_usd)}, down ${Math.abs(x.change_7d_pct)}% on the week`, 'DefiLlama protocols');
     for (const x of moved.slice(-3).reverse()) if (x.change_7d_pct > 5) add('Where the money is', `${x.name} (${x.category}): TVL ${usd(x.tvl_usd)}, up ${x.change_7d_pct}% on the week`, 'DefiLlama protocols');
   });
+  // Opportunities: the same three kinds as the Opportunities page (earn, rates, vote); claims are per wallet, so they're a link.
   await part('reward campaigns', async () => {
-    const c = await require('./opportunities').campaigns({ limit: 3 });
-    add('Reward campaigns', `${c.total} live reward campaigns with $50K or more in them on RektBull's six chains`, 'Merkl', { count: c.total });
-    for (const x of c.campaigns) add('Reward campaigns', `${x.name} (${x.chain_name}): ${x.apr_pct}% extra rewards a year, ${usd(x.tvl_usd)} in it`, 'Merkl');
+    const c = await require('./opportunities').campaigns({ limit: 100 });
+    const caveat = x => { const bad = x.signals.filter(s => s.level === 'bad').map(s => s.text); return bad.length ? ` Note: ${bad.join('; ')}.` : ''; };
+    const fresh = c.campaigns.filter(x => x.started_at && x.started_at >= iso(start) && x.started_at < iso(end));
+    add('Opportunities', `${c.total} live reward campaigns with $50K or more in them on RektBull's six chains${fresh.length ? `, ${fresh.length} of them started this week` : ''}`, 'Merkl', { count: c.total });
+    for (const x of fresh.slice(0, 3)) add('Opportunities', `New: ${x.name} (${x.chain_name}, ${x.action_label.toLowerCase()}): ${x.apr_pct}% extra rewards a year, ${usd(x.tvl_usd)} in it.${caveat(x)}`, 'Merkl; DefiLlama for the protocol\'s record');
+    for (const x of c.campaigns.filter(y => !fresh.includes(y)).slice(0, 3)) add('Opportunities', `${x.name} (${x.chain_name}, ${x.action_label.toLowerCase()}): ${x.apr_pct}% extra rewards a year, ${usd(x.tvl_usd)} in it.${caveat(x)}`, 'Merkl; DefiLlama for the protocol\'s record');
+  });
+  await part('stablecoin rates', async () => {
+    const rates = (await require('../yield/rates').listRates()).filter(r => r.apy_pct !== null && r.supply_open);
+    for (const asset of ['USDC', 'USDT']) {
+      const best = rates.filter(r => r.asset === asset).sort((a, b) => b.apy_pct - a.apy_pct)[0];
+      if (best) add('Opportunities', `Highest ${asset} supply rate among the venues RektBull reads: ${best.name} on ${best.chain_label}, ${best.apy_pct}% a year (it changes with demand)`, best.source || `${best.name}'s contracts onchain`);
+    }
+  });
+  await part('DAO votes', async () => {
+    const governors = require('./governors');
+    const open = [];
+    for (const reg of governors.REGISTRY) {
+      const g = await governors.readGovernor(reg.chain, reg.address).catch(() => null);
+      if (!g) continue;
+      for (const p of await governors.openProposals(g).catch(() => [])) if (p.state === 'Active') open.push({ gov: { ...g, name: reg.name }, p });
+    }
+    open.sort((a, b) => (a.p.hours_left ?? 1e9) - (b.p.hours_left ?? 1e9));
+    if (!open.length) add('Opportunities', 'No onchain vote open in the DAOs RektBull tracks (Uniswap, Compound, ENS, Gitcoin, Hop, Arbitrum)', 'Each governor onchain');
+    for (const { gov, p } of open.slice(0, 4)) add('Opportunities', `${gov.name} vote open: "${p.title}"${p.deadline?.at ? `, closing ${p.deadline.at.slice(0, 10)}${p.deadline.estimated ? ' (estimated)' : ''}` : ''}`, 'Each governor onchain');
   });
   return facts;
 }
 
-const SYSTEM = `You write RektBull's weekly digest for crypto users, from a list of facts you are given.
+/* ── 2 and 3. the draft and the fact-check ── */
+
+const SYSTEM = `You write RektBull Research's weekly digest for crypto users, from a list of facts you are given.
 Rules:
 - Use only the facts given. Never add a fact, number, name, cause or context that isn't in them, and never guess.
 - After each sentence that states a fact, put its source in brackets, exactly as given, e.g. "[DefiLlama hacks]".
-- Never predict prices or outcomes, never recommend buying, selling, moving funds or voting, and never call anything safe.
+- Never predict prices or outcomes, never recommend buying, selling, moving funds, joining a campaign or voting, and never call anything safe. Opportunities are listed as facts, with any risk the facts mention.
 - Plain English, short sentences, no hype. Numbers as given.
 Write Markdown with these sections, in this order, leaving out any with no facts:
 ## The week in brief
@@ -127,60 +163,137 @@ Write Markdown with these sections, in this order, leaving out any with no facts
 ## Hacks
 ## Stablecoins
 ## Where the money is
-## Reward campaigns
-About 350 words in all.`;
+## Opportunities
+About 400 words in all.`;
 
-async function writeUp(facts) {
+const CHECK_SYSTEM = `You are RektBull Research's fact-checker. You get a draft digest and the facts it may use.
+Return the draft exactly as written, except remove:
+- any sentence that states something the facts don't support (a number, name, date, cause, comparison or claim not in them);
+- any sentence that predicts, recommends an action, or calls something safe.
+Don't add, reword or reorder anything else; keep headings and source brackets.
+Reply with the checked draft, then a line containing only === REMOVED ===, then each removed sentence on its own line starting with "- ", or "- none".`;
+
+const factLines = facts => facts.items.map(i => `- ${i.section} | ${i.text} | ${i.source}`).join('\n');
+
+async function draftAndCheck(facts) {
   const claude = require('../ai/claude');
-  if (!claude.available()) return { text: null, model: null };
-  const prompt = `Week: ${facts.week_start} to ${facts.week_end} (UTC).\nFacts (section | fact | source):\n${facts.items.map(i => `- ${i.section} | ${i.text} | ${i.source}`).join('\n')}${facts.not_checked.length ? `\nNot checked this week (say so where it matters): ${facts.not_checked.map(n => `${n.check} (${n.reason})`).join('; ')}` : ''}`;
-  const out = await claude.write({ system: SYSTEM, prompt, maxTokens: 1500 });
-  return { text: out.text, model: out.model };
+  const notes = [];
+  if (!claude.available()) return { draft: null, checked: null, notes: [{ step: 'writing', reason: 'No AI is set up (ANTHROPIC_API_KEY): the facts can be published alone.' }] };
+  let draft = null;
+  try {
+    const prompt = `Week: ${facts.week_start} to ${facts.week_end} (UTC).\nFacts (section | fact | source):\n${factLines(facts)}${facts.not_checked.length ? `\nNot checked this week (say so where it matters): ${facts.not_checked.map(n => `${n.check} (${n.reason})`).join('; ')}` : ''}`;
+    draft = (await claude.write({ system: SYSTEM, prompt, maxTokens: 1600 })).text;
+  } catch (err) { return { draft: null, checked: null, notes: [{ step: 'writing', reason: `The writer couldn't run (${err.message}): the facts can be published alone.` }] }; }
+  let checked = null;
+  try {
+    const out = (await claude.write({ system: CHECK_SYSTEM, prompt: `Facts (section | fact | source):\n${factLines(facts)}\n\nDraft:\n${draft}`, maxTokens: 2000 })).text;
+    const at = out.indexOf('=== REMOVED ===');
+    if (at === -1) throw new Error('its answer wasn\'t in the expected form');
+    checked = out.slice(0, at).trim();
+    for (const line of out.slice(at + 15).split('\n').map(l => l.trim()).filter(l => l.startsWith('- ') && l !== '- none')) notes.push({ step: 'fact-check', removed: line.slice(2) });
+    if (!checked) throw new Error('it returned nothing');
+  } catch (err) { checked = null; notes.push({ step: 'fact-check', reason: `The fact-check couldn't run (${err.message}): review the draft closely.` }); }
+  return { draft, checked, notes };
 }
 
-/** Makes (or remakes) the digest for the week starting `start`. */
+/* ── 4. review ── */
+
+async function notifyOwners(week) {
+  const { rows } = await db.query('SELECT id, wallet FROM accounts WHERE wallet = ANY($1::text[])', [env.adminWallets]);
+  const raised = [];
+  for (const a of rows) {
+    const { rows: ins } = await db.query(
+      `INSERT INTO monitor_alerts (account_id, wallet, kind, severity, title, detail, dedupe_key)
+       VALUES ($1, $2, 'digest_draft', 'medium', $3, $4, $5) ON CONFLICT (account_id, dedupe_key) DO NOTHING RETURNING id`,
+      [a.id, a.wallet, `Weekly digest ready for review: week of ${week}`, JSON.stringify({ reasons: [{ text: 'Read it, edit it if you like, then publish it or skip the week. Nothing goes out until you do.', source: 'RektBull Research' }], week }), `digest:${week}`],
+    );
+    if (ins.length) raised.push(ins[0].id);
+  }
+  if (raised.length) await require('../alerts/dispatch').enqueue(raised);
+  return raised.length;
+}
+
+/** Drafts (or redrafts) the digest for the week starting `start`. A published week isn't redrafted. */
 async function makeDigest({ start, end } = lastWeek()) {
+  const { rows: had } = await db.query('SELECT status FROM research_digests WHERE week_start = $1', [iso(start)]);
+  if (had[0]?.status === 'published') throw new ResearchRefused('That week\'s digest is already published.', 409);
   const facts = await module.exports.gatherFacts(start, end);
   if (!facts.items.length) throw new ResearchRefused(`No facts could be gathered (${facts.not_checked.map(n => n.reason).join('; ')})`, 503);
-  let written = { text: null, model: null };
-  try { written = await writeUp(facts); } catch (err) { facts.not_checked.push({ check: 'the written summary', reason: err.message }); }
+  const { draft, checked, notes } = await draftAndCheck(facts);
   await db.query(
-    `INSERT INTO research_digests (week_start, week_end, facts, text, model) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (week_start) DO UPDATE SET facts = EXCLUDED.facts, text = EXCLUDED.text, model = EXCLUDED.model, created_at = now()`,
-    [iso(start), iso(end), JSON.stringify(facts), written.text, written.model],
+    `INSERT INTO research_digests (week_start, week_end, facts, draft, checked, check_notes, status) VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+     ON CONFLICT (week_start) DO UPDATE SET facts = EXCLUDED.facts, draft = EXCLUDED.draft, checked = EXCLUDED.checked, check_notes = EXCLUDED.check_notes,
+       status = 'draft', created_at = now(), reviewed_at = NULL, reviewed_by = NULL`,
+    [iso(start), iso(end), JSON.stringify(facts), draft, checked, JSON.stringify(notes)],
   );
-  return digest(iso(start));
+  await notifyOwners(iso(start)).catch(err => logger.warn('research: couldn\'t alert the owner', { error: err.message }));
+  return draftView(iso(start));
 }
 
-/** The worker's hourly tick: makes last week's digest once, from Monday 06:00 UTC. */
+/** The worker's hourly tick: drafts last week's digest once, from Monday 06:00 UTC. */
 async function tick(now = new Date()) {
   if (!env.databaseUrl) return null;
   const week = lastWeek(now);
   if (now - week.end < 6 * 3600000) return null;
   const { rows } = await db.query('SELECT 1 FROM research_digests WHERE week_start = $1', [iso(week.start)]);
   if (rows.length) return null;
-  logger.info('research: making the weekly digest', { week: iso(week.start) });
+  logger.info('research: drafting the weekly digest', { week: iso(week.start) });
   return makeDigest(week);
 }
 
+const MAX_TEXT = 20000;
+
+async function publish(week, { text, accountId }) {
+  const { rows: [d] } = await db.query('SELECT * FROM research_digests WHERE week_start = $1', [week]);
+  if (!d) throw new ResearchRefused('No digest for that week.', 404);
+  if (d.status === 'published') throw new ResearchRefused('That week\'s digest is already published.', 409);
+  let final = text === undefined ? (d.checked ?? d.draft) : text;
+  if (final !== null && typeof final !== 'string') throw new ResearchRefused('text must be the digest\'s Markdown, or null for the facts alone');
+  if (typeof final === 'string') { final = final.trim() || null; if (final && final.length > MAX_TEXT) throw new ResearchRefused(`The digest is over ${MAX_TEXT} characters.`); }
+  await db.query(`UPDATE research_digests SET text = $2, status = 'published', reviewed_at = now(), reviewed_by = $3 WHERE week_start = $1`, [week, final, accountId]);
+  logger.info('research: digest published', { week, edited: text !== undefined && text !== (d.checked ?? d.draft) });
+  return digest(week);
+}
+
+async function skip(week, { accountId }) {
+  const { rowCount } = await db.query(`UPDATE research_digests SET status = 'skipped', reviewed_at = now(), reviewed_by = $2 WHERE week_start = $1 AND status = 'draft'`, [week, accountId]);
+  if (!rowCount) throw new ResearchRefused('No draft for that week.', 404);
+  return { week_start: week, status: 'skipped' };
+}
+
+/* ── reading ── */
+
 const shape = r => (r ? {
   week_start: iso(new Date(r.week_start)), week_end: iso(new Date(r.week_end)),
-  text: r.text, model: r.model, facts: r.facts.items, not_checked: r.facts.not_checked, made_at: r.created_at,
-  note: r.text ? 'Written by AI from the facts below only; each fact names its source. Not advice.' : 'The facts for the week, each with its source. Not advice.',
+  byline: BYLINE, text: r.text, facts: r.facts.items, not_checked: r.facts.not_checked,
+  published_at: r.reviewed_at,
+  note: r.text ? 'From the facts below, each with its source. Not advice.' : 'The facts for the week, each with its source. Not advice.',
 } : null);
 
 async function digest(week) {
   if (week && !/^\d{4}-\d{2}-\d{2}$/.test(week)) throw new ResearchRefused('week must be a date (YYYY-MM-DD)');
   const { rows } = week
-    ? await db.query('SELECT * FROM research_digests WHERE week_start = $1', [week])
-    : await db.query('SELECT * FROM research_digests ORDER BY week_start DESC LIMIT 1');
-  if (!rows.length) throw new ResearchRefused(week ? 'No digest for that week.' : 'No digest yet: the first is made on the Monday after launch.', 404);
+    ? await db.query(`SELECT * FROM research_digests WHERE week_start = $1 AND status = 'published'`, [week])
+    : await db.query(`SELECT * FROM research_digests WHERE status = 'published' ORDER BY week_start DESC LIMIT 1`);
+  if (!rows.length) throw new ResearchRefused(week ? 'No digest for that week.' : 'No digest yet: the first is published the Monday after launch.', 404);
   return shape(rows[0]);
 }
 
 async function digests() {
-  const { rows } = await db.query('SELECT week_start, week_end, text IS NOT NULL AS written FROM research_digests ORDER BY week_start DESC LIMIT 52');
+  const { rows } = await db.query(`SELECT week_start, week_end, text IS NOT NULL AS written FROM research_digests WHERE status = 'published' ORDER BY week_start DESC LIMIT 52`);
   return rows.map(r => ({ week_start: iso(new Date(r.week_start)), week_end: iso(new Date(r.week_end)), written: r.written }));
 }
 
-module.exports = { hacks, parseHacks, gatherFacts, makeDigest, tick, digest, digests, lastWeek, SYSTEM, ResearchRefused };
+/** For the owner: a draft with everything needed to review it. */
+async function draftView(week) {
+  const { rows: [r] } = await db.query('SELECT * FROM research_digests WHERE week_start = $1', [week]);
+  if (!r) throw new ResearchRefused('No digest for that week.', 404);
+  return { ...shape(r), status: r.status, draft: r.draft, checked: r.checked, check_notes: r.check_notes, made_at: r.created_at };
+}
+
+async function drafts() {
+  const { rows } = await db.query(`SELECT week_start FROM research_digests WHERE status = 'draft' ORDER BY week_start DESC LIMIT 4`);
+  return Promise.all(rows.map(r => draftView(iso(new Date(r.week_start)))));
+}
+
+module.exports = { hacks, parseHacks, gatherFacts, draftAndCheck, makeDigest, tick, publish, skip, digest, digests, drafts, draftView, lastWeek, SYSTEM, CHECK_SYSTEM, BYLINE, ResearchRefused };

@@ -88,13 +88,31 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      deploy beyond the Etherscan key already listed.
    - ✅ **Research** (`/research`): the hack tracker (DefiLlama's record:
      totals per period, techniques by amount, newest first, unrecorded
-     amounts said so) and the weekly digest. The digest's facts are gathered
-     from RektBull's own data with their sources and stored; Claude only
-     writes them up, told to use nothing else and never predict or
-     recommend; with no AI the facts are the digest. The worker makes it
-     every Monday from 06:00 UTC. At deploy: after the first deploy, make
-     the first digest by hand (`POST /v1/admin/research/digest`) so the page
-     isn't empty; migration 014 runs by itself.
+     amounts said so) and the weekly digest, which includes opportunities
+     (new and largest reward campaigns with any bad signal, the best USDC
+     and USDT supply rates, open DAO votes). The digest's facts are gathered
+     from RektBull's own data with their sources and stored. Every Monday
+     from 06:00 UTC the worker drafts it: a writer (Claude, told to use
+     only the facts, cite each, never predict or recommend), then a
+     fact-check (Claude again) that removes any sentence the facts don't
+     support, and alerts the owner. **The owner reviews it** on
+     `/research#review` (signed in with an `ADMIN_WALLETS` wallet), may
+     edit it, and publishes it or skips the week; nothing is shown or
+     emailed before that. Published, it carries the byline "Written by
+     RektBull Research". With no AI the facts alone can be published.
+   - ✅ **Weekly newsletter**: the published digest by email (Resend),
+     double opt-in, one-click unsubscribe that deletes the address,
+     unconfirmed sign-ups deleted after 7 days, 5 sign-ups a day per IP
+     address. Sent by the worker in batches (`NEWSLETTER_PER_TICK`, 50
+     every 5 minutes), resumable. **At deploy:** set
+     `OPERATOR_POSTAL_ADDRESS` (US law, CAN-SPAM, asks every commercial
+     email to carry a postal address; a PO box or registered-agent address
+     is fine, and nothing is sent without one). Resend's free plan allows
+     100 emails a day and 3,000 a month: move to its paid plan before the
+     list nears 100 confirmed subscribers. After the first deploy, draft
+     the first digest by hand (the button on the review card, or
+     `POST /v1/admin/research/digest`) and publish it so the page isn't
+     empty. Migration 014 runs by itself.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
@@ -188,6 +206,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `PUBLIC_URL`, `SIWE_URI` | ✔ | ✔ | `https://rektbull.com` |
 | `SIWE_DOMAIN` | ✔ | | `rektbull.com` |
 | `OPERATOR_NAME`, `PRIVACY_CONTACT` | ✔ | | The person or company responsible; an address someone reads |
+| `OPERATOR_POSTAL_ADDRESS` | ✔ | ✔ | A postal address for the newsletter's footer (a PO box is fine); without it no newsletter is sent |
 | `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` | ✔ | ✔ | Section 4; `ethereum,bsc,base` |
 | `X402_PAY_TO` | ✔ | | Section 4 |
 | `CLAIM_FEE_WALLET_EVM`, `YIELD_FEE_WALLET_EVM` | ✔ | | Section 4 |
@@ -276,6 +295,9 @@ Automated (Claude, against `https://rektbull.com`):
 
 - [ ] `/`, `/safety`, `/extension`, `/privacy` load, with the stylesheet;
       `/privacy` shows the real `OPERATOR_NAME` and `PRIVACY_CONTACT`.
+- [ ] `/research`: subscribe a test address, confirm it from the email,
+      then publish the first digest and check it arrives with the postal
+      address and an unsubscribe link that works.
 - [ ] `/trade` says "Trading is switched off on this server for now." until
       `TRADING_ENABLED` is set, and automatic trading says it opens when the
       router is deployed.

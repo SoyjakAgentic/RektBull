@@ -15,15 +15,36 @@
       <span class="eyebrow">Research</span>
       <h1>What happened, <em>and what it cost</em></h1>
       <p>A weekly digest written only from facts RektBull gathered, each with its source, and a tracker of every recorded hack: what was lost, how, and what came back. Free to read; never advice.</p>
-      <nav class="jump" aria-label="On this page"><a href="#digest-card">Weekly digest</a><a href="#hacks-card">Hack tracker</a><a href="#reports-card">Reports</a></nav>
+      <nav class="jump" aria-label="On this page"><a href="#digest-card">Weekly digest</a><a href="#hacks-card">Hack tracker</a><a href="#newsletter">Newsletter</a><a href="#reports-card">Reports</a></nav>
     </div>
   </section>
 
   <main class="tool wide">
+    <section class="card" id="review" hidden>
+      <h2>Review this week's digest <span class="muted small">(only you see this)</span></h2>
+      <p class="muted small">The writer drafted it from the facts below and the fact-check removed what they don't support. Read it, edit it if you like, then publish it or skip the week. Nothing goes on the site or out by email until you do.</p>
+      <p id="r-msg" class="msg"></p>
+      <div id="r-body" hidden>
+        <label class="inline">Week <select id="r-pick"></select></label>
+        <div id="r-notes"></div>
+        <label for="r-text" class="small">The digest (Markdown: ## headings, - lists, **bold**; sources in [brackets]). Empty publishes the facts alone.</label>
+        <textarea id="r-text" rows="16" spellcheck="true"></textarea>
+        <details><summary class="small">Preview</summary><div id="r-preview" class="report"></div></details>
+        <details><summary class="small">The facts it was drafted from</summary><div id="r-facts"></div></details>
+        <div class="actions">
+          <button type="button" id="r-publish" class="primary">Publish and email it</button>
+          <button type="button" id="r-skip">Skip this week</button>
+          <button type="button" id="r-remake">Draft it again</button>
+        </div>
+        <p id="r-mail" class="source"></p>
+      </div>
+    </section>
+
     <section class="card" id="digest-card">
       <div class="chart-head"><h2>Weekly digest <span class="muted small" id="d-week"></span></h2>
         <label class="inline">Week <select id="d-pick"></select></label></div>
       <p id="d-msg" class="msg"></p>
+      <p id="d-byline" class="muted small" hidden></p>
       <div id="d-text" class="report" hidden></div>
       <details id="d-facts-box" hidden><summary class="small">The facts it was written from, with their sources</summary><div id="d-facts"></div></details>
       <p id="d-note" class="source"></p>
@@ -40,6 +61,17 @@
       <p id="h-src" class="source"></p>
     </section>
 
+    <section class="card" id="newsletter">
+      <h2>The digest by email, every week</h2>
+      <p class="muted small">Free. You get one email to confirm, then the digest each week it's published. Every email has a one-click unsubscribe that deletes your address.</p>
+      <form id="n-form" class="row">
+        <label for="n-email" class="sr-only">Email address</label>
+        <input id="n-email" type="email" autocomplete="email" placeholder="you@example.com" required maxlength="254">
+        <button type="submit" class="primary">Subscribe</button>
+      </form>
+      <p id="n-msg" class="msg"></p>
+    </section>
+
     <section class="card" id="reports-card">
       <h2>Reports on demand</h2>
       <div class="cards three">
@@ -51,7 +83,7 @@
 
     <section class="card">
       <h2>For bots and AI agents</h2>
-      <p class="muted small">Free: <code>GET /v1/research/hacks?days=30|90|365|3650&amp;technique=</code>, <code>/v1/research/digests</code> (the archive), <code>/v1/research/digests/latest</code> and <code>/v1/research/digests/:week_start</code>, each digest with its facts and their sources.</p>
+      <p class="muted small">Free: <code>GET /v1/research/hacks?days=30|90|365|3650&amp;technique=</code>, <code>/v1/research/digests</code> (the archive), <code>/v1/research/digests/latest</code> and <code>/v1/research/digests/:week_start</code>, each published digest with its facts and their sources.</p>
     </section>
   </main>
 
