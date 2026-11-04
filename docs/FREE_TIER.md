@@ -30,6 +30,7 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | DexScreener | Liquidity, volume, price, token age | No | — |
 | DefiLlama (api.llama.fi) | Discover: protocols and TVL, fees in the last 24 hours, recorded hacks, chain TVL. Cached 30 minutes (hacks 6 hours), so a few calls an hour whatever the traffic | No | "DefiLlama didn't answer"; a missing part (fees, hacks) is listed as not checked |
 | DefiLlama stablecoins (stablecoins.llama.fi) and DEX volumes | Markets: each stablecoin's supply, peg mechanism and price; DEX volume and total TVL history. Cached 30 minutes (TVL history 1 hour) | No | The page names the part that didn't answer |
+| Merkl (live campaigns) | Opportunities: the top 100 live incentive campaigns per chain by money in them. Cached 15 minutes (about 600 calls a day for six chains, whatever the traffic) | No | A chain that didn't answer is named |
 | CoinGecko (keyless public API) | Markets: the 100 largest tokens by market cap. Free plan allows a few calls a minute and asks for attribution ("Data from CoinGecko", linked on the page); cached 10 minutes (about 150 calls a day), one retry after a 429 | No (a free demo key raises the limit) | The page says it didn't answer |
 | GeckoTerminal | Discover: trending and newest pools per chain. Free plan about 30 calls a minute; each list cached 5 minutes, one retry after a 429 | No | The page says it didn't answer |
 | Anthropic | Report writing | Paid per use | Covered by the report price |

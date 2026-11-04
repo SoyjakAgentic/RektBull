@@ -72,6 +72,14 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      prediction markets with Discover's safety facts; the largest tokens
      ("Data from CoinGecko", linked, as its free plan asks). Nothing to set at
      deploy; check CoinGecko's terms for commercial use, or get its free demo key.
+   - ✅ **Opportunities** (`/opportunities`), the menu item for Find money and
+     Governance too: a wallet's own opportunities (unclaimed rewards, better
+     yield, DAO votes, with a warning first when apps can still take from
+     it); live reward campaigns from Merkl with the protocol's DefiLlama
+     record, the action's risk (borrowing, providing liquidity), unverified
+     reward tokens and early ends; links to claim, earn and vote. Points
+     programs are left out: no reliable free source, and guessing would
+     break "every check names its source". Nothing to set at deploy.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
