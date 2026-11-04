@@ -59,6 +59,13 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      sends it to the desk that checks it; a wallet gets the free checkup from
      every desk at once (approvals, unclaimed rewards, yield, DAO votes), each
      part with its source. Nothing to set at deploy.
+   - ✅ **Discover** (`/discover`): dapps ranked by TVL, fees or weekly
+     change, each with the hacks, audits, listing age and doubted TVL
+     DefiLlama records; categories and chains; trending and new tokens
+     (GeckoTerminal) with the warning signs their own trading shows, GoPlus's
+     flags on request and the quick check a click away. Free data, cached.
+     Nothing to set at deploy; check DefiLlama's and GeckoTerminal's terms
+     for commercial use (section 3).
 5. Anything that needs paid data (tax report, business services) waits until
    after launch, when there's revenue to pay for it.
 

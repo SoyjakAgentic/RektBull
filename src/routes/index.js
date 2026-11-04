@@ -281,6 +281,34 @@ router.get('/v1/governance/spaces', requireAuth, govCall(async req => ({ spaces:
 router.post('/v1/governance/spaces', requireAuth, govCall(req => governance.addSpace(req.account.id, req.body?.space), 201));
 router.delete('/v1/governance/spaces/:space', requireAuth, govCall(req => governance.removeSpace(req.account.id, req.params.space)));
 
+// ── Discover: rankings, categories, chains, trending and new tokens (free, cached), each with its safety facts ──
+const discover = require('../services/discover');
+const discoverCall = (parse, fn) => async (req, res) => {
+  const input = parse ? parse(req.query) : {};
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  try {
+    res.set('cache-control', 'public, max-age=60');
+    res.json(await fn(input, req));
+  } catch (err) {
+    if (err instanceof discover.DiscoverRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+const FLAGS_PER_DAY = { account: 100, anonymous: 20 };
+router.get('/v1/discover/dapps', discoverCall(discover.parseDapps, input => discover.dapps(input)));
+router.get('/v1/discover/categories', discoverCall(q => (q.chain && !discover.CHAIN_NAMES[q.chain] ? { error: 'unknown chain' } : { chain: q.chain || null }), input => discover.categories(input)));
+router.get('/v1/discover/chains', discoverCall(null, () => discover.chainList()));
+router.get('/v1/discover/tokens', discoverCall(discover.parseTokens, input => discover.tokens(input)));
+router.get('/v1/discover/flags', async (req, res, next) => {
+  const input = discover.parseFlags(req.query);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  const [subject, limit] = req.account ? [`account:${req.account.id}`, FLAGS_PER_DAY.account] : [require('../privacy/ipKey').ipSubject(req.ip), FLAGS_PER_DAY.anonymous];
+  if (env.databaseUrl && !(await takeAllowance(subject, 'discover_flags', limit))) {
+    return res.status(429).json({ error: 'daily_limit', message: `Free flags are limited to ${limit} a day${req.account ? '' : ' without signing in (sign in for more)'}. The quick check is always available.` });
+  }
+  res.json(await discover.flags(input));
+});
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };

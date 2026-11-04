@@ -225,7 +225,7 @@ a.tile:hover { transform: translateY(-3px); border-color: var(--accent); }
 .rail { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: -12px 0 28px; }
 .rail span { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 10px; color: var(--muted); }
 .rail span:last-child { background: var(--text); color: var(--bg); border-color: var(--text); }
-.num { font-family: var(--display); font-size: 46px; font-weight: 800; color: var(--accent); line-height: 1; letter-spacing: -.04em; }
+.step-num { font-family: var(--display); font-size: 46px; font-weight: 800; color: var(--accent); line-height: 1; letter-spacing: -.04em; }
 .tile .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
 .found { display: flex; gap: 8px 22px; flex-wrap: wrap; align-items: baseline; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; margin-bottom: 16px; }
 .lookup-summary { margin: 0; font-family: var(--display); font-size: 19px; }
@@ -333,3 +333,37 @@ footer.site { border-top: 1px solid var(--line); overflow: hidden; }
   button.primary:hover:not(:disabled), .btn.primary:hover, a.tile:hover { transform: none; }
 }
 ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+
+/* discover */
+.pagehead .wrap.wide, main.tool.wide { max-width: 1160px; }
+.mini-ask { display: flex; gap: 6px; width: min(560px, 100%); margin-top: 4px; }
+.mini-ask input { flex: 1; font-family: var(--mono); font-size: 14px; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin: 6px 0 14px; }
+.filters label { min-width: 170px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--alt); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; font-size: 13.5px; }
+.seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(13, 20, 36, .12); }
+.tablewrap { overflow-x: auto; margin: 0 -4px; }
+table.rank { min-width: 760px; }
+table.rank td { vertical-align: top; padding: 10px 6px; }
+table.rank .num, table.rank th.num { text-align: right; white-space: nowrap; font-family: var(--mono); }
+table.rank th.num { font-family: var(--body); }
+table.rank td.n { color: var(--muted); font-family: var(--mono); width: 2.5em; }
+table.rank .name { font-weight: 600; color: var(--text); text-decoration: none; }
+table.rank a.name:hover { color: var(--accent); }
+.sub { color: var(--muted); font-size: 12.5px; }
+.up { color: var(--ok); } .down { color: var(--bad); }
+.sigs { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.sig { font-size: 12px; line-height: 1.35; border-radius: 8px; padding: 2px 8px; border: 1px solid var(--line); background: var(--alt); color: var(--muted); }
+.sig.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.sig.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.sig.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); background: color-mix(in srgb, var(--ok) 7%, transparent); }
+a.act { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.tokens { display: grid; gap: 10px; }
+.tok { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+.tok-head { display: flex; justify-content: space-between; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.tok-acts { display: flex; gap: 6px; }
+.small-btn { padding: 5px 12px; font-size: 13px; }
+.tok-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.tok-facts b { color: var(--text); font: 500 13.5px var(--mono); }
+.flagbox { background: var(--alt); border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
