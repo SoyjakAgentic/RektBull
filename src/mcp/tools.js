@@ -122,6 +122,20 @@ const TOOLS = {
     parse: args => svc.opportunities().parseCampaigns(args),
     run: input => svc.opportunities().campaigns(input),
   },
+  x402_services: {
+    title: 'x402 services',
+    description: 'Paid APIs an agent can call per request with x402, from Coinbase\'s Bazaar, ranked by how many different payers used them in 30 days, with signals: usage that looks generated, few users, no recent calls, plain http, a payment address GoPlus flags. RektBull hasn\'t tested them; check before paying.',
+    inputSchema: { type: 'object', properties: { network: str('Only services paid on this network, e.g. base or solana'), q: str('Search names, descriptions and tags'), limit: { type: 'integer', minimum: 1, maximum: 100, description: 'How many (40)' } }, additionalProperties: false },
+    parse: args => require('../services/agents').parseX402(args),
+    run: input => require('../services/agents').x402Services(input),
+  },
+  agent_protocols: {
+    title: 'AI agent protocols',
+    description: 'Onchain AI-agent protocols as DefiLlama lists them (category "AI Agents"): money locked, weekly change, fees, and each one\'s hack and audit record.',
+    inputSchema: { type: 'object', properties: { sort: str('Order', { enum: ['tvl', 'fees', 'change_7d'] }) }, additionalProperties: false },
+    parse: args => require('../services/agents').parseProtocols(args),
+    run: input => require('../services/agents').protocols(input),
+  },
   hack_tracker: {
     title: 'Hack tracker',
     description: 'Recorded crypto hacks (DefiLlama\'s record): totals for 30 days, 90 days and a year, techniques by amount lost, and the hacks newest first.',

@@ -443,6 +443,9 @@ label.inline { display: inline-flex; flex-direction: row; align-items: center; g
 #review .sp-forms textarea { font-family: inherit; font-size: 15px; margin: 0; }
 .sp-forms label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 .sp-forms label.check input { margin-top: 3px; }
+#x402 .filters { margin: 0; align-items: end; }
+#x-table td.svc { min-width: 300px; max-width: 560px; }
+#x-table td.svc > * + * { margin-top: 4px; }
 .copyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
 .copyrow code { flex: 1 1 260px; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .setup pre.code { font-size: 12px; padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
