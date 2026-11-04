@@ -86,6 +86,15 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      unpriced tokens kept out of the total with a scam-airdrop warning, and
      approvals at risk. Free, 5 a day without signing in. Nothing to set at
      deploy beyond the Etherscan key already listed.
+   - ✅ **Research** (`/research`): the hack tracker (DefiLlama's record:
+     totals per period, techniques by amount, newest first, unrecorded
+     amounts said so) and the weekly digest. The digest's facts are gathered
+     from RektBull's own data with their sources and stored; Claude only
+     writes them up, told to use nothing else and never predict or
+     recommend; with no AI the facts are the digest. The worker makes it
+     every Monday from 06:00 UTC. At deploy: after the first deploy, make
+     the first digest by hand (`POST /v1/admin/research/digest`) so the page
+     isn't empty; migration 014 runs by itself.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until

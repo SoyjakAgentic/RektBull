@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull Research</title>
+  <meta name="description" content="The weekly digest of what happened in crypto safety and money, written only from sourced facts, and a tracker of every recorded hack: what was lost, how, and what came back.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Research</span>
+      <h1>What happened, <em>and what it cost</em></h1>
+      <p>A weekly digest written only from facts RektBull gathered, each with its source, and a tracker of every recorded hack: what was lost, how, and what came back. Free to read; never advice.</p>
+      <nav class="jump" aria-label="On this page"><a href="#digest-card">Weekly digest</a><a href="#hacks-card">Hack tracker</a><a href="#reports-card">Reports</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="digest-card">
+      <div class="chart-head"><h2>Weekly digest <span class="muted small" id="d-week"></span></h2>
+        <label class="inline">Week <select id="d-pick"></select></label></div>
+      <p id="d-msg" class="msg"></p>
+      <div id="d-text" class="report" hidden></div>
+      <details id="d-facts-box" hidden><summary class="small">The facts it was written from, with their sources</summary><div id="d-facts"></div></details>
+      <p id="d-note" class="source"></p>
+    </section>
+
+    <section class="card" id="hacks-card">
+      <div class="chart-head"><h2>Hack tracker</h2>
+        <label class="inline">Period <select id="h-days"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last year</option><option value="3650">All recorded</option></select></label></div>
+      <div class="tiles" id="h-stats"></div>
+      <h3>How they happened <span class="muted small">(by amount lost; select one to filter)</span></h3>
+      <div id="h-techs" class="bars"></div>
+      <p id="h-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="hacks"><thead><tr><th>Date</th><th>Hit</th><th class="num">Lost</th><th class="num">Returned</th><th>How</th><th>Chains</th></tr></thead><tbody></tbody></table></div>
+      <p id="h-src" class="source"></p>
+    </section>
+
+    <section class="card" id="reports-card">
+      <h2>Reports on demand</h2>
+      <div class="cards three">
+        <a class="tile" href="/safety#check-card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M9 13h6M9 17h3M14 3v5h5"/></svg></span><h3>Token due diligence</h3><p>A token's sellability, taxes, owner powers, holders, liquidity and age, explained in plain English, every finding with its source.</p><span class="price">$3; 5 a month with Safety Pro</span></a>
+        <a class="tile" href="/governance"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16M5 10h14M12 3 4 7v3h16V7l-8-4ZM7 10v8M12 10v8M17 10v8"/></svg></span><h3>Proposal summary</h3><p>A DAO proposal in plain English from its own text: what changes, what money and powers it moves. Never a recommendation.</p><span class="price">1 point or $0.10</span></a>
+        <a class="tile" href="/discover"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg></span><h3>Any dapp's record</h3><p>Hacks, audits and age for every dapp DefiLlama tracks, next to how much is in it.</p><span class="price">Free, in Discover</span></a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small">Free: <code>GET /v1/research/hacks?days=30|90|365|3650&amp;technique=</code>, <code>/v1/research/digests</code> (the archive), <code>/v1/research/digests/latest</code> and <code>/v1/research/digests/:week_start</code>, each digest with its facts and their sources.</p>
+    </section>
+  </main>
+
+  <!--#footer:The digest is written only from the facts shown with it; the hack record is DefiLlama's. Not advice.-->
+  <script src="/common.js"></script>
+  <script src="/research.js"></script>
+</body>
+</html>

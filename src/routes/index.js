@@ -349,6 +349,32 @@ router.post('/v1/portfolio', validated(claims.parseWallet), async (req, res) => 
   res.json(await portfolio.portfolio(req.input.wallet));
 });
 
+// ── Research: the hack tracker and the weekly digest (free) ──
+const research = require('../services/research');
+const researchCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof research.ResearchRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/research/hacks', (req, res, next) => {
+  const input = research.parseHacks(req.query);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  res.set('cache-control', 'public, max-age=300');
+  return researchCall(() => research.hacks(input))(req, res, next);
+});
+router.get('/v1/research/digests', researchCall(async () => ({ digests: env.databaseUrl ? await research.digests() : [] })));
+router.get('/v1/research/digests/latest', researchCall(() => research.digest(null)));
+router.get('/v1/research/digests/:week', researchCall(req => research.digest(req.params.week)));
+// The owner can make (or remake) a week's digest by hand, e.g. the first one at launch.
+router.post('/v1/admin/research/digest', requireAuth, requireAdmin, researchCall(req => {
+  const at = req.body?.week_start ? new Date(`${req.body.week_start}T00:00:00Z`) : null;
+  if (at && (Number.isNaN(at.getTime()) || at.getUTCDay() !== 1)) throw new research.ResearchRefused('week_start must be a Monday (YYYY-MM-DD)');
+  return research.makeDigest(at ? { start: at, end: new Date(at.getTime() + 7 * 86400000) } : research.lastWeek());
+}));
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };

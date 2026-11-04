@@ -121,6 +121,19 @@ function hacks() {
   });
 }
 
+/** Every recorded hack, newest first, with the protocol's name: the hack tracker's list. Cached 6 hours. */
+function hackList() {
+  return cached('llama:hacklist:v1', 6 * 3600, async () => (await get('/hacks')).map(h => ({
+    date: h.date ? new Date(h.date * 1000).toISOString().slice(0, 10) : null,
+    name: h.name || '(not named)', amount_usd: typeof h.amount === 'number' ? h.amount : null,
+    returned_usd: typeof h.returnedFunds === 'number' ? h.returnedFunds : null,
+    technique: h.technique || null, classification: h.classification || null,
+    chains: Array.isArray(h.chain) ? h.chain : [], bridge: !!h.bridgeHack, target: h.targetType || null,
+    source: typeof h.source === 'string' && /^https?:\/\//.test(h.source) ? h.source : null,
+    defillama_id: h.defillamaId ? String(h.defillamaId) : null,
+  })).sort((a, b) => String(b.date).localeCompare(String(a.date))));
+}
+
 /** Every chain's TVL. Cached 30 minutes. */
 function chains() {
   return cached('llama:chains:v1', 1800, async () => (await get('/v2/chains')).filter(c => c.tvl > 0).map(c => ({
@@ -128,4 +141,4 @@ function chains() {
   })));
 }
 
-module.exports = { protocols, fees, dexVolume, tvlHistory, stablecoins, hacks, chains, tokenOf, CHAINS };
+module.exports = { protocols, fees, dexVolume, tvlHistory, stablecoins, hacks, hackList, chains, tokenOf, CHAINS };

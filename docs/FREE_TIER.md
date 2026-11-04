@@ -74,6 +74,11 @@ provider all at once.
 Sell these once paid runs justify paid data, and upgrade providers one at a
 time as their limits are reached (`GET /v1/admin/provider-usage` shows which).
 
+## The weekly digest's cost
+
+One Claude call a week (about 1,500 tokens in and 600 out at the default
+model: cents a month), plus the cached data the other desks already read.
+
 ## AI cost
 
 Every AI call's tokens are recorded per model and day, with an estimated
