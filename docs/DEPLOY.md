@@ -65,6 +65,10 @@ Set `PUBLIC_URL=https://rektbull.com` so links in alerts point to the site.
    in spam.
 2. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `RektBull <alerts@rektbull.com>`).
    Every alert email has a one-click unsubscribe link and header.
+3. For the weekly newsletter, also set `OPERATOR_POSTAL_ADDRESS` (it goes in
+   every newsletter's footer; nothing is sent without it). Resend's free
+   plan sends 100 emails a day: move to its paid plan before the list
+   nears that.
 
 **Browser push** (free; Web Push with VAPID):
 1. `npx web-push generate-vapid-keys` once. Keep the private key secret

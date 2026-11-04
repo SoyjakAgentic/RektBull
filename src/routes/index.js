@@ -349,6 +349,80 @@ router.post('/v1/portfolio', validated(claims.parseWallet), async (req, res) => 
   res.json(await portfolio.portfolio(req.input.wallet));
 });
 
+// ── Research: the hack tracker and the weekly digest (free) ──
+const research = require('../services/research');
+const researchCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof research.ResearchRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/research/hacks', (req, res, next) => {
+  const input = research.parseHacks(req.query);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  res.set('cache-control', 'public, max-age=300');
+  return researchCall(() => research.hacks(input))(req, res, next);
+});
+router.get('/v1/research/digests', researchCall(async () => ({ digests: env.databaseUrl ? await research.digests() : [] })));
+router.get('/v1/research/digests/latest', researchCall(() => research.digest(null)));
+router.get('/v1/research/digests/:week', researchCall(req => research.digest(req.params.week)));
+// The owner reviews each week's draft, may edit it, and publishes it or skips the week.
+const mondayOf = s => {
+  const at = /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? new Date(`${s}T00:00:00Z`) : null;
+  if (!at || Number.isNaN(at.getTime()) || at.getUTCDay() !== 1) throw new research.ResearchRefused('week_start must be a Monday (YYYY-MM-DD)');
+  return at;
+};
+router.get('/v1/admin/research/drafts', requireAuth, requireAdmin, researchCall(async () => ({
+  drafts: await research.drafts(), newsletter: await require('../services/newsletter').counts(),
+  newsletter_ready: !!env.resendApiKey && !!env.operatorPostalAddress,
+})));
+// Makes (or remakes) a week's draft by hand, e.g. the first one at launch.
+router.post('/v1/admin/research/digest', requireAuth, requireAdmin, researchCall(req => {
+  const at = req.body?.week_start ? mondayOf(req.body.week_start) : null;
+  return research.makeDigest(at ? { start: at, end: new Date(at.getTime() + 7 * 86400000) } : research.lastWeek());
+}));
+router.post('/v1/admin/research/digests/:week/publish', requireAuth, requireAdmin, researchCall(req => {
+  mondayOf(req.params.week);
+  return research.publish(req.params.week, { text: req.body && 'text' in req.body ? req.body.text : undefined, accountId: req.account.id });
+}));
+router.post('/v1/admin/research/digests/:week/skip', requireAuth, requireAdmin, researchCall(req => {
+  mondayOf(req.params.week);
+  return research.skip(req.params.week, { accountId: req.account.id });
+}));
+
+// ── The weekly newsletter: double opt-in, one-click unsubscribe (deletes the address) ──
+const newsletter = require('../services/newsletter');
+const SIGNUPS_PER_DAY = 5; // per IP address: enough for a person, too few to mail-bomb anyone
+router.post('/v1/newsletter', async (req, res) => {
+  if (!env.databaseUrl) return res.status(503).json({ error: 'unavailable', message: 'The newsletter isn\'t set up on this server yet.' });
+  const input = newsletter.parseEmail(req.body);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  if (!(await takeAllowance(require('../privacy/ipKey').ipSubject(req.ip), 'newsletter_signup', SIGNUPS_PER_DAY))) {
+    return res.status(429).json({ error: 'limit', message: 'Too many sign-ups from here today. Try again tomorrow.' });
+  }
+  try {
+    res.json(await newsletter.subscribe(input.email));
+  } catch (err) {
+    if (err instanceof newsletter.NewsletterRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+});
+router.get('/v1/newsletter/confirm', async (req, res) => {
+  const ok = env.databaseUrl && await newsletter.confirm(req.query.s, req.query.t);
+  res.redirect(303, `/research?newsletter=${ok ? 'confirmed' : 'bad-link'}#newsletter`);
+});
+// GET is the link in the email; POST is the mail app's one-click unsubscribe (RFC 8058).
+router.get('/v1/newsletter/unsubscribe', async (req, res) => {
+  const ok = env.databaseUrl && await newsletter.unsubscribe(req.query.s, req.query.t);
+  res.redirect(303, `/research?newsletter=${ok ? 'unsubscribed' : 'bad-link'}#newsletter`);
+});
+router.post('/v1/newsletter/unsubscribe', async (req, res) => {
+  const ok = env.databaseUrl && await newsletter.unsubscribe(req.query.s, req.query.t);
+  res.status(ok ? 200 : 400).json(ok ? { ok: true } : { error: 'bad_link', message: 'That unsubscribe link isn\'t valid.' });
+});
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };

@@ -15,6 +15,7 @@ function campaign(o, chain) {
   const rewards = (o.rewardsRecord?.breakdowns || []).map(b => b.token).filter(Boolean);
   return {
     id: String(o.id), chain, name: o.name, action: o.action, type: o.type,
+    started_at: o.lastCampaignCreatedAt ? new Date(Number(o.lastCampaignCreatedAt) * 1000).toISOString() : null,
     apr_pct: typeof o.apr === 'number' ? o.apr : null,
     tvl_usd: typeof o.tvl === 'number' ? o.tvl : null,
     daily_rewards_usd: typeof o.dailyRewards === 'number' ? o.dailyRewards : null,
