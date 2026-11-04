@@ -53,9 +53,12 @@ function protocols() {
   });
 }
 
-/** Fees in the last 24 hours by protocol id, overall and on each RektBull chain. Cached 30 minutes. */
+/**
+ * Fees in the last 24 hours: { protocols: { id: { total, chains } }, total_24h, change_1d }
+ * (by protocol, overall and on each RektBull chain, and for all of DeFi). Cached 30 minutes.
+ */
 function fees() {
-  return cached('llama:fees:v1', 1800, async () => {
+  return cached('llama:fees:v2', 1800, async () => {
     const data = await get('/overview/fees?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true');
     const out = {};
     for (const p of data.protocols || []) {
@@ -67,7 +70,40 @@ function fees() {
       }
       out[String(p.defillamaId)] = { total: p.total24h, chains: perChain };
     }
-    return out;
+    return { protocols: out, total_24h: data.total24h ?? null, change_1d: data.change_1d ?? null };
+  });
+}
+
+/** DEX trading volume across DeFi in the last 24 hours, and its change. Cached 30 minutes. */
+function dexVolume() {
+  return cached('llama:dexs:v1', 1800, async () => {
+    const data = await get('/overview/dexs?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true');
+    return { total_24h: data.total24h ?? null, change_1d: data.change_1d ?? null, total_7d: data.total7d ?? null };
+  });
+}
+
+/** Total TVL across DeFi, one point a day: [{ date (YYYY-MM-DD), tvl }]. The last 400 days, cached 1 hour. */
+function tvlHistory() {
+  return cached('llama:tvlhist:v1', 3600, async () => (await get('/v2/historicalChainTvl')).slice(-400).map(d => ({
+    date: new Date(d.date * 1000).toISOString().slice(0, 10), tvl: Math.round(d.tvl),
+  })));
+}
+
+/** Every stablecoin, cut to what Markets shows. Cached 30 minutes. */
+function stablecoins() {
+  return cached('llama:stables:v1', 1800, async () => {
+    const data = await track('defillama', async () => (await axios.get('https://stablecoins.llama.fi/stablecoins?includePrices=true', { timeout: 30000 })).data);
+    return (data.peggedAssets || []).map(a => {
+      const peg = String(a.pegType || '').replace(/^pegged/, '');
+      const amount = o => (o && typeof o === 'object' ? Number(o[a.pegType]) || 0 : 0);
+      return {
+        id: String(a.id), name: a.name, symbol: a.symbol, peg, mechanism: String(a.pegMechanism || '').replace('crytpo', 'crypto') || null,
+        price: typeof a.price === 'number' ? a.price : null, price_source: a.priceSource || null,
+        supply: amount(a.circulating), supply_prev_day: amount(a.circulatingPrevDay), supply_prev_week: amount(a.circulatingPrevWeek), supply_prev_month: amount(a.circulatingPrevMonth),
+        chains: (a.chains || []).length, rektbull_chains: (a.chains || []).map(c => byName[c] || (c === 'BSC' ? 'bsc' : null)).filter(Boolean),
+        gecko_id: a.gecko_id || null,
+      };
+    }).filter(a => a.supply > 0);
   });
 }
 
@@ -92,4 +128,4 @@ function chains() {
   })));
 }
 
-module.exports = { protocols, fees, hacks, chains, tokenOf, CHAINS };
+module.exports = { protocols, fees, dexVolume, tvlHistory, stablecoins, hacks, chains, tokenOf, CHAINS };

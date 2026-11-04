@@ -83,7 +83,8 @@ Details: [PAYMENTS.md](PAYMENTS.md).
 ## 5. Site structure (target)
 
 Built so far: **Home** (`/`, the ask box and the free wallet checkup), **Discover**
-(`/discover`: rankings with safety facts, trending and new tokens), Safety
+(`/discover`: rankings with safety facts, trending and new tokens), **Markets**
+(`/markets`: DeFi today, stablecoin pegs, RWA, prediction markets, largest tokens), Safety
 (`/safety`), Find money (`/find`, under Opportunities), Trade (`/trade`),
 Governance (`/governance`, under Opportunities), the pre-sign check
 (`/extension`). Every page shares one header and footer (`src/pages/`).

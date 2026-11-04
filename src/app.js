@@ -11,6 +11,7 @@ function createApp() {
   const app = express();
   app.set('trust proxy', 1); // behind Cloud Run's load balancer
   app.use(helmet());
+  app.use(require('compression')()); // gzip: about half the bytes on a first visit
   app.use(express.json({ limit: '100kb' }));
   // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
   app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') }));
@@ -37,7 +38,7 @@ function createApp() {
   const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
     .replace('<!--#header-->', HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
   for (const [route, file] of Object.entries(PAGES)) {
     const html = render(file, route);
     app.get(route, (_req, res) => res.type('html').send(html));

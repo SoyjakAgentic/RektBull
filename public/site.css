@@ -12,7 +12,7 @@
 :root {
   --bg: #ffffff; --alt: #f3f5fa; --card: #ffffff; --text: #0d1424; --muted: #586379; --line: #e2e7f0; --soft: #edf1f8;
   --accent: #2346d6; --accent-2: #3d63f2; --accent-text: #ffffff; --accent-soft: #e8edff;
-  --ok: #157a3c; --warn: #9a5b00; --bad: #c42f3a; --ring: rgba(35, 70, 214, .10);
+  --ok: #157a3c; --warn: #9a5b00; --bad: #c42f3a; --ring: rgba(35, 70, 214, .10); --chart: #2346d6;
   --night: #0b1020; --night-text: #e9eef8; --night-muted: #9aa6bf; --night-line: #24304a;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -24,14 +24,14 @@
   :root:not([data-theme="light"]) {
     --bg: #0a0f1c; --alt: #0e1526; --card: #121b2e; --text: #e9eef8; --muted: #95a2bb; --line: #223049; --soft: #18233a;
     --accent: #7391ff; --accent-2: #8aa4ff; --accent-text: #0a0f1c; --accent-soft: #1a2549;
-    --ok: #4bd17f; --warn: #f2b53c; --bad: #ff6b74; --ring: rgba(115, 145, 255, .11);
+    --ok: #4bd17f; --warn: #f2b53c; --bad: #ff6b74; --ring: rgba(115, 145, 255, .11); --chart: #6a88f5;
     --night: #121b2e; --night-line: #2a3756; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0a0f1c; --alt: #0e1526; --card: #121b2e; --text: #e9eef8; --muted: #95a2bb; --line: #223049; --soft: #18233a;
   --accent: #7391ff; --accent-2: #8aa4ff; --accent-text: #0a0f1c; --accent-soft: #1a2549;
-  --ok: #4bd17f; --warn: #f2b53c; --bad: #ff6b74; --ring: rgba(115, 145, 255, .11);
+  --ok: #4bd17f; --warn: #f2b53c; --bad: #ff6b74; --ring: rgba(115, 145, 255, .11); --chart: #6a88f5;
   --night: #121b2e; --night-line: #2a3756; color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -367,3 +367,24 @@ a.act { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration:
 .tok-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
 .tok-facts b { color: var(--text); font: 500 13.5px var(--mono); }
 .flagbox { background: var(--alt); border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
+
+/* markets */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 6px 0 18px; }
+.tile-stat { background: var(--alt); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 4px; min-width: 0; }
+.tile-stat span { font-size: 12.5px; color: var(--muted); }
+.tile-stat strong { font: 700 26px var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tile-stat em { font-style: normal; font-size: 12.5px; color: var(--muted); font-family: var(--mono); }
+.chart { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 6px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.chart-head h3 { margin: 0; font-size: 15px; }
+.plot { position: relative; height: 220px; outline-offset: 4px; cursor: crosshair; }
+.plot svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.plot .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plot .line { fill: none; stroke: var(--chart); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.plot .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.plot .dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--chart); box-shadow: 0 0 0 2px var(--card); transform: translate(-50%, -50%); pointer-events: none; }
+.plot .tip { position: absolute; top: -6px; background: var(--text); color: var(--bg); font: 500 12.5px var(--mono); padding: 4px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; }
+.axis-x { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .tiles { grid-template-columns: 1fr; } .plot { height: 180px; } }
+.plot .ylab { position: absolute; left: 0; transform: translateY(-115%); font: 11px var(--mono); color: var(--muted); pointer-events: none; }

@@ -29,8 +29,19 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | Jupiter | Buy-then-sell test (Solana) | Optional | — |
 | DexScreener | Liquidity, volume, price, token age | No | — |
 | DefiLlama (api.llama.fi) | Discover: protocols and TVL, fees in the last 24 hours, recorded hacks, chain TVL. Cached 30 minutes (hacks 6 hours), so a few calls an hour whatever the traffic | No | "DefiLlama didn't answer"; a missing part (fees, hacks) is listed as not checked |
+| DefiLlama stablecoins (stablecoins.llama.fi) and DEX volumes | Markets: each stablecoin's supply, peg mechanism and price; DEX volume and total TVL history. Cached 30 minutes (TVL history 1 hour) | No | The page names the part that didn't answer |
+| CoinGecko (keyless public API) | Markets: the 100 largest tokens by market cap. Free plan allows a few calls a minute and asks for attribution ("Data from CoinGecko", linked on the page); cached 10 minutes (about 150 calls a day), one retry after a 429 | No (a free demo key raises the limit) | The page says it didn't answer |
 | GeckoTerminal | Discover: trending and newest pools per chain. Free plan about 30 calls a minute; each list cached 5 minutes, one retry after a 429 | No | The page says it didn't answer |
 | Anthropic | Report writing | Paid per use | Covered by the report price |
+
+## What a visitor costs (measured)
+
+Responses are gzip-compressed, and pages that only need a wallet to sign in
+don't load ethers (514 KB): it's on `/safety` and `/trade` only. A first visit
+to Discover is about 164 KB on the wire (fonts included); a visit to another
+page after that is about 40 KB. At Cloud Run's list prices that is roughly
+$0.00002 for a first visit, mostly bandwidth; the data behind the free pages is
+fetched on timers, so it costs the same whatever the traffic.
 
 ## The risk monitor's cost
 

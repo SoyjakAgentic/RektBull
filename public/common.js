@@ -3,7 +3,6 @@
  * between pages in this tab (sessionStorage), and is never required to look. */
 (function () {
   'use strict';
-  const { ethers } = window;
   const $ = id => document.getElementById(id);
 
   const state = { wallets: [], wallet: null, provider: null, address: null, token: null };
@@ -22,6 +21,8 @@
   function say(id, text, kind) { const m = $(id); if (!m) return; m.textContent = text || ''; m.className = 'msg' + (kind ? ' ' + kind : ''); }
   const short = a => (a ? a.slice(0, 6) + '…' + a.slice(-4) : '');
   const usd = cents => '$' + (cents / 100).toFixed(2);
+  /** The message as 0x-hex UTF-8, the form personal_sign takes (no library needed). */
+  const hexUtf8 = text => '0x' + Array.from(new TextEncoder().encode(text), b => b.toString(16).padStart(2, '0')).join('');
 
   function forget() {
     state.token = null;
@@ -102,7 +103,7 @@
     try {
       const chainId = Number(await request('eth_chainId'));
       const ch = await api('POST', '/v1/auth/nonce', { address: state.address, chain_id: chainId });
-      const signature = await request('personal_sign', [ethers.hexlify(ethers.toUtf8Bytes(ch.message)), state.address]);
+      const signature = await request('personal_sign', [hexUtf8(ch.message), state.address]);
       const out = await api('POST', '/v1/auth/verify', { challenge_id: ch.challenge_id, signature });
       state.token = out.token;
       try { sessionStorage.setItem('rb_token', out.token); sessionStorage.setItem('rb_wallet', state.address); } catch { /* fine */ }
