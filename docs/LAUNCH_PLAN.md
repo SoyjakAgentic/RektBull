@@ -43,6 +43,11 @@ are built before we deploy. Each is its own PR, in this order unless we change i
 4. **Site desks** from [SCOPE.md](SCOPE.md) section 5: Home, Discover,
    Markets, Opportunities, Portfolio, Research, Agents, Developers.
    Free data first, each with its "Ask / Act" panel.
+   - ✅ **Home** (`/`): one box that says what a pasted address is on each
+     chain (wallet, Safe, token, NFT collection, DAO governor, contract) and
+     sends it to the desk that checks it; a wallet gets the free checkup from
+     every desk at once (approvals, unclaimed rewards, yield, DAO votes), each
+     part with its source. Nothing to set at deploy.
 5. Anything that needs paid data (tax report, business services) waits until
    after launch, when there's revenue to pay for it.
 

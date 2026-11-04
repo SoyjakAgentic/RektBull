@@ -12,6 +12,12 @@
   const wallet = () => $('g-wallet').value.trim();
   const fromLink = new URLSearchParams(location.search).get('wallet');
   if (fromLink && /^0x[0-9a-fA-F]{40}$/.test(fromLink)) $('g-wallet').value = fromLink;
+  // A link from Home (…/governance?chain=arbitrum&governor=0x…) fills the add-a-governor form.
+  const govLink = new URLSearchParams(location.search);
+  if (/^0x[0-9a-fA-F]{40}$/.test(govLink.get('governor') || '')) {
+    $('gv-address').value = govLink.get('governor');
+    if ([...$('gv-chain').options].some(o => o.value === govLink.get('chain'))) $('gv-chain').value = govLink.get('chain');
+  }
   const fill = () => { if (!wallet() && state.address) $('g-wallet').value = state.address; };
   window.RB.onSignedIn(() => { fill(); loadSpaces(); });
   setTimeout(fill, 500);

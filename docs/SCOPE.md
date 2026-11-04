@@ -82,6 +82,10 @@ Details: [PAYMENTS.md](PAYMENTS.md).
 
 ## 5. Site structure (target)
 
+Built so far: **Home** (`/`, the ask box and the free wallet checkup), Safety
+(`/safety`), Find money (`/find`, under Opportunities), Governance
+(`/governance`, under Opportunities), the pre-sign check (`/extension`).
+
 ```
 Home
 ├── Discover        rankings, trending, new launches, categories, chains
