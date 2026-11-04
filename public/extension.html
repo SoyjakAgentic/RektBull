@@ -8,12 +8,16 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension" aria-current="page">Extension</a><a href="/trade">Trade</a></nav>
-    <div id="who" class="who">Not signed in</div>
-  </header>
-  <main>
+  <!--#header-->
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Pre-sign check</span>
+      <h1>See what you're signing, <em>before you sign</em></h1>
+      <p>In your browser or inside MetaMask: every transaction and signature decoded, simulated and checked before your wallet shows it.</p>
+      <nav class="jump" aria-label="On this page"><a href="#snap-card">MetaMask Snap</a><a href="#link-card">Link the extension</a></nav>
+    </div>
+  </section>
+  <main class="tool">
     <section class="card">
       <h2>Check before you sign</h2>
       <p>The RektBull extension catches what your wallet is about to sign (a transaction, a permit, an NFT listing, a sign-in) and checks it first: it simulates what would leave your wallet, rates every spender and recipient, and checks the site against phishing lists. A risky request stops with a warning that says why, and where the facts come from; a safe one goes straight to your wallet.</p>
@@ -44,7 +48,7 @@
       <div id="tokens" class="small muted">Sign in to see them.</div>
     </section>
   </main>
-  <footer class="muted">An automated check of known patterns, not a guarantee. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <!--#footer:An automated check of known patterns, not a guarantee.-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/extension-page.js"></script>

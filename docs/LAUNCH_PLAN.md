@@ -6,16 +6,27 @@ who does each step, and how we know it worked.*
 
 ## 0. What launches, and what doesn't
 
-**Launch = the Safety desk.** Token quick check and report, approval cleanup,
-the pre-sign check, the risk monitor with Telegram, email and browser alerts,
-free points, credits, Safety Pro, x402, and the privacy page. Plus whatever
-we finish from section 1 before the date.
+**Launch = the Safety desk and the trade desk.** Token quick check and report,
+approval cleanup, the pre-sign check, the risk monitor with Telegram, email and
+browser alerts, free points, credits, Safety Pro, x402, and the privacy page.
+Plus whatever we finish from section 1 before the date.
+
+**The trade desk** was switched back on for launch on 4 November 2026 (the
+owner's audit of the Trade Router passed). It opens in two stages:
+
+1. **At launch: trades you sign yourself, on Base** (approve-each). Every
+   token is checked first, the user's wallet signs the swap, and 1% goes to
+   `SWAP_FEE_WALLET_EVM`. This path needs no router and no KMS key.
+2. **Automatic trading, after the Trade Router is deployed on Base**: the
+   guided deployment (with the Yield Router, once its audit is done), then the
+   KMS key and the trade service. Until then `/trade` says automatic trading
+   opens when the router is deployed (section 8 has the steps).
 
 **Not at launch:**
 
 | What | Why | How it stays off |
 |---|---|---|
-| Trade desk (approve-each and automatic trading) | Paused ([TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md)); the Trade Router isn't audited or deployed | `TRADING_ENABLED` unset; `rektbull-trade` isn't deployed (`_DEPLOY_TRADE=false` in `cloudbuild.yaml`); no KMS key is made yet |
+| Automatic trading (stage 2 above) | The Trade Router isn't deployed on Base yet | `AUTO_TRADING_NETWORKS={}`; `rektbull-trade` isn't deployed (`_DEPLOY_TRADE=false` in `cloudbuild.yaml`); no KMS key is made yet |
 | Browser extension in the stores | Its listing must point at a live site and privacy page | Section 6, after launch |
 | MetaMask Snap | Same, and MetaMask allowlisting needs a live API | Section 6, after launch |
 | Solana payments | Not built | Solana stays token checks only |
@@ -100,7 +111,8 @@ Later (section 6): Chrome Web Store ($5 once), Microsoft Partner Center
 | `X402_PAY_TO` | Where x402 USDC on Base arrives | A Safe or hardware-wallet address. Receive-only |
 | `ADMIN_WALLETS` | Wallets that can read `/v1/admin/*` | Your own address(es) |
 | `CLAIM_FEE_WALLET_EVM` | Where claim fees arrive (many different tokens) | A Safe or hardware-wallet address, receive-only; on every EVM chain we cover (a Safe needs deploying on each). Unset = claims carry no fee |
-| `SWAP_FEE_WALLET_EVM`, `SESSION_KEY_ADDRESS` | Trade desk only | Leave unset at launch |
+| `SWAP_FEE_WALLET_EVM` | Where the 1% trade fee arrives, on Base | A Safe or hardware-wallet address, receive-only. Needed for the trade desk at launch |
+| `SESSION_KEY_ADDRESS` | RektBull's trading key (the KMS key's address) | Automatic trading only (section 8). Leave unset at launch |
 
 Check before launch: an invoice made by the deployed site shows an address
 your own wallet software also derives from that account (Claude checks the
@@ -150,7 +162,8 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `REPORT_MODEL`, `REPORT_EFFORT` | ✔ | | The defaults unless we choose otherwise |
 | `NEW_WALLET_CHECK_CHAINS` | ✔ | | Default |
 | `NOWPAYMENTS_ENABLED` | ✔ | ✔ | `true` once NOWPayments is set up (payout wallet, crypto only, IPN secret, IPN URL `https://rektbull.com/v1/nowpayments/ipn`) |
-| `TRADING_ENABLED` | | | **Unset** |
+| `TRADING_ENABLED` | ✔ | ✔ | `true` after the smoke test's small real trade (section 5 D) |
+| `AUTO_TRADING_NETWORKS` | ✔ | ✔ | `{}` until the Trade Router is deployed on Base (otherwise the page would offer the test network) |
 | `YIELD_AUTO_ENABLED`, `YIELD_ROUTERS` | | | **Unset** (automatic rebalancing stays off) |
 
 ```bash
@@ -225,7 +238,9 @@ Automated (Claude, against `https://rektbull.com`):
 
 - [ ] `/`, `/safety`, `/extension`, `/privacy` load, with the stylesheet;
       `/privacy` shows the real `OPERATOR_NAME` and `PRIVACY_CONTACT`.
-- [ ] `/trade` says "Trading is switched off on this server for now."
+- [ ] `/trade` says "Trading is switched off on this server for now." until
+      `TRADING_ENABLED` is set, and automatic trading says it opens when the
+      router is deployed.
 - [ ] A free approval preview on a known wallet; a token quick check without
       signing in uses the per-IP free allowance and names its sources.
 - [ ] A sign-in message names `rektbull.com` (no domain warning in the wallet).
@@ -291,8 +306,9 @@ revision still works against the newer database.
       count as investment advice where we serve.
 - [ ] Terms of use page (not written yet): no guarantees on checks, the
       user signs everything, refunds as the payment gate does them.
-- [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md))
-      before the trade desk is ever switched on.
+- [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md)):
+      section 5 (one small real trade you sign on Base) before
+      `TRADING_ENABLED=true`; the rest before automatic trading opens.
 
 ## 8. Turning things on later (not part of this launch)
 
@@ -300,9 +316,16 @@ revision still works against the newer database.
 switching it on": audit and deploy the Yield Router, set `YIELD_ROUTERS`,
 deploy the trade service, then `YIELD_AUTO_ENABLED=true`.
 
-**The trade desk:**
+**Automatic trading (trade desk, stage 2):**
 
-Follow [TRADE_DESK_STATUS.md](TRADE_DESK_STATUS.md): audit and deploy the
-Trade Router, create the KMS key and `rektbull-trade` service account
-([DEPLOY.md](DEPLOY.md)), set `SWAP_FEE_WALLET_EVM` and `SESSION_KEY_ADDRESS`,
-run the trigger with `_DEPLOY_TRADE=true`, then set `TRADING_ENABLED=true`.
+1. Deploy the Trade Router on Base from the owner's Safe, with the parameters
+   in [AUDIT_BRIEF.md](AUDIT_BRIEF.md) section 6, and verify its source on
+   Basescan (Claude guides; done together with the Yield Router once its audit passes).
+2. Create the KMS key and the `rektbull-trade` service account
+   ([DEPLOY.md](DEPLOY.md)); sign one Base Sepolia transaction with it.
+3. Set `SESSION_KEY_ADDRESS` (the key's address) and `AUTO_TRADING_NETWORKS`
+   with the Base entry (router, tokens and venue, the same shape as
+   `src/trade/networks.js`). `/trade` then offers automatic trading on Base.
+4. Run the trigger with `_DEPLOY_TRADE=true`.
+5. Finish [REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md) with small limits
+   before telling anyone.

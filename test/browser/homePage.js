@@ -38,12 +38,19 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   page.on('pageerror', e => errors.push(e.message));
   try {
     await page.goto(url + '/');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.card')).borderTopWidth), '1px', 'the stylesheet loaded');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.bar')).position), 'sticky', 'the stylesheet loaded');
+    assert.equal(await page.getAttribute('.nav a[aria-current="page"]', 'href'), '/', 'the shared header marks this page');
+    assert.match(await page.textContent('footer.site'), /Privacy/);
+    assert.ok(await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 40px "Bricolage Grotesque"'); }), 'the fonts are served from RektBull');
     await page.locator('#p-find', { hasText: '5% of what you claim (3% with Safety Pro)' }).waitFor();
-    const pricing = await page.textContent('#pricing');
+    const pricing = await page.textContent('#plans');
     assert.match(pricing, /30 free points a month/);
-    assert.match(pricing, /Safety Pro: \$9\.00 for 30 days or \$79\.00 a year/);
+    assert.match(pricing, /\$9 for 30 days · \$79 a year/);
+    assert.match(pricing, /5% of a claim · 3% with Safety Pro/);
     assert.match(pricing, /0\.1% of each yield move/);
+    assert.match(pricing, /1% of each trade/);
+    await page.locator('#p-trade', { hasText: '1% per trade' }).waitFor();
+    assert.ok(await page.locator('#b-trade').isVisible(), 'trading is switched off here, so the Trade desk says it opens soon');
     console.log('✔ the desks and what they cost, from the catalog');
 
     // A wallet: what it is, then the free checkup from every desk.

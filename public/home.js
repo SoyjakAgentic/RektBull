@@ -7,21 +7,35 @@
   const CHAIN_NAMES = { ethereum: 'Ethereum', base: 'Base', arbitrum: 'Arbitrum', optimism: 'Optimism', polygon: 'Polygon', bsc: 'BNB Chain', solana: 'Solana' };
   const nameOf = c => CHAIN_NAMES[c] || c;
 
-  /* ── prices, from the catalog ── */
+  /* ── prices, from the catalog and the trade desk's settings ── */
+  const pts = n => `${n} point${n === 1 ? '' : 's'}`;
+  const pct = bps => `${bps / 100}%`;
+  const set = (id, text) => { const e = $(id); if (e && text) e.textContent = text; };
   catalog.ready.then(() => {
     const p = catalog.products;
-    const pts = n => `${n} point${n === 1 ? '' : 's'}`;
-    const pct = bps => `${bps / 100}%`;
-    if (p.token_quick_check) $('p-safety').textContent = `Quick check ${pts(p.token_quick_check.points)} or ${p.token_quick_check.price_usd}`;
-    if (p.airdrop_claim) $('p-find').textContent = `Free to check; ${pct(p.airdrop_claim.fee_bps)} of what you claim (${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro)`;
-    if (p.governance_summary) $('p-gov').textContent = `Free to check and vote; a summary ${pts(p.governance_summary.points)} or ${p.governance_summary.price_usd}`;
-    if (p.presign_check) $('p-presign').textContent = `${pts(p.presign_check.points)} or ${p.presign_check.price_usd} a check; in Safety Pro`;
-    const items = [];
-    if (catalog.free_points) items.push(el('li', {}, el('strong', {}, `${catalog.free_points.per_month} free points a month`), ' when you sign in with your wallet (free, moves nothing): a token quick check is 1, an approval cleanup 5.'));
-    if (p.pro_30d && p.pro_365d) items.push(el('li', {}, el('strong', {}, `Safety Pro: ${p.pro_30d.price_usd} for 30 days or ${p.pro_365d.price_usd} a year.`), ` Every Safety check (fair use), ${p.pro_30d.included_per_month?.token_report || 5} AI reports a month, the risk monitor and its alerts, yield proposals, DAO vote alerts, and a ${pct(p.airdrop_claim?.pro_fee_bps || 300)} claim fee instead of ${pct(p.airdrop_claim?.fee_bps || 500)}.`));
-    if (p.yield_move) items.push(el('li', {}, el('strong', {}, `${pct(p.yield_move.fee_bps)} of each yield move`), ' RektBull prepares, in a transfer you sign with the move. Withdrawals to your wallet are free.'));
-    $('pricing').append(...items);
+    if (p.token_quick_check) set('p-safety', `Quick check: ${pts(p.token_quick_check.points)} or ${p.token_quick_check.price_usd}`);
+    if (p.airdrop_claim) set('p-find', `Free to check; ${pct(p.airdrop_claim.fee_bps)} of what you claim (${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro)`);
+    if (p.governance_summary) set('p-gov', `Free to check and vote; a summary ${pts(p.governance_summary.points)} or ${p.governance_summary.price_usd}`);
+    if (p.presign_check) set('p-presign', `${pts(p.presign_check.points)} or ${p.presign_check.price_usd} a check; in Safety Pro`);
+    if (p.pro_30d) set('p-monitor', `In Safety Pro, from ${p.pro_30d.price_usd} for 30 days`);
+    if (catalog.free_points) set('pr-points', `${catalog.free_points.per_month} free points a month when you sign in with your wallet (free, moves nothing)`);
+    if (p.token_quick_check && p.approval_cleanup) set('pr-points-use', `A token quick check is ${pts(p.token_quick_check.points)}, an approval cleanup ${pts(p.approval_cleanup.points)}`);
+    if (p.pro_30d && p.pro_365d) {
+      const amount = $('pr-pro');
+      amount.replaceChildren(p.pro_30d.price_usd.replace(/\.00$/, ''), ' ', el('small', {}, `for 30 days · ${p.pro_365d.price_usd.replace(/\.00$/, '')} a year`));
+      set('pr-reports', `${p.pro_30d.included_per_month?.token_report || 0} AI token reports a month`);
+    }
+    if (p.airdrop_claim) {
+      $('pr-claim').replaceChildren(pct(p.airdrop_claim.fee_bps), ' ', el('small', {}, `of a claim · ${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro`));
+      set('pr-pro-claim', `A ${pct(p.airdrop_claim.pro_fee_bps)} claim fee instead of ${pct(p.airdrop_claim.fee_bps)}`);
+    }
+    if (p.yield_move) set('pr-yield', `${pct(p.yield_move.fee_bps)} of each yield move RektBull prepares; withdrawals are free`);
   });
+  api('GET', '/v1/trading/config').then(c => {
+    set('p-trade', `${c.fee_pct}% per trade, capped onchain at 1%`);
+    set('pr-trade', `${c.fee_pct}% of each trade, set in the Trade Router, which can't charge more than 1%`);
+    $('b-trade').hidden = !!c.enabled;
+  }).catch(() => {});
 
   /* ── the box ── */
   const mine = $('ask-mine');
@@ -37,7 +51,7 @@
     if (busy) return;
     if (!query) return say('ask-msg', 'Paste an address first.', 'bad');
     busy = true; $('ask-go').disabled = true;
-    $('ask-result').hidden = true; $('checkup-card').hidden = true;
+    $('ask-result').hidden = true; $('checkup-card').hidden = true; $('results').hidden = true;
     say('ask-msg', 'Looking it up on every chain…');
     try {
       const r = await api('POST', '/v1/lookup', { query });
@@ -74,6 +88,8 @@
     nodes.push(el('p', { class: 'source' }, 'Source: ', r.source));
     box.replaceChildren(...nodes);
     box.hidden = false;
+    $('results').hidden = false;
+    $('results').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   }
 
   /* ── the checkup ── */

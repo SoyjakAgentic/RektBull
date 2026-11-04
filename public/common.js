@@ -60,6 +60,30 @@
     if (who) who.textContent = state.wallet ? `${state.wallet.info.name}: ${short(state.address)}` : (state.token && state.address ? `Signed in: ${short(state.address)}` : 'Not signed in');
     const btn = $('signin');
     if (btn) { btn.disabled = !state.provider; btn.hidden = !!state.token; }
+    const head = $('hdr-connect');
+    if (head) { head.hidden = !!state.token; head.textContent = state.provider ? 'Sign in' : 'Connect wallet'; }
+  }
+
+  /* A short message at the bottom of the screen, for pages without a message line of their own. */
+  let toastTimer;
+  function toast(text) {
+    const t = $('toast');
+    if (!t) return;
+    t.textContent = text; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+  }
+  /** Sign-in messages go to the page's own line when it has one, otherwise to a toast. */
+  function tell(text, kind) { if ($('connect-msg')) say('connect-msg', text, kind); else if (text) toast(text); }
+
+  /* The header's button: connect the wallet (the first one found), then sign in. */
+  async function headerConnect() {
+    if (!state.provider) {
+      const w = state.wallets[0];
+      if (!w) return toast('No wallet found. Install MetaMask, Coinbase Wallet or Phantom, or open this page in your wallet\'s browser.');
+      await connect(w);
+      if (!state.provider) return;
+    }
+    if (!state.token) await signIn();
   }
 
   async function connect(w) {
@@ -69,9 +93,9 @@
       if (state.address && state.address.toLowerCase() !== addr.toLowerCase()) forget();
       state.address = addr;
       render();
-      say('connect-msg', state.token ? 'Signed in.' : 'Connected. Now sign in: it only proves you own this wallet, and costs nothing.');
+      if ($('connect-msg')) say('connect-msg', state.token ? 'Signed in.' : 'Connected. Now sign in: it only proves you own this wallet, and costs nothing.');
       if (state.token) notify();
-    } catch (err) { say('connect-msg', err.message, 'bad'); }
+    } catch (err) { state.provider = null; state.wallet = null; render(); tell(err.message, 'bad'); }
   }
 
   async function signIn() {
@@ -83,9 +107,9 @@
       state.token = out.token;
       try { sessionStorage.setItem('rb_token', out.token); sessionStorage.setItem('rb_wallet', state.address); } catch { /* fine */ }
       render();
-      say('connect-msg', 'Signed in.', 'ok');
+      tell('Signed in.', 'ok');
       notify();
-    } catch (err) { say('connect-msg', err.message, 'bad'); }
+    } catch (err) { tell(err.code === 4001 ? 'You cancelled in your wallet. Nothing was signed.' : err.message, 'bad'); }
   }
 
   function notify() { for (const f of listeners) Promise.resolve(f()).catch(err => console.error(err)); }
@@ -98,6 +122,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     const btn = $('signin');
     if (btn) btn.addEventListener('click', signIn);
+    const head = $('hdr-connect');
+    if (head) head.addEventListener('click', headerConnect);
     render();
     if (state.token) notify();
   });
@@ -221,7 +247,7 @@
   }
 
   window.RB = {
-    sendCalls, sleep, markdown,
+    sendCalls, sleep, markdown, toast,
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,

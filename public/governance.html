@@ -8,13 +8,17 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance" aria-current="page">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
-    <div id="who" class="who">Not signed in</div>
-  </header>
+  <!--#header-->
 
-  <main>
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Governance</span>
+      <h1>Your tokens, <em>your say</em></h1>
+      <p>The DAO votes your wallet can cast, on Snapshot and onchain, each proposal explained from its own text. Votes are signed by your wallet. RektBull never tells you how to vote.</p>
+      <nav class="jump" aria-label="On this page"><a href="#gov-card">Your votes</a><a href="#spaces-card">DAOs and governors</a><a href="#account-card">Your wallet</a></nav>
+    </div>
+  </section>
+  <main class="tool">
     <section class="card" id="gov-card">
       <h2>Your DAO votes</h2>
       <p class="muted">Open Snapshot votes in the DAOs your wallet follows or has voted in, with your voting power in each (Snapshot's own count, at the proposal's snapshot block) and whether you've voted. RektBull never tells you how to vote.</p>
@@ -59,7 +63,7 @@
     </section>
   </main>
 
-  <footer class="muted">Summaries explain each proposal's own text. Not advice, and never a recommendation. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <!--#footer:Summaries explain each proposal's own text. Not advice, and never a recommendation.-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/governance.js"></script>

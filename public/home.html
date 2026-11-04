@@ -2,75 +2,177 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>RektBull: Don't get rekt</title>
-  <meta name="description" content="Paste a wallet, a token or a contract. RektBull says what it is and checks it for free: what apps can still take, money you haven't claimed, where your stablecoins earn, and DAO votes. Every check names its source.">
+  <meta name="description" content="Check a token before you buy it, get alerts when your wallet is at risk, claim money you're owed, trade within limits you set, and vote in your DAOs. Your wallet signs everything; every check names its source.">
+  <link rel="preload" href="/fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/" aria-current="page">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
-    <div id="who" class="who">Not signed in</div>
-  </header>
+  <!--#header-->
 
-  <main>
-    <section class="card hero" id="ask-card">
-      <h1>Paste an address. See what it is, and what it could cost you.</h1>
-      <p class="muted">A wallet gets a free checkup from every desk at once: what apps can still take from it, money it hasn't claimed, where its stablecoins could earn more, and DAO votes it can cast. A token goes to the safety check before you buy. Every check names its source, and anything it couldn't check is said.</p>
-      <form id="ask-form" class="ask" autocomplete="off">
-        <label class="sr" for="ask">Wallet, token or contract address</label>
-        <input id="ask" placeholder="0x… wallet, token or contract (or a Solana token mint)" spellcheck="false">
-        <button id="ask-go" class="primary" type="submit">Check for free</button>
-      </form>
-      <div class="row small"><button type="button" class="link" id="ask-mine" hidden>Use my connected wallet</button></div>
-      <p id="ask-msg" class="msg"></p>
-      <div id="ask-result" hidden></div>
-    </section>
+  <main id="top">
+    <section class="hero">
+      <div class="wrap">
+        <span class="pillbox"><b>Free</b> Wallet checkup · 6 chains</span>
+        <h1>Don't get <em>rekt.</em></h1>
+        <p class="lede">Check a token before you buy it. Get an alert the day your wallet is at risk. Claim money you're owed, trade within limits you set, and vote in your DAOs. One place, and your wallet signs everything.</p>
+        <form id="ask-form" class="ask" autocomplete="off">
+          <label class="sr" for="ask">Wallet, token or contract address</label>
+          <input id="ask" placeholder="0x… wallet, token or contract" spellcheck="false">
+          <button id="ask-go" class="btn primary" type="submit">Check for free<span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+        </form>
+        <div class="tries"><button type="button" class="link" id="ask-mine" hidden>Use my connected wallet</button></div>
+        <p id="ask-msg" class="msg"></p>
 
-    <section class="card" id="checkup-card" hidden>
-      <h2>Free checkup <span id="c-wallet" class="muted small"></span></h2>
-      <div id="c-parts" class="parts"></div>
-      <p id="c-note" class="small muted"></p>
-    </section>
+        <div class="panel-frame" aria-label="An example checkup">
+          <div class="panel">
+            <div class="panel-head"><strong>Checkup</strong><span class="mono muted small">0x9a9a…9a9a</span><span class="ex">Example</span><span class="tagline">Four desks, one pass</span></div>
+            <div class="steps4">
+              <div class="step hot"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 6v6c0 4.6-3.3 8-8 9-4.7-1-8-4.4-8-9V6l8-3Z"/><path d="M12 8v5M12 16h.01"/></svg></span><small>Approvals</small><b>2 worth revoking</b><span class="fig">$1,234.50 at risk</span></div>
+              <div class="step"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7ZM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7Z"/></svg></span><small>Unclaimed</small><b>2 rewards to claim</b><span class="fig">$41.20</span></div>
+              <div class="step"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg></span><small>Yield</small><b>Could earn more</b><span class="fig">+$38.70 a year</span></div>
+              <div class="step"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16M5 10h14M12 3 4 7v3h16V7l-8-4ZM7 10v8M12 10v8M17 10v8"/></svg></span><small>DAO votes</small><b>2 open, 1 closing</b><span class="fig">within a day</span></div>
+            </div>
+            <div class="log">
+              <div><span class="dot bad"></span><span>Unlimited USDC approval to an unverified spender on Base</span><span>GoPlus · onchain</span></div>
+              <div><span class="dot good"></span><span>Merkl reward ready to claim on Base, proof checked against the root</span><span>Merkl · onchain</span></div>
+              <div><span class="dot warn"></span><span>Snapshot vote closes in 19 hours</span><span>Snapshot hub</span></div>
+            </div>
+          </div>
+        </div>
 
-    <section class="card" id="desks-card">
-      <h2>What RektBull does</h2>
-      <div class="desks">
-        <a class="desk" href="/safety"><strong>Safety</strong><span>Check a token before you buy it, clean up approvals, and get alerts when something changes in your wallet.</span><em id="p-safety"></em></a>
-        <a class="desk" href="/find"><strong>Find money</strong><span>Airdrops and rewards you haven't claimed, and where your stablecoins and ETH could earn more.</span><em id="p-find"></em></a>
-        <a class="desk" href="/governance"><strong>Governance</strong><span>The DAO votes your wallet can cast, on Snapshot and onchain, each proposal explained from its own text.</span><em id="p-gov"></em></a>
-        <a class="desk" href="/extension"><strong>Pre-sign check</strong><span>In your browser or MetaMask: what a transaction or signature would do, before you sign it.</span><em id="p-presign"></em></a>
+        <div class="proof">
+          <div><strong>6 chains</strong><span>Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain, read for every wallet</span></div>
+          <div><strong>4 free checks</strong><span>Approvals, unclaimed rewards, yield and DAO votes, in one pass</span></div>
+          <div><strong>0 keys held</strong><span>RektBull prepares; your wallet signs every transaction</span></div>
+        </div>
       </div>
     </section>
 
-    <section class="card" id="pricing-card">
-      <h2>What it costs</h2>
-      <ul class="plain" id="pricing">
-        <li>Checking is free: this checkup, the approval preview, the airdrop and rewards check, and DAO votes.</li>
-      </ul>
-      <p class="muted small">You pay only for work that's delivered: a run that fails is given back. Pay with USDT or USDC (or many other coins through NOWPayments); bots pay per call with x402. Nothing renews automatically, and RektBull never asks your wallet for a spending approval to bill you.</p>
-      <div id="wallets" class="row"></div>
-      <button id="signin" disabled>Sign in with this wallet</button>
-      <p id="connect-msg" class="msg"></p>
+    <div class="sources">
+      <p>Every finding names where it came from</p>
+      <div class="marquee" aria-label="Data sources">
+        <div class="track">
+          <span>Etherscan</span><span>Blockscout</span><span>GoPlus</span><span>DefiLlama</span><span>Merkl</span><span>Snapshot</span><span>Aave v3</span><span>Compound v3</span><span>Spark</span><span>0x</span><span>Chainlink</span><span>Multicall3</span>
+          <span aria-hidden="true">Etherscan</span><span aria-hidden="true">Blockscout</span><span aria-hidden="true">GoPlus</span><span aria-hidden="true">DefiLlama</span><span aria-hidden="true">Merkl</span><span aria-hidden="true">Snapshot</span><span aria-hidden="true">Aave v3</span><span aria-hidden="true">Compound v3</span><span aria-hidden="true">Spark</span><span aria-hidden="true">0x</span><span aria-hidden="true">Chainlink</span><span aria-hidden="true">Multicall3</span>
+        </div>
+      </div>
+    </div>
+
+    <section class="band" id="results" hidden>
+      <div class="wrap">
+        <div class="head"><div><span class="eyebrow">Your result</span><h2>What it is, and <em>what it means</em></h2></div></div>
+        <div id="ask-result" class="found" hidden></div>
+        <div id="checkup-card" hidden>
+          <h3>Free checkup <span id="c-wallet" class="mono muted small"></span></h3>
+          <div id="c-parts" class="parts"></div>
+          <p id="c-note" class="small muted"></p>
+        </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>How it stays on your side</h2>
-      <ul class="plain">
-        <li><strong>Your wallet signs everything.</strong> RektBull prepares transactions and shows what each one does; it never holds your funds or keys.</li>
-        <li><strong>Every finding names its source</strong>, and a check that couldn't run says why. Nothing found means nothing in those sources, not nothing anywhere.</li>
-        <li><strong>No recommendations on how to vote,</strong> and AI summaries only explain the text they're given.</li>
-      </ul>
+    <section class="band" id="desks">
+      <div class="wrap">
+        <div class="head">
+          <div><span class="eyebrow">Desks</span><h2>Protect it, find it, <em>trade it, keep your say</em></h2></div>
+          <div><p>Each desk starts with a free check. You pay only when RektBull does real work for you, and only if it works.</p><a class="btn" href="#pricing">See what it costs<span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a></div>
+        </div>
+        <div class="cards">
+          <a class="tile lead" href="/safety"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 6v6c0 4.6-3.3 8-8 9-4.7-1-8-4.4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg></span><h3>Safety</h3><p>Check a token before you buy it: can it be sold, what it taxes, what its owner can do. Clean up what apps can still take from your wallet.</p><span class="price" id="p-safety"></span></a>
+          <a class="tile" href="/safety#monitor-card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span><h3>Risk monitor</h3><p>Your wallets checked every day for new risky approvals, flagged or upgraded spenders and stablecoin depegs. Alerts by Telegram, email or browser.</p><span class="price" id="p-monitor">In Safety Pro</span></a>
+          <a class="tile" href="/find"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8.5 9.5h3.75a1.25 1.25 0 0 1 0 2.5h-2.5a1.25 1.25 0 0 0 0 2.5h3.75"/></svg></span><h3>Find money</h3><p>Airdrops and rewards you haven't claimed, verified onchain, and where your stablecoins and ETH could earn more.</p><span class="price" id="p-find"></span></a>
+          <a class="tile" href="/trade"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg></span><span class="badge" id="b-trade" hidden>Opening soon</span><h3>Trade</h3><p>Every token checked before you buy. Sign each trade yourself, or let RektBull trade inside limits your wallet writes onchain.</p><span class="price" id="p-trade"></span></a>
+          <a class="tile" href="/governance"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16M5 10h14M12 3 4 7v3h16V7l-8-4ZM7 10v8M12 10v8M17 10v8"/></svg></span><h3>Governance</h3><p>The DAO votes your wallet can cast, on Snapshot and onchain, each proposal explained from its own text.</p><span class="price" id="p-gov"></span></a>
+          <a class="tile" href="/extension"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6M9 16h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></svg></span><h3>Pre-sign check</h3><p>In your browser or inside MetaMask: what a transaction or signature would do, before your wallet asks you to sign.</p><span class="price" id="p-presign"></span></a>
+          <a class="tile" href="#bots"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M13.5 5l-3 14"/></svg></span><h3>For bots and agents</h3><p>The same checks over an API. Pay per call with x402, with no account.</p><span class="price">Lookups and checkups free</span></a>
+          <div class="tile soon"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M9 13h6M9 17h3M14 3v5h5"/></svg></span><span class="badge">Coming</span><h3>Tax and profit report</h3><p>Your gains and losses across chains, ready for your tax return. Not built yet.</p></div>
+        </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>For bots and AI agents</h2>
-      <p class="muted small"><code>POST /v1/lookup</code> with <code>{"query"}</code> (an address) says what it is on each chain; <code>POST /v1/checkup</code> with <code>{"wallet"}</code> runs the free checks of every desk. Both are free, with a daily limit. Paid runs take <a href="https://www.x402.org/">x402</a> (USDC on Base); prices at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p>
+    <section class="band alt" id="how">
+      <div class="wrap">
+        <div class="head center"><span class="eyebrow">How it works</span><h2>From an address to <em>a signed fix</em></h2><p>RektBull reads, explains and prepares. Nothing moves until your wallet signs it.</p></div>
+        <div class="rail"><span>Paste</span><span>Read</span><span>Explain</span><span>You sign</span></div>
+        <div class="cards">
+          <div class="tile"><div class="top"><span class="num">01</span><span class="badge">Paste</span></div><h3>Paste an address</h3><p>A wallet, a token or a contract. RektBull works out what it is on each chain.</p></div>
+          <div class="tile"><div class="top"><span class="num">02</span><span class="badge">Read</span></div><h3>Read the chains</h3><p>Approvals, balances, claims and votes are read onchain, with the explorers, GoPlus, Merkl and Snapshot where they help.</p></div>
+          <div class="tile"><div class="top"><span class="num">03</span><span class="badge">Explain</span></div><h3>See what matters</h3><p>What's risky and why, what's yours to claim, what could earn more, and where each finding came from.</p></div>
+          <div class="tile"><div class="top"><span class="num">04</span><span class="badge">You sign</span></div><h3>Fix it from your wallet</h3><p>RektBull prepares the revoke, claim, trade, move or vote. Your wallet shows it, and you sign or you don't.</p></div>
+        </div>
+      </div>
     </section>
+
+    <section class="band" id="pricing">
+      <div class="wrap">
+        <div class="head center"><span class="eyebrow">Pricing</span><h2>Free to check. <em>Pay for work that's done.</em></h2><p>A run that fails is given back. Nothing renews automatically, and RektBull never asks your wallet for a spending approval to bill you.</p></div>
+        <div class="plans" id="plans">
+          <div class="tier"><div class="top"><h3>Free</h3><p class="for">For anyone checking a wallet or a token.</p><div class="amount">$0</div></div>
+            <ul><li>This checkup, the approval preview, the airdrop and rewards check, and DAO votes</li><li id="pr-points">Free points every month when you sign in with your wallet</li><li id="pr-points-use">A quick check is 1 point, an approval cleanup 5</li></ul></div>
+          <div class="tier pro"><div class="top"><h3>Safety Pro</h3><p class="for">For wallets you want watched every day.</p><div class="amount" id="pr-pro">Safety Pro</div></div>
+            <ul><li>Every Safety check (fair use)</li><li id="pr-reports">AI token reports every month</li><li>The risk monitor for 3 wallets, with Telegram, email and browser alerts</li><li>Yield proposals and DAO vote alerts</li><li id="pr-pro-claim">A lower claim fee</li></ul></div>
+          <div class="tier"><div class="top"><h3>Fees on results</h3><p class="for">Only when RektBull moves money for you.</p><div class="amount" id="pr-claim">%</div></div>
+            <ul><li>Paid in the claimed tokens, in a transfer you sign with the claim</li><li id="pr-trade">A fee on each trade, set and capped onchain by the Trade Router</li><li id="pr-yield">A small fee on each yield move; withdrawals are free</li><li>Claiming on the project's own site is always free</li></ul></div>
+        </div>
+        <div class="pay"><span>USDT or USDC on Ethereum, Base or BNB Chain</span><span>Many other coins through NOWPayments</span><span>Bots: x402, USDC on Base</span></div>
+      </div>
+    </section>
+
+    <section class="band night">
+      <div class="wrap">
+        <div class="head"><div><span class="eyebrow">Why RektBull</span><h2>Built to stay on your side</h2></div><div><p>Rankings and ads didn't pay for the last big dapp radar. RektBull is paid for checks that protect, find or save money, so its job is the same as yours.</p></div></div>
+        <div class="principles">
+          <div class="principle"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><h3>Your wallet signs everything</h3><p>RektBull prepares transactions and shows what each one does. It never holds your funds or keys, and automatic trading can only work inside limits enforced onchain.</p></div>
+          <div class="principle"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg></span><h3>Every finding names its source</h3><p>A check that couldn't run says why. Nothing found means nothing in those sources, not nothing anywhere.</p></div>
+          <div class="principle"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></span><h3>Never a recommendation</h3><p>No advice on how to vote or what to buy. AI summaries only explain the text they're given.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="faq">
+      <div class="wrap faq">
+        <div>
+          <span class="eyebrow">FAQ</span>
+          <h2>Questions, <em>answered</em></h2>
+          <div class="side-card"><h3>Something else?</h3><p>The privacy page says what RektBull keeps, why, and how to reach the people who run it.</p><a class="btn dark" href="/privacy">Read the privacy page<span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a></div>
+        </div>
+        <div class="qs">
+          <details open><summary>Does RektBull ever hold my funds or keys?</summary><p>No. RektBull prepares transactions and your wallet signs them. It never asks for a seed phrase or a private key, and paying for RektBull never needs a token approval.</p></details>
+          <details><summary>Can RektBull trade with my money?</summary><p>Only if you give it a limited permission from your wallet: a most-per-trade and most-per-day that your wallet writes into the Trade Router, for up to 30 days. Trades can only go back into your wallet, never anywhere else, and you can revoke the permission at any time. Without it, you sign every trade yourself.</p></details>
+          <details><summary>Is the checkup really free?</summary><p>Yes, with a daily limit: 3 a day without signing in, 10 when you sign in with your wallet. Signing in is free and moves nothing.</p></details>
+          <details><summary>Why is the claim fee a share of the tokens?</summary><p>New airdrops often have no price yet. The fee is a share of what arrives, in a transfer you sign with the claim, so you only pay if the claim works. Claiming on the project's own site is always free.</p></details>
+          <details><summary>Which chains does it read?</summary><p>Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain for wallets, and Solana for token checks. A chain that couldn't be read is named, never treated as empty.</p></details>
+          <details><summary>Is this financial advice?</summary><p>No. It's an automated check of known patterns. It never recommends a vote or a trade, and a clean result is not proof that something is safe.</p></details>
+          <details><summary>What happens if a check fails?</summary><p>You aren't charged. Credits and free points come back, and x402 payments settle only after a run succeeds.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="bots">
+      <div class="wrap dev">
+        <div><span class="eyebrow">For bots and AI agents</span><h2>The same checks, over an API</h2><p>Lookups and checkups are free with a daily limit. Paid runs take x402 (USDC on Base), with no account. Prices and payment options are at <a href="/v1/catalog"><code>/v1/catalog</code></a>.</p></div>
+<pre class="code"><span class="c"># what is this address, on every chain?</span>
+<span class="k">POST</span> /v1/lookup   {<span class="s">"query"</span>: <span class="s">"0x…"</span>}
+
+<span class="c"># the free checks of every desk</span>
+<span class="k">POST</span> /v1/checkup  {<span class="s">"wallet"</span>: <span class="s">"0x…"</span>}
+
+<span class="c"># paid by x402: token check, report, cleanup, pre-sign check</span>
+<span class="k">POST</span> /v1/tokens/quick-check {<span class="s">"chain"</span>, <span class="s">"token_address"</span>}</pre>
+      </div>
+    </section>
+
+    <div class="wrap" style="padding-top:80px">
+      <div class="closing">
+        <h2>Check a wallet before it costs you</h2>
+        <p>One address, six chains, four free checks. Every finding with its source.</p>
+        <a class="btn light" href="#top">Run a free checkup<span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      </div>
+    </div>
   </main>
 
-  <footer class="muted">An automated check of known patterns, not financial advice or proof of safety. RektBull never holds your funds or keys. <a href="/privacy">Privacy</a></footer>
+  <!--#footer-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/home.js"></script>

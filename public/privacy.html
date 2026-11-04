@@ -8,11 +8,8 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="/">RektBull <span>Don't get rekt.</span></a>
-    <nav class="nav"><a href="/safety">Safety</a><a href="/find">Find money</a><a href="/governance">Governance</a><a href="/extension">Extension</a><a href="/trade">Trade</a></nav>
-  </header>
-  <main class="prose">
+  <!--#header-->
+  <main class="tool prose">
     <section class="card">
       <h1>Privacy</h1>
       <p class="muted small">Last updated 2 November 2026. RektBull is run by {{OPERATOR}}. Questions or requests: <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</p>
@@ -125,6 +122,8 @@
       <p>When this page changes, the date at the top changes. If a change means we'd collect something new, we'll say so on the site before it applies.</p>
     </section>
   </main>
-  <footer class="muted">RektBull never holds your funds or keys.</footer>
+  <!--#footer-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
 </body>
 </html>
