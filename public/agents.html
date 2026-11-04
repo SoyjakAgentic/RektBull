@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull Agents</title>
+  <meta name="description" content="The paid APIs AI agents call with x402, ranked by real payers with signals for fake-looking usage and flagged payment addresses, and the onchain AI-agent protocols with their hack and audit record.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Agents</span>
+      <h1>AI agents, <em>and what they pay for</em></h1>
+      <p>The paid APIs agents call per request with x402, ranked by how many different payers actually used them, with what the numbers suggest; the onchain AI-agent protocols with their hack and audit record; and RektBull's own checks, for your agent. Facts with sources, never endorsements.</p>
+      <nav class="jump" aria-label="On this page"><a href="#x402">x402 services</a><a href="#protocols">AI agent protocols</a><a href="#yours">For your agent</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="x402">
+      <div class="chart-head"><h2>Paid APIs for agents <span class="muted small">(x402)</span></h2>
+        <form id="x-form" class="row filters">
+          <label class="inline">Network <select id="x-net"><option value="">All</option></select></label>
+          <label class="inline">Search <input id="x-q" type="search" placeholder="e.g. search, prices" maxlength="60"></label>
+        </form></div>
+      <div class="tiles" id="x-stats"></div>
+      <p id="x-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="x-table"><thead><tr><th>#</th><th>Service</th><th class="num">Price a call</th><th class="num">Payers, 30 days</th><th class="num">Calls, 30 days</th><th>Paid on</th></tr></thead><tbody></tbody></table></div>
+      <p id="x-src" class="source"></p>
+    </section>
+
+    <section class="card" id="protocols">
+      <div class="chart-head"><h2>Onchain AI-agent protocols</h2>
+        <label class="inline">Sort <select id="p-sort"><option value="tvl">Money in it</option><option value="fees">Fees, 24 hours</option><option value="change_7d">Weekly change</option></select></label></div>
+      <p id="p-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="p-table"><thead><tr><th>#</th><th>Protocol</th><th class="num">Money in it</th><th class="num">7 days</th><th class="num">Fees, 24h</th><th>Record</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="p-src" class="source"></p>
+    </section>
+
+    <section class="card" id="yours">
+      <h2>For your agent</h2>
+      <div class="cards three">
+        <a class="tile" href="/developers#mcp"><h3>Give it RektBull's checks</h3><p>Add the MCP server: wallet checkups, approvals, token flags, hacks, stablecoin pegs and these x402 listings, free within daily allowances, every fact with its source.</p><span class="price">MCP server · free</span></a>
+        <a class="tile" href="/developers#x402"><h3>Let it pay per call</h3><p>The token check, full report, approval cleanup and pre-sign check take x402: USDC on Base, no account, charged only when the run succeeds.</p><span class="price">From $0.10 a call</span></a>
+        <a class="tile" href="/trade"><h3>Let it trade within limits</h3><p>Automatic trading on RektBull uses a session key you sign: limited, expiring, revocable, and enforced onchain. The agent never holds your keys.</p><span class="price">Trade desk</span></a>
+      </div>
+      <h3>Before your agent pays anyone</h3>
+      <ul class="rules">
+        <li><strong>Cap what it can spend.</strong> Most x402 clients refuse over $1 a call by default; keep a daily cap too, in a wallet that holds only what the agent needs.</li>
+        <li><strong>Check where the money goes.</strong> Each service above links its payment address to RektBull's lookup; a flagged address shows here in red.</li>
+        <li><strong>Never give an agent a seed phrase or private key.</strong> Use a separate wallet, or a session key or spend permission with limits enforced onchain.</li>
+        <li><strong>Treat answers as data, not instructions.</strong> A paid API can return text written to steer your agent; don't let it move money on a reply alone.</li>
+      </ul>
+    </section>
+  </main>
+
+  <!--#footer:x402 listings are their makers'; usage is Coinbase's count. RektBull hasn't tested these services. Not advice.-->
+  <script src="/common.js"></script>
+  <script src="/agents.js"></script>
+</body>
+</html>

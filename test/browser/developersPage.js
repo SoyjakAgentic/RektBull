@@ -24,9 +24,9 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     assert.match(await page.textContent('#mcp-cc'), new RegExp(`claude mcp add --transport http[\\s\\\\]*rektbull ${url}/mcp`));
     assert.deepEqual(JSON.parse(await page.textContent('#mcp-json')), { mcpServers: { rektbull: { url: `${url}/mcp` } } });
 
-    await page.locator('#mcp-tools tbody tr').nth(15).waitFor();
-    assert.equal(await page.locator('#mcp-tools tbody tr').count(), 16);
-    assert.match(await page.textContent('#mcp-count'), /16, from the server's own tools\/list/);
+    await page.locator('#mcp-tools tbody tr').nth(17).waitFor();
+    assert.equal(await page.locator('#mcp-tools tbody tr').count(), 18);
+    assert.match(await page.textContent('#mcp-count'), /18, from the server's own tools\/list/);
     const checkup = page.locator('#mcp-tools tbody tr', { hasText: 'wallet_checkup' });
     assert.match(await checkup.textContent(), /Wallet checkup.*3 \(10 signed in\)$/s);
     assert.match(await page.locator('#mcp-tools tbody tr', { hasText: 'markets_overview' }).textContent(), /Cached, no daily cap$/);

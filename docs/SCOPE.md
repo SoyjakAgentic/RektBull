@@ -87,7 +87,7 @@ Built so far: **Home** (`/`, the ask box and the free wallet checkup), **Discove
 (`/markets`: DeFi today, stablecoin pegs, RWA, prediction markets, largest tokens),
 **Opportunities** (`/opportunities`: a wallet's own, live reward campaigns; Find money and
 Governance sit under it in the menu), **Portfolio** (`/portfolio`: holdings on six chains with
-the facts on each), **Research** (`/research`: the hack tracker and the weekly digest, reviewed by the owner before it's published, and by email), **Developers** (`/developers`: the MCP server at `/mcp`, the API reference and OpenAPI, x402 prices), Safety
+the facts on each), **Research** (`/research`: the hack tracker and the weekly digest, reviewed by the owner before it's published, and by email), **Agents** (`/agents`: x402 services ranked by real payers with signals, and the AI-agent protocols), **Developers** (`/developers`: the MCP server at `/mcp`, the API reference and OpenAPI, x402 prices), Safety
 (`/safety`), Find money (`/find`, under Opportunities), Trade (`/trade`),
 Governance (`/governance`, under Opportunities), the pre-sign check
 (`/extension`). Every page shares one header and footer (`src/pages/`).
@@ -95,7 +95,7 @@ Governance (`/governance`, under Opportunities), the pre-sign check
 ```
 Home
 ├── Discover        rankings, trending, new launches, categories, chains
-├── Agents          onchain AI agents, x402 and MCP services
+├── Agents          x402 services (real payers, signals), AI-agent protocols
 ├── Markets         DeFi/TVL, stablecoins, RWA, prediction markets, tokens
 ├── Safety          token checks, risk scores, exploit tracker, approval cleanup
 ├── Opportunities   airdrops, points programs, governance votes

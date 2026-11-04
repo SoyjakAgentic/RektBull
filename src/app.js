@@ -46,7 +46,7 @@ function createApp() {
   const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
     .replace('<!--#header-->', current === '/' ? HEADER.replace('<a class="logo" href="/"', '<a class="logo" href="/" aria-current="page"') : HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html' };
   // Find money and Governance sit under Opportunities in the menu.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
   for (const [route, file] of Object.entries(PAGES)) {
