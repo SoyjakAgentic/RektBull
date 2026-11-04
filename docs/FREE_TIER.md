@@ -5,7 +5,7 @@ calls per provider per UTC day and skips a provider at its limit
 (`PROVIDER_DAILY_LIMITS`), warning at 80%. Results are cached (`lib/cache.js`):
 token scans 6 hours, market data 5 minutes, AI reports 1 hour, approval
 scans 15 minutes (shared by the free preview and the cleanup; a fresh scan
-can be asked for after revoking), GoPlus spender checks 24 hours.
+can be asked for after revoking), GoPlus spender checks 24 hours, Discover's rankings 30 minutes, its token lists 5 minutes and GoPlus's free flags for one token 6 hours (20 a day per visitor, 100 signed in).
 
 **Check each provider's current free-plan limits and terms before launch.**
 Free plans change (Etherscan changed which chains its free plan covers in
@@ -28,6 +28,8 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | 0x | Buy-then-sell honeypot test, taxes (EVM) | Free key | GoPlus's figures |
 | Jupiter | Buy-then-sell test (Solana) | Optional | — |
 | DexScreener | Liquidity, volume, price, token age | No | — |
+| DefiLlama (api.llama.fi) | Discover: protocols and TVL, fees in the last 24 hours, recorded hacks, chain TVL. Cached 30 minutes (hacks 6 hours), so a few calls an hour whatever the traffic | No | "DefiLlama didn't answer"; a missing part (fees, hacks) is listed as not checked |
+| GeckoTerminal | Discover: trending and newest pools per chain. Free plan about 30 calls a minute; each list cached 5 minutes, one retry after a 429 | No | The page says it didn't answer |
 | Anthropic | Report writing | Paid per use | Covered by the report price |
 
 ## The risk monitor's cost

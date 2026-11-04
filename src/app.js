@@ -37,7 +37,7 @@ function createApp() {
   const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
     .replace('<!--#header-->', HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
-  const PAGES = { '/': 'home.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
   for (const [route, file] of Object.entries(PAGES)) {
     const html = render(file, route);
     app.get(route, (_req, res) => res.type('html').send(html));

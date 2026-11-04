@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull Discover</title>
+  <meta name="description" content="Dapps ranked by what's in them, with the hacks, audits and age that say how far to trust them. Trending and new tokens with the warning signs their own trading shows. Every fact names its source.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Discover</span>
+      <h1>What's out there, <em>and what to watch for</em></h1>
+      <p>Dapps ranked by what's in them, next to the hacks, audits and age that say how far to trust them. Trending and new tokens, with the warning signs their own trading shows. A ranking is popularity, not a recommendation.</p>
+      <form id="d-ask" class="mini-ask" autocomplete="off">
+        <label class="sr" for="d-q">A token, wallet or contract address</label>
+        <input id="d-q" placeholder="Check any address: 0x…" spellcheck="false">
+        <button class="btn primary" type="submit">Check</button>
+      </form>
+      <nav class="jump" aria-label="On this page"><a href="#dapps-card">Dapps</a><a href="#tokens-card">Trending and new tokens</a><a href="#cats-card">Categories</a><a href="#chains-card">Chains</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="dapps-card">
+      <h2>Dapps</h2>
+      <div class="filters">
+        <label>Chain<select id="f-chain"><option value="">All chains</option><option value="ethereum">Ethereum</option><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="optimism">Optimism</option><option value="polygon">Polygon</option><option value="bsc">BNB Chain</option><option value="solana">Solana</option></select></label>
+        <label>Category<select id="f-cat"><option value="">All categories</option></select></label>
+        <label>Rank by<select id="f-sort"><option value="tvl">Money in it (TVL)</option><option value="fees">Fees, last 24 hours</option><option value="change_7d">Change this week</option></select></label>
+      </div>
+      <p id="dapps-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="dapps"><thead><tr><th>#</th><th>Dapp</th><th class="num">TVL</th><th class="num">7 days</th><th class="num">Fees 24h</th><th>Safety facts</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="dapps-src" class="source"></p>
+    </section>
+
+    <section class="card" id="tokens-card">
+      <h2>Trending and new tokens</h2>
+      <div class="filters">
+        <div class="seg" role="group" aria-label="List"><button type="button" class="on" data-list="trending">Trending</button><button type="button" data-list="new">New launches</button></div>
+        <div class="seg" role="group" aria-label="Chain" id="t-chains"><button type="button" class="on" data-chain="base">Base</button><button type="button" data-chain="ethereum">Ethereum</button><button type="button" data-chain="arbitrum">Arbitrum</button><button type="button" data-chain="bsc">BNB Chain</button><button type="button" data-chain="polygon">Polygon</button><button type="button" data-chain="optimism">Optimism</button><button type="button" data-chain="solana">Solana</button></div>
+      </div>
+      <p id="tokens-note" class="small muted"></p>
+      <p id="tokens-msg" class="msg"></p>
+      <div id="tokens" class="tokens"></div>
+      <p id="tokens-src" class="source"></p>
+    </section>
+
+    <section class="card" id="cats-card">
+      <h2>Categories</h2>
+      <p class="small muted">Summed from the dapps above, on the chain chosen there.</p>
+      <div class="tablewrap"><table class="rank" id="cats"><thead><tr><th>Category</th><th class="num">TVL</th><th class="num">7 days</th><th class="num">Dapps</th><th>Biggest</th></tr></thead><tbody></tbody></table></div>
+      <p id="cats-src" class="source"></p>
+    </section>
+
+    <section class="card" id="chains-card">
+      <h2>Chains</h2>
+      <div class="tablewrap"><table class="rank" id="chains"><thead><tr><th>Chain</th><th class="num">TVL</th><th class="num">Dapps</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="chains-src" class="source"></p>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small">Free and cached: <code>GET /v1/discover/dapps?chain=&amp;category=&amp;sort=tvl|fees|change_7d&amp;limit=</code>, <code>/v1/discover/categories?chain=</code>, <code>/v1/discover/chains</code>, <code>/v1/discover/tokens?list=trending|new&amp;chain=</code>, and <code>/v1/discover/flags?chain=&amp;token=</code> (GoPlus's flags for one token; a daily limit).</p>
+    </section>
+  </main>
+
+  <!--#footer:Rankings show popularity, not safety. Signals are patterns worth a look, each with its source; not advice.-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/discover.js"></script>
+</body>
+</html>
