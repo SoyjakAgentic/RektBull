@@ -138,6 +138,23 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      - Charge sponsors in crypto only (a NOWPayments invoice or a direct
        USDC transfer to your wallet); RektBull doesn't bill sponsors itself.
      - A skipped week shows no sponsored posts: move them to the next week.
+   - ✅ **Developers** (`/developers`): RektBull's **MCP server** at `/mcp`
+     (Streamable HTTP, stateless JSON; 16 read-only tools: lookups,
+     checkups, approvals preview, portfolio, rewards, DAO votes, token
+     flags, rankings, markets, stablecoins, rates, campaigns, hacks, the
+     digest, and `paid_services`, which tells an agent how to call the paid
+     runs with x402). No tool signs, sends or prepares a transaction. The
+     tools use the same daily allowances as the website, per IP or per
+     signed-in wallet (`src/payments/freeLimits.js`, now shared by the
+     routes). Also the API reference and x402 prices, built from one list
+     (`src/developers/api.js`) that also serves `/v1/openapi.json`; a test
+     checks every documented endpoint is a real route. Tested with the
+     official MCP SDK client. The header menu drops Home (the logo is home)
+     and puts Extension and Developers under More, so it stays one row.
+     **After launch:** list it in the official MCP Registry with
+     `mcp-publisher` and the repo's `server.json` (`com.rektbull/mcp`,
+     proved by a DNS TXT record on rektbull.com), and in Claude's and
+     Cursor's directories if they'll take it.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until

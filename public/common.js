@@ -127,6 +127,17 @@
     if (head) head.addEventListener('click', headerConnect);
     render();
     if (state.token) notify();
+    // The header's More menu: kept on screen, closed by a click elsewhere or Escape.
+    const more = document.querySelector('.bar .more');
+    if (more) {
+      more.addEventListener('toggle', () => {
+        const menu = more.querySelector('.more-menu');
+        menu.classList.remove('left');
+        if (more.open && menu.getBoundingClientRect().left < 8) menu.classList.add('left');
+      });
+      document.addEventListener('click', e => { if (more.open && !more.contains(e.target)) more.open = false; });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape' && more.open) { more.open = false; more.querySelector('summary').focus(); } });
+    }
   });
 
   /* What things cost, and what to say when a run needs paying for. */

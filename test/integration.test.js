@@ -87,7 +87,8 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
     assert.equal(r.status, 200, page);
     const html = await r.text();
     assert.match(html, /<nav class="nav"/);
-    assert.ok(html.includes(`<a href="${page}" aria-current="page">`), `${page}: the shared header marks this page`);
+    const marked = page === '/' ? '<a class="logo" href="/" aria-current="page"' : `<a href="${page}" aria-current="page">`; // home: the logo (the menu has no Home link)
+    assert.ok(html.includes(marked), `${page}: the shared header marks this page`);
     assert.match(html, /<footer class="site">/);
     assert.ok(!html.includes('<!--#'), `${page}: every placeholder is filled`);
   }

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.rektbull/mcp",
+  "title": "RektBull",
+  "description": "Crypto safety checks for agents: wallets, tokens, approvals, dapps, hacks. Sourced, read-only.",
+  "version": "1.0.0",
+  "websiteUrl": "https://rektbull.com/developers",
+  "remotes": [
+    { "type": "streamable-http", "url": "https://rektbull.com/mcp" }
+  ]
+}

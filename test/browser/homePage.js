@@ -39,7 +39,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   try {
     await page.goto(url + '/');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.bar')).position), 'sticky', 'the stylesheet loaded');
-    assert.equal(await page.getAttribute('.nav a[aria-current="page"]', 'href'), '/', 'the shared header marks this page');
+    assert.equal(await page.getAttribute('.bar .logo', 'aria-current'), 'page', 'the shared header marks this page');
     assert.match(await page.textContent('footer.site'), /Privacy/);
     assert.ok(await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 40px "Bricolage Grotesque"'); }), 'the fonts are served from RektBull');
     await page.locator('#p-find', { hasText: '5% of what you claim (3% with Safety Pro)' }).waitFor();
