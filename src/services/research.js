@@ -276,7 +276,8 @@ async function digest(week) {
     ? await db.query(`SELECT * FROM research_digests WHERE week_start = $1 AND status = 'published'`, [week])
     : await db.query(`SELECT * FROM research_digests WHERE status = 'published' ORDER BY week_start DESC LIMIT 1`);
   if (!rows.length) throw new ResearchRefused(week ? 'No digest for that week.' : 'No digest yet: the first is published the Monday after launch.', 404);
-  return shape(rows[0]);
+  const d = shape(rows[0]);
+  return { ...d, sponsored: await require('./sponsored').forWeek(d.week_start) };
 }
 
 async function digests() {
@@ -288,7 +289,7 @@ async function digests() {
 async function draftView(week) {
   const { rows: [r] } = await db.query('SELECT * FROM research_digests WHERE week_start = $1', [week]);
   if (!r) throw new ResearchRefused('No digest for that week.', 404);
-  return { ...shape(r), status: r.status, draft: r.draft, checked: r.checked, check_notes: r.check_notes, made_at: r.created_at };
+  return { ...shape(r), status: r.status, draft: r.draft, checked: r.checked, check_notes: r.check_notes, made_at: r.created_at, sponsored: await require('./sponsored').forWeek(week, { admin: true }) };
 }
 
 async function drafts() {

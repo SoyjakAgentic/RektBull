@@ -33,12 +33,23 @@
       $('d-byline').textContent = `${d.byline}${d.published_at ? ` · published ${new Date(d.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`;
       $('d-byline').hidden = false;
       $('d-text').replaceChildren(...(d.text ? markdown(d.text) : []));
+      for (const where of ['top', 'bottom']) $(`d-sp-${where}`).replaceChildren(...(d.sponsored || []).filter(s => s.placement === where).map(adBox));
       $('d-text').hidden = !d.text;
       $('d-facts').replaceChildren(...factList(d));
       $('d-facts-box').hidden = false;
       $('d-facts-box').open = !d.text; // with no write-up, the facts are the digest
       $('d-note').textContent = d.note;
     } catch (err) { say('d-msg', err.message, 'bad'); }
+  }
+
+  /** A sponsored post: set apart, labelled with who paid, the site named, the link marked sponsored. */
+  function adBox(s) {
+    const link = text => el('a', { href: s.url, target: '_blank', rel: 'sponsored noopener' }, text);
+    return el('aside', { class: 'sponsored', 'aria-label': 'Sponsored' },
+      el('p', { class: 'sp-label' }, `${s.label} · ${s.sponsor}`),
+      el('p', { class: 'sp-head' }, link(s.headline)),
+      el('p', {}, s.body),
+      el('p', { class: 'sp-foot' }, link(s.site), ` · ${s.disclosure}`));
   }
 
   function factList(d) {
@@ -60,6 +71,7 @@
     $('r-mail').textContent = r.newsletter_ready
       ? `Publishing emails it to ${c.confirmed} confirmed subscriber${c.confirmed === 1 ? '' : 's'} (${c.pending} not yet confirmed), a batch every 5 minutes.`
       : 'The newsletter is off on this server (RESEND_API_KEY and OPERATOR_POSTAL_ADDRESS are both needed); publishing puts it on the site only.';
+    loadSponsoredReport();
     if (!drafts.length) { $('r-body').hidden = true; say('r-msg', 'No draft waiting. The next is drafted on Monday from 06:00 UTC.'); $('r-msg').append(' ', el('button', { type: 'button', class: 'link', onclick: remake }, 'Draft last week now')); return; }
     say('r-msg', '');
     $('r-body').hidden = false;
@@ -77,8 +89,73 @@
       ...(failed.length ? [el('div', { class: 'notes' }, el('ul', {}, failed.map(n => el('li', {}, n.reason || JSON.stringify(n)))))] : []),
     );
     $('r-facts').replaceChildren(...factList(d));
+    showSponsored(d);
   }
-  function preview() { $('r-preview').replaceChildren(...markdown($('r-text').value || 'No write-up: the facts alone will be published.')); }
+  function preview() {
+    $('r-preview').replaceChildren(...markdown($('r-text').value || 'No write-up: the facts alone will be published.'));
+    const d = current();
+    for (const where of ['top', 'bottom']) $(`r-preview-${where}`).replaceChildren(...(d?.sponsored || []).filter(s => s.placement === where).map(adBox));
+  }
+
+  /* sponsored posts in the draft: one form per place */
+  const SP_FIELDS = [['sponsor', 'Sponsor (who paid; shown in the label)', 60], ['headline', 'Headline', 90], ['url', 'Link (https://)', 500]];
+  function showSponsored(d) {
+    $('r-sp-count').textContent = d.sponsored.length ? d.sponsored.map(s => `${s.placement}: ${s.sponsor}`).join(', ') : 'none';
+    $('r-sp-forms').replaceChildren(...['top', 'bottom'].map(where => {
+      const s = d.sponsored.find(x => x.placement === where);
+      const id = k => `sp-${where}-${k}`;
+      const msg = el('p', { class: 'msg', id: id('msg') });
+      const form = el('form', { 'data-placement': where },
+        el('h4', {}, where === 'top' ? 'Above the digest' : 'Below the digest'),
+        ...SP_FIELDS.map(([k, label, max]) => el('label', {}, label, el('input', { id: id(k), name: k, maxlength: max, required: true, type: k === 'url' ? 'url' : 'text', value: k === 'url' ? s?.target : s?.[k] }))),
+        el('label', {}, `Text (plain, up to 400 characters)`, el('textarea', { id: id('body'), name: 'body', rows: 3, maxlength: 400, required: true }, s?.body || '')),
+        el('label', { class: 'check' }, el('input', { type: 'checkbox', id: id('ok'), required: true, checked: !!s }), 'It isn\'t a promotion to buy, sell or invest in a cryptoasset (token, presale, staking or yield product).'),
+        s ? el('p', { class: 'source' }, `Link checked: ${s.link_check.phishing ? 'listed' : 'not listed'} on the ${s.link_check.source}, ${new Date(s.link_check.checked_at).toLocaleString()}.`) : null,
+        el('div', { class: 'actions' },
+          el('button', { type: 'submit' }, s ? 'Save changes' : 'Add'),
+          s ? el('button', { type: 'button', onclick: () => removeSponsored(where) }, 'Remove') : null),
+        msg);
+      form.addEventListener('submit', e => { e.preventDefault(); saveSponsored(where, form); });
+      return form;
+    }));
+  }
+  async function saveSponsored(where, form) {
+    const f = new FormData(form);
+    const week = current().week_start;
+    say(`sp-${where}-msg`, 'Checking the link and saving…');
+    try {
+      await api('POST', `/v1/admin/research/digests/${week}/sponsored`, { placement: where, sponsor: f.get('sponsor'), headline: f.get('headline'), body: f.get('body'), url: f.get('url'), not_investment: $(`sp-${where}-ok`).checked });
+      await reloadDraft(week);
+      toast('Sponsored post saved');
+    } catch (err) { say(`sp-${where}-msg`, err.message, 'bad'); }
+  }
+  async function removeSponsored(where) {
+    const week = current().week_start;
+    if (!confirm('Remove this sponsored post?')) return;
+    try { await api('DELETE', `/v1/admin/research/digests/${week}/sponsored/${where}`); await reloadDraft(week); toast('Removed'); } catch (err) { say(`sp-${where}-msg`, err.message, 'bad'); }
+  }
+  /** Refreshes one draft's sponsored posts without losing edits in the text box. */
+  async function reloadDraft(week) {
+    const { drafts: fresh } = await api('GET', '/v1/admin/research/drafts');
+    const d = fresh.find(x => x.week_start === week);
+    const i = drafts.findIndex(x => x.week_start === week);
+    if (d && i >= 0) drafts[i] = { ...drafts[i], sponsored: d.sponsored };
+    showSponsored(drafts[i]);
+    preview();
+    loadSponsoredReport();
+  }
+  async function loadSponsoredReport() {
+    try {
+      const { sponsored } = await api('GET', '/v1/admin/research/sponsored');
+      $('r-sp-report').hidden = !sponsored.length;
+      $('r-sp-report').querySelector('tbody').replaceChildren(...sponsored.map(s => el('tr', {},
+        el('td', { class: 'mono small' }, s.week_start, s.status === 'published' ? '' : el('div', { class: 'sub' }, s.status)),
+        el('td', {}, el('span', { class: 'name' }, s.sponsor), el('div', { class: 'sub' }, `${s.headline} · ${s.site}`)),
+        el('td', { class: 'small' }, s.placement === 'top' ? 'Above' : 'Below'),
+        el('td', { class: 'num' }, s.status === 'published' ? String(s.emailed_to) : '–'),
+        el('td', { class: 'num' }, String(s.clicks)))));
+    } catch { /* the report is extra; the review works without it */ }
+  }
   $('r-pick').addEventListener('change', showDraft);
   $('r-text').addEventListener('input', preview);
 
@@ -92,7 +169,7 @@
     if (!confirm(`Publish the digest for the week of ${day(current().week_start)}${text ? '' : ' (the facts alone)'}? It goes on the site and out by email.`)) return;
     act(`/v1/admin/research/digests/${current().week_start}/publish`, { text: text || null }, 'Published');
   });
-  $('r-skip').addEventListener('click', () => { if (confirm('Skip this week? Nothing is published or emailed for it.')) act(`/v1/admin/research/digests/${current().week_start}/skip`, {}, 'Skipped'); });
+  $('r-skip').addEventListener('click', () => { if (confirm(`Skip this week? Nothing is published or emailed for it${current().sponsored.length ? ', including its sponsored posts' : ''}.`)) act(`/v1/admin/research/digests/${current().week_start}/skip`, {}, 'Skipped'); });
   function remake() {
     say('r-msg', 'Drafting: gathering the facts, writing and fact-checking (about a minute)…');
     act('/v1/admin/research/digest', drafts.length ? { week_start: current().week_start } : {}, 'Drafted');

@@ -29,7 +29,11 @@
         <div id="r-notes"></div>
         <label for="r-text" class="small">The digest (Markdown: ## headings, - lists, **bold**; sources in [brackets]). Empty publishes the facts alone.</label>
         <textarea id="r-text" rows="16" spellcheck="true"></textarea>
-        <details><summary class="small">Preview</summary><div id="r-preview" class="report"></div></details>
+        <details id="r-sponsored"><summary class="small">Sponsored posts: <span id="r-sp-count">none</span></summary>
+          <p class="muted small">Up to two a week, one above the digest and one below, each labelled "Sponsored" with who paid. Plain text and an https link, which is checked against GoPlus's phishing list when you save it and again on every click. They're fixed once you publish. No promotions to buy, sell or invest in a cryptoasset (tokens, presales, staking or yield products): those are regulated in the UK and EU.</p>
+          <div id="r-sp-forms" class="sp-forms"></div>
+        </details>
+        <details><summary class="small">Preview</summary><div id="r-preview-top"></div><div id="r-preview" class="report"></div><div id="r-preview-bottom"></div></details>
         <details><summary class="small">The facts it was drafted from</summary><div id="r-facts"></div></details>
         <div class="actions">
           <button type="button" id="r-publish" class="primary">Publish and email it</button>
@@ -38,6 +42,10 @@
         </div>
         <p id="r-mail" class="source"></p>
       </div>
+      <details id="r-sp-report" hidden><summary class="small">Sponsored posts so far</summary>
+        <div class="tablewrap"><table class="rank"><thead><tr><th>Week</th><th>Sponsor</th><th>Where</th><th class="num">Emailed to</th><th class="num">Clicks</th></tr></thead><tbody></tbody></table></div>
+        <p class="source">Clicks are counted on RektBull's redirect, from the email and the page; some mail apps open links to scan them, which counts too.</p>
+      </details>
     </section>
 
     <section class="card" id="digest-card">
@@ -45,7 +53,9 @@
         <label class="inline">Week <select id="d-pick"></select></label></div>
       <p id="d-msg" class="msg"></p>
       <p id="d-byline" class="muted small" hidden></p>
+      <div id="d-sp-top"></div>
       <div id="d-text" class="report" hidden></div>
+      <div id="d-sp-bottom"></div>
       <details id="d-facts-box" hidden><summary class="small">The facts it was written from, with their sources</summary><div id="d-facts"></div></details>
       <p id="d-note" class="source"></p>
     </section>

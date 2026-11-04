@@ -392,6 +392,36 @@ router.post('/v1/admin/research/digests/:week/skip', requireAuth, requireAdmin, 
   return research.skip(req.params.week, { accountId: req.account.id });
 }));
 
+// Sponsored posts: the owner adds them to a week's draft; readers' clicks go through a re-checked, counted redirect.
+const sponsored = require('../services/sponsored');
+const sponsoredCall = fn => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof sponsored.SponsoredRefused || err instanceof research.ResearchRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/admin/research/sponsored', requireAuth, requireAdmin, sponsoredCall(async () => ({ sponsored: await sponsored.report() })));
+router.post('/v1/admin/research/digests/:week/sponsored', requireAuth, requireAdmin, sponsoredCall(req => {
+  mondayOf(req.params.week);
+  const post = sponsored.parse(req.body);
+  if (post.error) throw new sponsored.SponsoredRefused(post.error);
+  return sponsored.put(req.params.week, post, { accountId: req.account.id });
+}));
+router.delete('/v1/admin/research/digests/:week/sponsored/:placement', requireAuth, requireAdmin, sponsoredCall(req => {
+  mondayOf(req.params.week);
+  if (!['top', 'bottom'].includes(req.params.placement)) throw new sponsored.SponsoredRefused('placement must be top or bottom');
+  return sponsored.remove(req.params.week, req.params.placement);
+}));
+router.get('/v1/research/sponsored/:id', async (req, res) => {
+  const r = env.databaseUrl ? await sponsored.follow(req.params.id) : { status: 404 };
+  res.set('cache-control', 'no-store');
+  if (r.status === 302) return res.redirect(302, r.url);
+  if (r.status === 410) return res.status(410).type('text/plain').send(`Stopped: ${r.site} is now on a phishing list (${r.source}), so RektBull no longer sends anyone there. Don't open it.`);
+  return res.status(404).type('text/plain').send('No such sponsored link.');
+});
+
 // ── The weekly newsletter: double opt-in, one-click unsubscribe (deletes the address) ──
 const newsletter = require('../services/newsletter');
 const SIGNUPS_PER_DAY = 5; // per IP address: enough for a person, too few to mail-bomb anyone

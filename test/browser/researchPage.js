@@ -33,6 +33,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   require('../../src/services/opportunities').campaigns = async () => ({ total: 0, campaigns: [] });
   require('../../src/yield/rates').listRates = async () => [];
   require('../../src/services/governors').REGISTRY.length = 0;
+  require('../../src/providers/goplus').phishingSite = async origin => ({ source: 'GoPlus phishing site list', phishing: origin === 'https://drainer.example' });
   const sent = [];
   require('../../src/alerts/transports').email.send = async m => { sent.push(m); };
   const claude = require('../../src/ai/claude');
@@ -122,14 +123,36 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     assert.match(await owner.inputValue('#r-text'), /^## The week in brief\nThree exploits were recorded/, 'the fact-checked draft, ready to edit');
     assert.match(await owner.textContent('#r-notes'), /The fact-check removed 1 sentence:.*Expect more next week\./s);
     assert.match(await owner.textContent('#r-mail'), /emails it to 1 confirmed subscriber \(0 not yet confirmed\)/);
+    await owner.getByText('Sponsored posts:').click();
+    const top = owner.locator('form[data-placement="top"]');
+    await top.locator('input[name="sponsor"]').fill('Acme Wallet');
+    await top.locator('input[name="headline"]').fill('A hardware wallet that shows what you sign');
+    await top.locator('textarea[name="body"]').fill('Acme shows every transaction on its own screen.');
+    await top.locator('input[name="url"]').fill('https://drainer.example/claim');
+    await top.locator('input[type="checkbox"]').check();
+    await top.getByRole('button', { name: 'Add' }).click();
+    await owner.locator('#sp-top-msg', { hasText: 'phishing list has drainer.example' }).waitFor();
+    await top.locator('input[name="url"]').fill('https://acme.example/wallet');
+    await top.getByRole('button', { name: 'Add' }).click();
+    await owner.locator('#r-sp-count', { hasText: 'top: Acme Wallet' }).waitFor();
+    assert.match(await owner.textContent('form[data-placement="top"]'), /Link checked: not listed on the GoPlus phishing site list/);
+    console.log('✔ the owner adds a sponsored post; a phishing link is refused');
+
     await owner.fill('#r-text', '## The week in brief\nAn **edited** week [DefiLlama hacks].');
     await owner.getByText('Preview', { exact: true }).click();
     assert.equal(await owner.textContent('#r-preview strong'), 'edited');
     await owner.getByRole('button', { name: 'Publish and email it' }).click();
     await owner.locator('#r-msg', { hasText: 'No draft waiting' }).waitFor();
-    assert.equal(await owner.locator('#d-pick option').count(), 3, 'published: now in the archive');
+    await owner.waitForFunction(() => document.querySelectorAll('#d-pick option').length === 3); // published: now in the archive
     await owner.selectOption('#d-pick', week(older.start));
     await owner.locator('#d-text', { hasText: 'An edited week' }).waitFor();
+    const ad = owner.locator('#d-sp-top .sponsored');
+    assert.match(await ad.textContent(), /^Sponsored · Acme WalletA hardware wallet that shows what you sign.*acme\.example · A paid placement\. Not checked or endorsed by RektBull, and not advice\.$/);
+    assert.equal(await ad.locator('a').first().getAttribute('rel'), 'sponsored noopener');
+    assert.match(await ad.locator('a').first().getAttribute('href'), /\/v1\/research\/sponsored\/\d+$/);
+    await owner.locator('#r-sp-report').click();
+    assert.match(await owner.textContent('#r-sp-report tbody'), /Acme Wallet.*Above/s);
+    console.log('✔ published with the sponsored post above it, labelled; the owner sees it in the report');
     await owner.setViewportSize({ width: 375, height: 800 });
     assert.ok(await owner.evaluate(() => document.documentElement.scrollWidth <= 375), 'the review fits a phone too');
     console.log('✔ the owner reviews the fact-checked draft, sees what was removed, edits it and publishes it');

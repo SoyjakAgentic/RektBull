@@ -12,6 +12,8 @@
  *   which US law (CAN-SPAM) asks of commercial email; nothing is sent without it.
  * - Sending is resumable: each digest is sent in batches by the worker, and
  *   every send is recorded, so a restart picks up where it stopped.
+ * - Sponsored posts the owner added to the week (src/services/sponsored.js)
+ *   go above and below the digest, each in its own box, labelled.
  * Links are signed (HMAC), so nothing secret is stored.
  */
 const crypto = require('crypto');
@@ -94,20 +96,33 @@ function mdToHtml(md) {
   return out.join('\n');
 }
 
+/** A sponsored post, set apart and labelled: as text, and as escaped HTML. */
+const adText = s => `--- ${s.label}: ${s.sponsor} ---\n${s.headline}\n${s.body}\n${s.url} (${s.site})\n${s.disclosure}\n---`;
+const adHtml = s => `<div style="border:1px solid #dde1e7;border-radius:12px;padding:12px 14px;margin:16px 0;background:#f6f7f9">
+<p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5d6673">${esc(s.label)} · ${esc(s.sponsor)}</p>
+<p style="margin:0 0 4px;font-weight:700"><a href="${esc(s.url)}" style="color:#15181d">${esc(s.headline)}</a></p>
+<p style="margin:0 0 4px">${esc(s.body)}</p>
+<p style="margin:0;font-size:12px;color:#5d6673"><a href="${esc(s.url)}" style="color:#2346d6">${esc(s.site)}</a> · ${esc(s.disclosure)}</p>
+</div>`;
+
 function compose(d, subscriberId) {
   const when = new Date(`${d.week_start}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   const page = `${env.publicUrl}/research?week=${d.week_start}`;
   const unsub = unsubscribeUrl(subscriberId);
   const body = d.text || d.facts.map(f => `- ${f.text} [${f.source}]`).join('\n');
+  const ads = { top: (d.sponsored || []).filter(s => s.placement === 'top'), bottom: (d.sponsored || []).filter(s => s.placement === 'bottom') };
+  const textAds = list => list.map(s => `\n${adText(s)}\n`).join('');
   const footer = `You get this because you subscribed at ${env.publicUrl.replace(/^https?:\/\//, '')}. Not financial advice.\n${env.operatorName}, ${env.operatorPostalAddress}`;
   return {
     subject: `RektBull Research: the week of ${when}`,
-    text: `RektBull Research: the week of ${when}\n${d.byline}\n\n${body}\n\nRead it on the site, with every fact and its source: ${page}\n\n${footer}\nUnsubscribe: ${unsub}`,
+    text: `RektBull Research: the week of ${when}\n${d.byline}\n${textAds(ads.top)}\n${body}\n${textAds(ads.bottom)}\nRead it on the site, with every fact and its source: ${page}\n\n${footer}\nUnsubscribe: ${unsub}`,
     html: `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:600px;color:#15181d;line-height:1.55">
 <p style="color:#2346d6;font-weight:700;margin:0">RektBull Research</p>
 <h1 style="font-size:22px;margin:4px 0">The week of ${esc(when)}</h1>
 <p style="color:#5d6673;font-size:13px;margin:0 0 12px">${esc(d.byline)}</p>
+${ads.top.map(adHtml).join('\n')}
 ${mdToHtml(body)}
+${ads.bottom.map(adHtml).join('\n')}
 <p style="margin:20px 0"><a href="${esc(page)}" style="background:#2346d6;color:#fff;padding:10px 16px;border-radius:999px;text-decoration:none">Read it with every fact and its source</a></p>
 <hr style="border:0;border-top:1px solid #dde1e7">
 <p style="color:#5d6673;font-size:12px">${esc(footer).replace('\n', '<br>')}<br><a href="${esc(unsub)}">Unsubscribe</a> (one click; your address is deleted)</p>

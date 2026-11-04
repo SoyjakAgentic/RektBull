@@ -113,6 +113,31 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      the first digest by hand (the button on the review card, or
      `POST /v1/admin/research/digest`) and publish it so the page isn't
      empty. Migration 014 runs by itself.
+   - ✅ **Sponsored posts in the digest**: the owner adds up to two a week to
+     a draft on the review card (one above the digest, one below):
+     sponsor, headline, up to 400 characters of plain text and an https
+     link. They're labelled "Sponsored · <sponsor>" with "A paid placement.
+     Not checked or endorsed by RektBull, and not advice.", on the page and
+     in the email, kept out of what the writer and fact-check see, and
+     fixed once the week is published. The link is checked against GoPlus's
+     phishing list when saved (listed or uncheckable: refused) and again on
+     every click, through RektBull's redirect, which stops a site listed
+     since. Clicks are a count only; the review card shows each post's
+     clicks and how many it was emailed to. Migration 015.
+     **Policy for the owner** (the code asks you to confirm the first point
+     for each post; the rest are yours to keep):
+     - No promotion to buy, sell or invest in a cryptoasset (tokens,
+       presales, staking or yield products, exchanges' trading offers). In
+       the UK those are financial promotions that only an FCA-authorised
+       firm may approve, and the EU's MiCA rules cover crypto marketing;
+       the newsletter reaches both. Wallets, security tools, hardware
+       wallets, developer tools, events and education are the safe kind.
+       Ask a lawyer before taking anything closer to investing.
+     - No airdrop or claim links, no "connect your wallet" pages: those are
+       how drainers work, and a safety product can't carry them.
+     - Charge sponsors in crypto only (a NOWPayments invoice or a direct
+       USDC transfer to your wallet); RektBull doesn't bill sponsors itself.
+     - A skipped week shows no sponsored posts: move them to the next week.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
