@@ -154,6 +154,18 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      and puts Extension and Developers under More, so it stays one row.
      **After launch:** list it in the official MCP Registry (section 6,
      step by step in [MCP_REGISTRY.md](MCP_REGISTRY.md)).
+   - ✅ **Agents** (`/agents`): the paid APIs agents call with x402, from
+     Coinbase's x402 Bazaar (the 500 busiest of over 100,000 listings,
+     cached 6 hours), grouped into services and ranked by different payers
+     in 30 days, with the noise (under 5 payers) left out and testnets
+     dropped. Signals with their sources: usage that looks generated (about
+     one call per payer, judged on the busiest endpoint), few users, no
+     calls in 14 days, plain http, and a payment address GoPlus flags
+     (shown in red, each address linked to the Home lookup). Prices shown
+     only in stablecoins RektBull can read as dollars. Also the onchain
+     AI-agent protocols (DefiLlama's "AI Agents", with their record), and
+     how to give an agent RektBull safely. Both are MCP tools too
+     (`x402_services`, `agent_protocols`). Nothing to set at deploy.
    - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
      on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
