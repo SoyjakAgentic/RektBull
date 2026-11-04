@@ -8,8 +8,10 @@
  *     ReserveConfiguration.sol: bits 56, 57, 60, 116-151).
  *   - Compound v3: getSupplyRate(getUtilization()), per second with 18
  *     decimals; isSupplyPaused / isWithdrawPaused.
- *   - Spark sUSDC: the Sky Savings Rate, ssr(), per second in ray, read from
- *     the Ethereum vault (the L2 vaults pay the same rate); maxDeposit.
+ *   - Spark sUSDC: the Sky Savings Rate, per second in ray, read on the
+ *     vault's own chain: ssr() on the Ethereum vault, getSSR() on Sky's SSR
+ *     oracle on an L2 (the vault's rateProvider(), the rate it converts by;
+ *     the Yield Router's rateOf reads the same); maxDeposit.
  * DefiLlama's yields API is a cross-check, and the only source for reward
  * APYs (COMP, Aave incentives), which are shown but never counted by the
  * rules. It's never required: when it can't be reached, the onchain figures
@@ -50,6 +52,7 @@ const I = {
     'function ssr() view returns (uint256)', 'function maxDeposit(address) view returns (uint256)', 'function totalAssets() view returns (uint256)',
     'function convertToAssets(uint256 shares) view returns (uint256)',
   ]),
+  ssrOracle: new ethers.Interface(['function getSSR() view returns (uint256)']),
   oracle: new ethers.Interface(['function getAssetPrice(address asset) view returns (uint256)']),
 };
 
@@ -114,18 +117,17 @@ async function cometRate(v, asset) {
 }
 
 async function sparkRate(v) {
-  const [[ssr], [maxDeposit, totalAssets, perShare]] = await Promise.all([
-    // On Ethereum, whatever chain the vault is on: name it, so an L2 rate that couldn't be read says where it failed.
-    multicall('ethereum', [{ target: venues.SPARK_SSR_SOURCE, iface: I.spark, fn: 'ssr', args: [] }]).catch(err => {
-      throw Object.assign(new Error(`the Sky Savings Rate couldn't be read on Ethereum: ${err.message}`), { transient: err.transient === true });
-    }),
-    multicall(v.chain, [
-      { target: v.vault, iface: I.spark, fn: 'maxDeposit', args: [ethers.ZeroAddress] },
-      { target: v.vault, iface: I.spark, fn: 'totalAssets', args: [] },
-      { target: v.vault, iface: I.spark, fn: 'convertToAssets', args: [10n ** 18n] },
-    ]),
+  // Everything from the vault's own chain: an L2 rate never waits on Ethereum.
+  const l1 = v.chain === 'ethereum';
+  const oracle = l1 ? null : venues.SPARK_RATE_PROVIDER[v.chain];
+  if (!l1 && !oracle) throw new Error(`no Sky SSR oracle is listed for ${venues.CHAINS[v.chain].label}`);
+  const [ssr, maxDeposit, totalAssets, perShare] = await multicall(v.chain, [
+    l1 ? { target: v.vault, iface: I.spark, fn: 'ssr', args: [] } : { target: oracle, iface: I.ssrOracle, fn: 'getSSR', args: [] },
+    { target: v.vault, iface: I.spark, fn: 'maxDeposit', args: [ethers.ZeroAddress] },
+    { target: v.vault, iface: I.spark, fn: 'totalAssets', args: [] },
+    { target: v.vault, iface: I.spark, fn: 'convertToAssets', args: [10n ** 18n] },
   ]);
-  if (!ssr.ok) throw new Error('the Sky Savings Rate couldn\'t be read');
+  if (!ssr.ok) throw new Error(l1 ? 'the Sky Savings Rate couldn\'t be read from the vault' : `the Sky Savings Rate couldn't be read from Sky's SSR oracle on ${venues.CHAINS[v.chain].label}`);
   const room = ok(maxDeposit) === null ? null : BigInt(ok(maxDeposit));
   return {
     apy: Math.pow(Number(BigInt(ssr.value[0]) * 10n ** 12n / RAY) / 1e12, SECONDS_PER_YEAR) - 1,
