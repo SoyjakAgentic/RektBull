@@ -176,8 +176,13 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
     it('withdrawals only ever pay the user', async function () {
       const before = await usdcToken.balanceOf(user.address);
       await (await call('withdraw', [high, usdc(100)])).wait();
-      assert.equal(await usdcToken.balanceOf(user.address) - before, usdc(100));
+      // At least what was asked. When Aave pays best at the fork block, moving 100 aUSDC can move
+      // 1 unit more (Aave's rounding of scaled balances); the router redeems exactly what arrived,
+      // so that unit is the user's own and goes to the user too.
+      const paid = await usdcToken.balanceOf(user.address) - before;
+      assert.ok(paid >= usdc(100) && paid <= usdc(100) + 1n, `paid ${paid}`);
       assert.equal(await usdcToken.balanceOf(attacker.address), 0n);
+      assert.equal(await usdcToken.balanceOf(router.target), 0n, 'the router keeps nothing');
     });
   });
 
