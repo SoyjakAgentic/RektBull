@@ -399,3 +399,12 @@ a.act { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration:
 .camp .tok-acts { flex-wrap: wrap; }
 #o-guard a { font-weight: 600; }
 @media (max-width: 960px) { .cards.three { grid-template-columns: 1fr; } }
+
+/* portfolio: one-hue bars for each chain's share (magnitude, not identity) */
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 13.5px; }
+.bar-track { height: 8px; background: var(--soft); border-radius: 999px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--chart); border-radius: 999px; }
+.bar-value { font-family: var(--mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 520px) { .bar-row { grid-template-columns: 80px minmax(0, 1fr); } .bar-value { grid-column: 2; } }
+#p-result { display: grid; gap: 18px; min-width: 0; } /* a grid child: without min-width 0 it grows to the widest table */
