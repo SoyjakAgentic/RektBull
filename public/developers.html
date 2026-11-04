@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull for Developers</title>
+  <meta name="description" content="RektBull's checks for your app or AI agent: a remote MCP server, a REST API with every fact sourced, and pay-per-call with x402 (USDC on Base, no account).">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Developers</span>
+      <h1>Build on RektBull, <em>or let your agent</em></h1>
+      <p>The same checks as the site, for your app or AI agent: a remote MCP server, a REST API where every fact names its source, and paid runs by x402 with no account. Read-only by design: RektBull prepares transactions for a wallet to sign and never holds funds or keys.</p>
+      <nav class="jump" aria-label="On this page"><a href="#mcp">MCP server</a><a href="#x402">Pay per call</a><a href="#reference">API reference</a><a href="#rules">Rules we keep</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="mcp">
+      <h2>MCP server</h2>
+      <p class="muted small">Add RektBull to Claude, Cursor, or any client that speaks MCP over Streamable HTTP. No key needed; the free tools share the website's daily allowances per IP address, and a RektBull bearer token (from signing in with your wallet) raises them.</p>
+      <div class="copyrow"><code id="mcp-url" class="mono"></code><button type="button" id="mcp-copy">Copy</button></div>
+      <div class="cards three setup">
+        <div class="tile"><h3>Claude</h3><p>Settings → Connectors → Add custom connector, and paste the URL.</p></div>
+        <div class="tile"><h3>Claude Code</h3><pre class="code" id="mcp-cc"></pre></div>
+        <div class="tile"><h3>Cursor and others</h3><pre class="code" id="mcp-json"></pre></div>
+      </div>
+      <h3>Tools <span class="muted small" id="mcp-count"></span></h3>
+      <p id="mcp-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="mcp-tools"><thead><tr><th>Tool</th><th>What it does</th><th class="num">Free a day</th></tr></thead><tbody></tbody></table></div>
+      <p class="source">Every tool is read-only: none signs, sends or prepares a transaction. Paid runs aren't tools; <code>paid_services</code> tells an agent how to call them with x402.</p>
+    </section>
+
+    <section class="card" id="x402">
+      <h2>Pay per call with x402</h2>
+      <p class="muted small">For bots and agents without an account: the paid runs take <a href="https://www.x402.org" target="_blank" rel="noopener">x402</a>, USDC on Base. You're charged only when the run succeeds; bad input is refused before any charge.</p>
+      <div class="cards three steps">
+        <div class="tile"><div class="top"><span class="step-num">01</span></div><h3>Call it</h3><p>Without payment, a paid endpoint answers <code>402</code> with what to pay, to whom, on which network.</p></div>
+        <div class="tile"><div class="top"><span class="step-num">02</span></div><h3>Sign the payment</h3><p>Your x402 client signs a USDC transfer authorization and retries with it in the <code>X-PAYMENT</code> header.</p></div>
+        <div class="tile"><div class="top"><span class="step-num">03</span></div><h3>Get the result</h3><p>RektBull runs the check, then settles the payment; the transaction comes back in <code>X-PAYMENT-RESPONSE</code>. A run that fails is never settled.</p></div>
+      </div>
+<pre class="code"><span class="c"># 1. no payment: 402 and the terms</span>
+<span class="k">curl</span> -X POST <span id="x-url"></span>/v1/tokens/quick-check \
+  -H <span class="s">'content-type: application/json'</span> \
+  -d <span class="s">'{"chain":"base","token_address":"0x…"}'</span>
+<span class="c"># → 402 {"x402Version":1,"accepts":[{"scheme":"exact","network":"base","maxAmountRequired":"250000",…}]}</span>
+
+<span class="c"># 2. the same call with X-PAYMENT: your x402 client does this for you</span></pre>
+      <h3>Prices</h3>
+      <div class="tablewrap"><table class="rank" id="prices"><thead><tr><th>Run</th><th>Endpoint</th><th class="num">x402</th><th class="num">Or points</th></tr></thead><tbody></tbody></table></div>
+      <p class="source" id="x-note">Most x402 clients refuse payments over $1 a call by default: raise your client's limit for the full report, or sign in and pay with credits. Credits are topped up with USDT or USDC; there are no cards and no subscriptions.</p>
+    </section>
+
+    <section class="card" id="reference">
+      <div class="chart-head"><h2>API reference</h2><a class="small" id="openapi-link" href="/v1/openapi.json">OpenAPI document</a></div>
+      <p id="ref-msg" class="msg"></p>
+      <div id="ref"></div>
+    </section>
+
+    <section class="card" id="rules">
+      <h2>Rules we keep</h2>
+      <ul class="rules">
+        <li><strong>Every fact names its source</strong>, and a check that couldn't run says why. No AI fills a gap with a guess.</li>
+        <li><strong>Never your keys.</strong> RektBull prepares transactions; the user's wallet signs them. Nothing here asks for a seed phrase or a private key, ever.</li>
+        <li><strong>Charged only for work delivered.</strong> Input is checked before charging; a run that fails is refunded or never settled.</li>
+        <li><strong>Not financial advice.</strong> Findings are facts with sources. Please show them that way: don't present a token, dapp or campaign as "safe" because RektBull found nothing.</li>
+        <li><strong>Fair use.</strong> 120 API requests a minute per IP address, plus the daily allowances shown. Cached data is refreshed every few minutes; there's no need to poll faster.</li>
+      </ul>
+    </section>
+  </main>
+
+  <!--#footer:The API and MCP server give facts with their sources. Not financial advice; RektBull never holds funds or keys.-->
+  <script src="/common.js"></script>
+  <script src="/developers.js"></script>
+</body>
+</html>

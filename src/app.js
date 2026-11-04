@@ -14,7 +14,7 @@ function createApp() {
   app.use(require('compression')()); // gzip: about half the bytes on a first visit
   app.use(express.json({ limit: '100kb' }));
   // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
-  app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') }));
+  app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') && req.path !== '/mcp' }));
   // The MetaMask Snap calls these from inside MetaMask (another origin), with its link token in a header.
   // Only the routes a link token may use; no cookies are involved, so any origin is fine.
   const { ALLOWED } = require('./auth/extensionTokens');
@@ -24,7 +24,15 @@ function createApp() {
     if (req.method === 'OPTIONS') return res.status(204).end();
     next();
   });
+  // The MCP server (and the API's reference) are for any client, browsers on other sites included:
+  // a bearer token, never a cookie, so no origin can act as a signed-in user.
+  app.use(['/mcp', '/v1/openapi.json', '/v1/developers'], (req, res, next) => {
+    res.set({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '600', 'cross-origin-resource-policy': 'cross-origin' });
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
   app.use(optionalAuth);
+  app.use(require('./mcp/server').router);
   app.use(routes);
 
   // The pages and their files (the wallet signs everything; no page holds a key).
@@ -36,9 +44,9 @@ function createApp() {
   const FOOTER = partial('footer.html');
   const NOTE = 'An automated check of known patterns, not financial advice or proof of safety.';
   const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
-    .replace('<!--#header-->', HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
+    .replace('<!--#header-->', current === '/' ? HEADER.replace('<a class="logo" href="/"', '<a class="logo" href="/" aria-current="page"') : HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html' };
   // Find money and Governance sit under Opportunities in the menu.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
   for (const [route, file] of Object.entries(PAGES)) {

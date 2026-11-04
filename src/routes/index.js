@@ -31,6 +31,16 @@ router.get('/health', async (_req, res) => {
 // ── What's for sale, and how to pay ─────────────────────────────────────────
 router.get('/v1/catalog', (_req, res) => res.json({ products: publicCatalog(), free_points: require('../payments/catalog').FREE_POINTS }));
 
+// For developers and agents: the API described (the Developers page reads this), and as OpenAPI.
+router.get('/v1/developers', (_req, res) => {
+  res.set('cache-control', 'public, max-age=300');
+  res.json({ ...require('../developers/api').reference(), mcp: { url: `${env.publicUrl}/mcp`, tools: require('../mcp/tools').list() }, openapi: `${env.publicUrl}/v1/openapi.json` });
+});
+router.get('/v1/openapi.json', (_req, res) => {
+  res.set('cache-control', 'public, max-age=300');
+  res.json(require('../developers/api').openapi(env.publicUrl));
+});
+
 router.get('/v1/payment-methods', (_req, res) => res.json({
   x402: { enabled: x402.enabled(), network: env.x402Network, asset: 'USDC' },
   nowpayments: { enabled: require('../payments/nowpayments').enabled(), note: 'Any coin NOWPayments takes, on its own payment page; it charges a fee per payment. USDT/USDC top-ups here have none.' },
@@ -138,7 +148,8 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
 }));
 
 // ── Approval cleanup: a free preview (how many, how much at risk), then the paid cleanup ──
-const PREVIEWS_PER_DAY = { account: 10, anonymous: 3 };
+const { FREE_LIMITS } = require('../payments/freeLimits');
+const PREVIEWS_PER_DAY = FREE_LIMITS.approval_preview;
 
 router.post('/v1/approvals/preview', async (req, res) => {
   const input = approvals.parseOwner(req.body);
@@ -157,7 +168,7 @@ router.post('/v1/approvals/cleanup', paidRoute('approval_cleanup', {
 
 // ── Find money: airdrops and unclaimed rewards (checking is free; claims carry a share as their fee) ──
 const claims = require('../services/claims');
-const CLAIM_LIMITS = { check: { account: 30, anonymous: 5 }, prepare: { account: 30, anonymous: 10 } };
+const CLAIM_LIMITS = { check: FREE_LIMITS.claims_check, prepare: FREE_LIMITS.claims_prepare };
 const claimCall = fn => async (req, res) => {
   try {
     res.json(await fn(req));
@@ -189,7 +200,7 @@ router.get('/v1/claims/programs', claimCall(async () => ({ programs: await claim
 // ── Find money: yield proposals (Safety Pro), moves the wallet signs with a 0.1% fee ──
 const yieldProposals = require('../yield/proposals');
 const yieldVenues = require('../yield/venues');
-const YIELD_LIMITS = { wallet: { account: 30, anonymous: 5 }, prepare: { account: 30, anonymous: 10 } };
+const YIELD_LIMITS = { wallet: FREE_LIMITS.yield_wallet, prepare: FREE_LIMITS.yield_prepare };
 const yieldCall = fn => async (req, res) => {
   try {
     res.json(await fn(req));
@@ -252,7 +263,7 @@ const govCall = (fn, status = 200) => async (req, res) => {
     throw err;
   }
 };
-const GOV_CHECKS = { account: 60, anonymous: 10 };
+const GOV_CHECKS = FREE_LIMITS.governance_check;
 router.post('/v1/governance/check', validated(claims.parseWallet), async (req, res, next) => {
   const [subject, limit] = req.account ? [`account:${req.account.id}`, GOV_CHECKS.account] : [require('../privacy/ipKey').ipSubject(req.ip), GOV_CHECKS.anonymous];
   if (!env.databaseUrl || await takeAllowance(subject, 'governance_check', limit)) return next();
@@ -294,7 +305,7 @@ const discoverCall = (parse, fn) => async (req, res) => {
     throw err;
   }
 };
-const FLAGS_PER_DAY = { account: 100, anonymous: 20 };
+const FLAGS_PER_DAY = FREE_LIMITS.discover_flags;
 router.get('/v1/discover/dapps', discoverCall(discover.parseDapps, input => discover.dapps(input)));
 router.get('/v1/discover/categories', discoverCall(q => (q.chain && !discover.CHAIN_NAMES[q.chain] ? { error: 'unknown chain' } : { chain: q.chain || null }), input => discover.categories(input)));
 router.get('/v1/discover/chains', discoverCall(null, () => discover.chainList()));
@@ -340,7 +351,7 @@ router.get('/v1/opportunities/campaigns', async (req, res) => {
 
 // ── Portfolio: what a wallet holds on six chains, its value, and the facts on each holding (free, a daily limit) ──
 const portfolio = require('../services/portfolio');
-const PORTFOLIO_PER_DAY = { account: 30, anonymous: 5 };
+const PORTFOLIO_PER_DAY = FREE_LIMITS.portfolio;
 router.post('/v1/portfolio', validated(claims.parseWallet), async (req, res) => {
   const [subject, limit] = req.account ? [`account:${req.account.id}`, PORTFOLIO_PER_DAY.account] : [require('../privacy/ipKey').ipSubject(req.ip), PORTFOLIO_PER_DAY.anonymous];
   if (env.databaseUrl && !(await takeAllowance(subject, 'portfolio', limit))) {
@@ -455,7 +466,7 @@ router.post('/v1/newsletter/unsubscribe', async (req, res) => {
 
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
-const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };
+const HOME_LIMITS = { lookup: FREE_LIMITS.home_lookup, checkup: FREE_LIMITS.home_checkup };
 const homeLimit = kind => async (req, res, next) => {
   const limits = HOME_LIMITS[kind];
   const [subject, limit] = req.account ? [`account:${req.account.id}`, limits.account] : [require('../privacy/ipKey').ipSubject(req.ip), limits.anonymous];

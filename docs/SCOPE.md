@@ -87,7 +87,7 @@ Built so far: **Home** (`/`, the ask box and the free wallet checkup), **Discove
 (`/markets`: DeFi today, stablecoin pegs, RWA, prediction markets, largest tokens),
 **Opportunities** (`/opportunities`: a wallet's own, live reward campaigns; Find money and
 Governance sit under it in the menu), **Portfolio** (`/portfolio`: holdings on six chains with
-the facts on each), **Research** (`/research`: the hack tracker and the weekly digest, reviewed by the owner before it's published, and by email), Safety
+the facts on each), **Research** (`/research`: the hack tracker and the weekly digest, reviewed by the owner before it's published, and by email), **Developers** (`/developers`: the MCP server at `/mcp`, the API reference and OpenAPI, x402 prices), Safety
 (`/safety`), Find money (`/find`, under Opportunities), Trade (`/trade`),
 Governance (`/governance`, under Opportunities), the pre-sign check
 (`/extension`). Every page shares one header and footer (`src/pages/`).
@@ -101,7 +101,7 @@ Home
 ├── Opportunities   airdrops, points programs, governance votes
 ├── Portfolio       wallet tracking with agent alerts and proposals
 ├── Research        Hack tracker, weekly digest (owner-reviewed) and newsletter
-└── Developers      API, MCP server, x402 pricing
+└── Developers      API reference, MCP server (/mcp), x402 pricing
 ```
 
 ## 6. Roadmap
