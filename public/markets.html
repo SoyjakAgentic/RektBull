@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RektBull Markets</title>
+  <meta name="description" content="DeFi in a few numbers, stablecoins and whether each is holding its peg, real-world assets and prediction markets with their safety facts, and the largest tokens. Every figure names its source.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Markets</span>
+      <h1>The market, <em>with the risks in view</em></h1>
+      <p>DeFi in a few numbers, stablecoins and whether each is holding its peg, real-world assets and prediction markets with their safety facts, and the largest tokens. Every figure names its source.</p>
+      <nav class="jump" aria-label="On this page"><a href="#overview-card">DeFi today</a><a href="#stables-card">Stablecoins</a><a href="#rwa-card">Real-world assets</a><a href="#pm-card">Prediction markets</a><a href="#tokens-card">Largest tokens</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="overview-card">
+      <h2>DeFi today</h2>
+      <div class="tiles" id="tiles">
+        <div class="tile-stat" id="t-tvl"><span>Money locked in DeFi (TVL)</span><strong>–</strong><em></em></div>
+        <div class="tile-stat" id="t-dex"><span>DEX trading, last 24 hours</span><strong>–</strong><em></em></div>
+        <div class="tile-stat" id="t-fees"><span>Fees users paid, last 24 hours</span><strong>–</strong><em></em></div>
+        <div class="tile-stat" id="t-stables"><span>US dollar stablecoins</span><strong>–</strong><em></em></div>
+      </div>
+      <div class="chart" id="tvl-chart">
+        <div class="chart-head"><h3>Money locked in DeFi, last 90 days</h3><span class="small muted" id="tvl-range"></span></div>
+        <div class="plot" id="tvl-plot" tabindex="0" role="img" aria-label="Total value locked in DeFi over the last 90 days"></div>
+        <div class="axis-x small muted"><span id="tvl-from"></span><span id="tvl-to"></span></div>
+        <details class="small"><summary>Show the numbers</summary><div class="tablewrap"><table id="tvl-table"><thead><tr><th>Date</th><th class="num">TVL</th></tr></thead><tbody></tbody></table></div></details>
+      </div>
+      <p id="overview-msg" class="msg"></p>
+      <p id="overview-src" class="source"></p>
+    </section>
+
+    <section class="card" id="stables-card">
+      <h2>Stablecoins</h2>
+      <p class="muted small">Whether each US dollar stablecoin is holding its peg today, what backs it, and whether people are leaving it.</p>
+      <div class="facts" id="s-facts"></div>
+      <p id="stables-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="stables"><thead><tr><th>#</th><th>Stablecoin</th><th>Backed by</th><th class="num">Price</th><th class="num">Supply</th><th class="num">7 days</th><th>Facts</th></tr></thead><tbody></tbody></table></div>
+      <p id="stables-src" class="source"></p>
+    </section>
+
+    <section class="card" id="rwa-card">
+      <h2>Real-world assets</h2>
+      <p class="muted small">Tokenised treasuries, credit and other off-chain assets, ranked by what's in them, with the same safety facts as Discover.</p>
+      <p id="rwa-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="rwa"><thead><tr><th>#</th><th>Dapp</th><th class="num">TVL</th><th class="num">7 days</th><th>Safety facts</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p class="source">Source: DefiLlama protocols and hacks. <a href="/discover">More in Discover</a>.</p>
+    </section>
+
+    <section class="card" id="pm-card">
+      <h2>Prediction markets</h2>
+      <p id="pm-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="pm"><thead><tr><th>#</th><th>Dapp</th><th class="num">TVL</th><th class="num">7 days</th><th>Safety facts</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p class="source">Source: DefiLlama protocols and hacks. A market's odds are what traders bet, not a forecast RektBull makes.</p>
+    </section>
+
+    <section class="card" id="tokens-card">
+      <h2>Largest tokens</h2>
+      <p id="tokens-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="tokens"><thead><tr><th>#</th><th>Token</th><th class="num">Price</th><th class="num">24h</th><th class="num">7 days</th><th class="num">Market cap</th><th class="num">Volume 24h</th><th>Facts</th></tr></thead><tbody></tbody></table></div>
+      <p id="tokens-src" class="source"></p>
+    </section>
+
+    <section class="card">
+      <h2>For bots and AI agents</h2>
+      <p class="muted small">Free and cached: <code>GET /v1/markets/overview</code>, <code>/v1/markets/stablecoins</code>, <code>/v1/markets/tokens</code>; real-world assets and prediction markets are <code>/v1/discover/dapps?category=RWA</code> and <code>?category=Prediction%20Market</code>.</p>
+    </section>
+  </main>
+
+  <!--#footer:Figures name their sources; none is advice. Holding a peg today says nothing about the reserves behind it.-->
+  <script src="/common.js"></script>
+  <script src="/markets.js"></script>
+</body>
+</html>

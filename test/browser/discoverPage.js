@@ -22,7 +22,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     P('2', 'Base Dex', { category: 'Dexs', chains: ['base'], chain_count: 1, tvl: 2e9, chain_tvl: { base: 2e9 }, change_7d: -40 }),
     P('4', 'Hacked Bridge', { category: 'Bridge', tvl: 3e9, chain_tvl: { ethereum: 3e9 } }),
   ];
-  llama.fees = async () => ({ 1: { total: 50000, chains: { ethereum: 30000, base: 20000 } }, 2: { total: 90000, chains: { base: 90000 } } });
+  llama.fees = async () => ({ protocols: { 1: { total: 50000, chains: { ethereum: 30000, base: 20000 } }, 2: { total: 90000, chains: { base: 90000 } } }, total_24h: 140000, change_1d: 2 });
   llama.hacks = async () => ({ 4: [{ date: '2022-02-02', amount_usd: 326e6, technique: 'Signature Verification Flaw', returned_usd: null }] });
   llama.chains = async () => [{ name: 'Ethereum', tvl: 4e10, token: 'ETH', rektbull: 'ethereum' }, { name: 'Base', tvl: 6e9, token: null, rektbull: 'base' }, { name: 'Tron', tvl: 5e9, token: 'TRX', rektbull: null }];
   const gt = require('../../src/providers/geckoterminal');

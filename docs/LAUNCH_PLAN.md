@@ -66,6 +66,14 @@ are built before we deploy. Each is its own PR, in this order unless we change i
      flags on request and the quick check a click away. Free data, cached.
      Nothing to set at deploy; check DefiLlama's and GeckoTerminal's terms
      for commercial use (section 3).
+   - ✅ **Markets** (`/markets`): DeFi today (TVL with a 90-day chart, DEX
+     volume, fees, stablecoin supply); stablecoins with whether each holds its
+     peg, what backs it and whether supply is leaving; real-world assets and
+     prediction markets with Discover's safety facts; the largest tokens
+     ("Data from CoinGecko", linked, as its free plan asks). Nothing to set at
+     deploy; check CoinGecko's terms for commercial use, or get its free demo key.
+   - ✅ Site-wide with Markets: gzip on every response, and ethers loaded only
+     on `/safety` and `/trade` (a first visit went from 762 KB to about 164 KB).
 5. Anything that needs paid data (tax report, business services) waits until
    after launch, when there's revenue to pay for it.
 

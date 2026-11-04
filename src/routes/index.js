@@ -309,6 +309,21 @@ router.get('/v1/discover/flags', async (req, res, next) => {
   res.json(await discover.flags(input));
 });
 
+// ── Markets: DeFi in numbers, stablecoins and their pegs, the largest tokens (free, cached) ──
+const markets = require('../services/markets');
+const marketsCall = fn => async (req, res) => {
+  try {
+    res.set('cache-control', 'public, max-age=60');
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof markets.MarketsRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/markets/overview', marketsCall(() => markets.overview()));
+router.get('/v1/markets/stablecoins', marketsCall(() => markets.stablecoinList()));
+router.get('/v1/markets/tokens', marketsCall(() => markets.tokens()));
+
 // ── Home: what a pasted address is, and a wallet's free checks from every desk at once ──
 const home = require('../services/home');
 const HOME_LIMITS = { lookup: { account: 120, anonymous: 30 }, checkup: { account: 10, anonymous: 3 } };

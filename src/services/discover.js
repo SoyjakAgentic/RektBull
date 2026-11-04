@@ -82,7 +82,7 @@ async function dapps({ chain = null, category = null, sort = 'tvl', limit = 50 }
   const notChecked = [];
   if (feesR.status === 'rejected') notChecked.push({ check: 'fees in the last 24 hours', reason: feesR.reason.message });
   if (hacksR.status === 'rejected') notChecked.push({ check: 'recorded hacks', reason: hacksR.reason.message });
-  const feeOf = id => (feesR.status === 'fulfilled' ? (chain ? feesR.value[id]?.chains?.[chain] : feesR.value[id]?.total) ?? null : null);
+  const feeOf = id => (feesR.status === 'fulfilled' ? (chain ? feesR.value.protocols[id]?.chains?.[chain] : feesR.value.protocols[id]?.total) ?? null : null);
   const hackOf = id => (hacksR.status === 'fulfilled' ? hacksR.value[id] || [] : []);
 
   const inScope = protos.value.filter(p => !chain || p.chain_tvl[chain] > 0);

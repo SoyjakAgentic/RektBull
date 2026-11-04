@@ -25,7 +25,7 @@ const PROTOCOLS = [
 ];
 const stubLlama = ({ feesFail = false, protocolsFail = false } = {}) => {
   llama.protocols = async () => { if (protocolsFail) throw new Error('timeout'); return PROTOCOLS; };
-  llama.fees = async () => { if (feesFail) throw new Error('503 from DefiLlama'); return { 1: { total: 50000, chains: { ethereum: 30000, base: 20000 } }, 2: { total: 90000, chains: { base: 90000 } } }; };
+  llama.fees = async () => { if (feesFail) throw new Error('503 from DefiLlama'); return { protocols: { 1: { total: 50000, chains: { ethereum: 30000, base: 20000 } }, 2: { total: 90000, chains: { base: 90000 } } }, total_24h: 140000, change_1d: 2 }; };
   llama.hacks = async () => ({ 4: [{ date: '2022-02-02', amount_usd: 326e6, technique: 'Signature Verification Flaw', returned_usd: 326e6 }] });
   llama.chains = async () => [{ name: 'Ethereum', tvl: 4e10, token: 'ETH', rektbull: 'ethereum' }, { name: 'Tron', tvl: 5e9, token: 'TRX', rektbull: null }, { name: 'Base', tvl: 6e9, token: null, rektbull: 'base' }];
 };
