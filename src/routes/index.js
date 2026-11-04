@@ -349,6 +349,22 @@ router.get('/v1/opportunities/campaigns', async (req, res) => {
   }
 });
 
+// ── Agents: onchain AI-agent protocols, and the x402 services agents can pay per call (free, cached) ──
+const agents = require('../services/agents');
+const agentsCall = (parse, fn) => async (req, res) => {
+  const input = parse(req.query);
+  if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+  try {
+    res.set('cache-control', 'public, max-age=300');
+    res.json(await fn(input));
+  } catch (err) {
+    if (err instanceof agents.AgentsRefused || err instanceof discover.DiscoverRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/agents/protocols', agentsCall(agents.parseProtocols, input => agents.protocols(input)));
+router.get('/v1/agents/x402', agentsCall(agents.parseX402, input => agents.x402Services(input)));
+
 // ── Portfolio: what a wallet holds on six chains, its value, and the facts on each holding (free, a daily limit) ──
 const portfolio = require('../services/portfolio');
 const PORTFOLIO_PER_DAY = FREE_LIMITS.portfolio;
