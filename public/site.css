@@ -422,6 +422,18 @@ label.inline { display: inline-flex; flex-direction: row; align-items: center; g
 #review .notes { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--soft); border-radius: 0 8px 8px 0; font-size: 13.5px; }
 #review .notes ul { margin: 4px 0 0; padding-left: 18px; }
 #n-form input { flex: 1 1 220px; }
+.sponsored { border: 1px solid var(--line); background: var(--soft); border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+.sponsored p { margin: 0 0 4px; }
+.sponsored .sp-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.sponsored .sp-head { font-weight: 700; }
+.sponsored .sp-head a { color: var(--text); }
+.sponsored .sp-foot { margin: 0; font-size: 12.5px; color: var(--muted); }
+.sp-forms { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.sp-forms form { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.sp-forms h4 { margin: 0; }
+#review .sp-forms textarea { font-family: inherit; font-size: 15px; margin: 0; }
+.sp-forms label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+.sp-forms label.check input { margin-top: 3px; }
 .fact-group h4 { margin: 12px 0 4px; font-size: 14px; }
 .fact-group ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 @media (max-width: 620px) { .tiles:has(> .tile-stat:nth-child(3):last-child) { grid-template-columns: 1fr; } .bars:has(.bar-btn) .bar-row { grid-template-columns: minmax(0, 1fr); } }

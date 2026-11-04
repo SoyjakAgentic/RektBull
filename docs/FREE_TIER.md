@@ -80,6 +80,11 @@ Two Claude calls a week, the writer and the fact-check (about 4,000 tokens
 in and 1,500 out in all at the default model: cents a month), plus the
 cached data the other desks already read.
 
+## Sponsored posts' cost
+
+Nothing extra: the phishing check on a sponsored link is GoPlus's free
+call, cached for an hour, made when it's saved and on clicks.
+
 ## The newsletter's cost
 
 Resend's free plan: 100 emails a day, 3,000 a month, which covers about
