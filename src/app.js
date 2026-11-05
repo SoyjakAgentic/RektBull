@@ -43,20 +43,30 @@ function createApp() {
   const HEADER = partial('header.html');
   const FOOTER = partial('footer.html');
   const NOTE = 'An automated check of known patterns, not financial advice or proof of safety.';
-  const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
+  const seo = require('./pages/seo');
+  const base = require('./config/env').publicUrl;
+  // `route` is the page's own address (its title, canonical and sitemap entry); `current` is what the menu marks.
+  const render = (file, current, route = current) => fs.readFileSync(path.join(pub, file), 'utf8')
+    .replace('<!--#meta-->', seo.head(route, base))
     .replace('<!--#header-->', current === '/' ? HEADER.replace('<a class="logo" href="/"', '<a class="logo" href="/" aria-current="page"') : HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
   const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html' };
   // Find money and Governance sit under Opportunities in the menu.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
   for (const [route, file] of Object.entries(PAGES)) {
-    const html = render(file, MENU[route] || route);
+    const html = render(file, MENU[route] || route, route);
     app.get(route, (_req, res) => res.type('html').send(html));
   }
   // The privacy page names who runs RektBull and how to reach them (OPERATOR_NAME, PRIVACY_CONTACT).
   const privacy = render('privacy.html', '/privacy');
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  app.get('/privacy.html', (_req, res) => res.redirect(301, '/privacy'));
+  // One address per page: /safety.html and the like go to /safety (the files are templates, not pages).
+  for (const [route, file] of [...Object.entries(PAGES), ['/privacy', 'privacy.html']]) {
+    app.get(`/${file}`, (_req, res) => res.redirect(301, route));
+  }
+  app.get('/robots.txt', (_req, res) => res.type('text/plain').set('cache-control', 'public, max-age=3600').send(seo.robots(base)));
+  app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('cache-control', 'public, max-age=3600').send(seo.sitemap(base)));
+  app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon-48.png'));
   app.get('/privacy', (_req, res) => {
     const env = require('./config/env');
     res.type('html').send(privacy.replaceAll('{{OPERATOR}}', esc(env.operatorName)).replaceAll('{{CONTACT}}', esc(env.privacyContact)));
@@ -79,7 +89,12 @@ function createApp() {
   });
   app.use(express.static(pub, { index: false }));
 
-  app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
+  // A page that doesn't exist: a page for people, JSON for the API.
+  const notFound = render('404.html', '/404', '/404');
+  app.use((req, res) => {
+    if (req.method === 'GET' && !req.path.startsWith('/v1/') && req.accepts(['json', 'html']) === 'html') return res.status(404).type('html').send(notFound);
+    res.status(404).json({ error: 'not_found' });
+  });
   app.use(errorHandler);
   return app;
 }
