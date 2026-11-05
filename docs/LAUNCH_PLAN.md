@@ -445,6 +445,11 @@ checks the record and the listing. About 30 minutes, free.*
 - [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md)):
       section 5 (one small real trade you sign on Base) before
       `TRADING_ENABLED=true`; the rest before automatic trading opens.
+- [ ] Marketing follows [POSITIONING.md](POSITIONING.md) (crypto safety for
+      people and their agents; never "safe" or "earn X%"). The launch campaign
+      is [LAUNCH_CAMPAIGN.md](LAUNCH_CAMPAIGN.md); search is
+      [SEO.md](SEO.md) (at launch: Search Console and Bing verified, sitemap
+      submitted).
 
 ## 8. Turning things on later (not part of this launch)
 
