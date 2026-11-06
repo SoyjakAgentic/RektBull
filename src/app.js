@@ -43,23 +43,63 @@ function createApp() {
   const HEADER = partial('header.html');
   const FOOTER = partial('footer.html');
   const NOTE = 'An automated check of known patterns, not financial advice or proof of safety.';
-  const render = (file, current) => fs.readFileSync(path.join(pub, file), 'utf8')
+  const seo = require('./pages/seo');
+  const base = require('./config/env').publicUrl;
+  // `route` is the page's own address (its title, canonical and sitemap entry); `current` is what the menu marks.
+  const env = require('./config/env');
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const shell = (html, current) => html
     .replace('<!--#header-->', current === '/' ? HEADER.replace('<a class="logo" href="/"', '<a class="logo" href="/" aria-current="page"') : HEADER.replace(`<a href="${current}">`, `<a href="${current}" aria-current="page">`))
     .replace(/<!--#footer(?::([\s\S]*?))?-->/, (_, note) => FOOTER.replace('{{NOTE}}', (note || NOTE).trim()));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html' };
+  // Each page: its <head> (seo.js), its Questions section before </main>, the shared header and footer,
+  // the operator's name and contact where a page names them, and FAQ data read from the finished page.
+  const render = (file, current, route = current) => seo.withFaqData(shell(fs.readFileSync(path.join(pub, file), 'utf8')
+    .replace('<!--#meta-->', seo.head(route, base))
+    .replace('</main>', `${seo.faqSection(route)}</main>`), current)
+    .replaceAll('{{OPERATOR}}', esc(env.operatorName)).replaceAll('{{CONTACT}}', esc(env.privacyContact)));
+  const { glance } = require('./pages/glance');
+  // Pages with an "At a glance" block get it filled at request time (cached; never holds the page up).
+  const send = html => (html.includes('<!--#facts-->')
+    ? async (req, res, next) => { try { res.type('html').send(html.replace('<!--#facts-->', await glance(req.path))); } catch (err) { next(err); } }
+    : (_req, res) => res.type('html').send(html));
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
   // Find money and Governance sit under Opportunities in the menu.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
   for (const [route, file] of Object.entries(PAGES)) {
-    const html = render(file, MENU[route] || route);
-    app.get(route, (_req, res) => res.type('html').send(html));
+    app.get(route, send(render(file, MENU[route] || route, route)));
   }
-  // The privacy page names who runs RektBull and how to reach them (OPERATOR_NAME, PRIVACY_CONTACT).
-  const privacy = render('privacy.html', '/privacy');
-  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  app.get('/privacy.html', (_req, res) => res.redirect(301, '/privacy'));
-  app.get('/privacy', (_req, res) => {
-    const env = require('./config/env');
-    res.type('html').send(privacy.replaceAll('{{OPERATOR}}', esc(env.operatorName)).replaceAll('{{CONTACT}}', esc(env.privacyContact)));
+  // One address per page: /safety.html and the like go to /safety (the files are templates, not pages).
+  for (const [route, file] of Object.entries(PAGES)) {
+    app.get(`/${file}`, (_req, res) => res.redirect(301, route));
+  }
+
+  // Each published weekly digest at its own address, rendered on the server (src/pages/digestPage.js).
+  const digestShell = fs.readFileSync(path.join(pub, 'digest.html'), 'utf8');
+  const published = async () => (env.databaseUrl ? require('./services/research').digests().catch(() => []) : []);
+  app.get('/research/:week', async (req, res, next) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.week) || !env.databaseUrl) return next();
+    try {
+      const research = require('./services/research');
+      const d = await research.digest(req.params.week).catch(err => { if (err instanceof research.ResearchRefused) return null; throw err; });
+      if (!d) return next();
+      const p = require('./pages/digestPage').page(d, await published(), base);
+      res.type('html').set('cache-control', 'public, max-age=300').send(seo.withFaqData(shell(digestShell.replace('<!--#meta-->', seo.headFor(p.head)).replace('<!--#body-->', p.body), '/research')));
+    } catch (err) { next(err); }
+  });
+
+  const text = (type, maxAge) => (_req, res, body) => res.type(type).set('cache-control', `public, max-age=${maxAge}`).send(body);
+  app.get('/robots.txt', (req, res) => text('text/plain', 3600)(req, res, seo.robots(base)));
+  app.get('/sitemap.xml', async (req, res) => {
+    const weeks = await published();
+    text('application/xml', 3600)(req, res, seo.sitemap(base, weeks.map(w => ({ loc: `${base}/research/${w.week_start}`, lastmod: w.published_at ? new Date(w.published_at).toISOString().slice(0, 10) : null }))));
+  });
+  app.get('/llms.txt', async (req, res) => text('text/plain; charset=utf-8', 3600)(req, res, seo.llms(base, await published())));
+  app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon-48.png'));
+  // IndexNow's proof that the site is ours (src/services/indexnow.js): the key, at /<key>.txt.
+  app.get('/:file.txt', (req, res, next) => {
+    const key = require('./services/indexnow').key();
+    if (!key || req.params.file !== key) return next();
+    text('text/plain', 86400)(req, res, key);
   });
   app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
   // Fonts are served from here, not a font CDN, so no visitor's address goes to a third party.
@@ -77,9 +117,16 @@ function createApp() {
     res.set('cache-control', 'public, max-age=31536000, immutable');
     res.sendFile(path.join(path.dirname(require.resolve(`${f[0]}/package.json`)), 'files', f[1]));
   });
-  app.use(express.static(pub, { index: false }));
+  // A page that doesn't exist: a page for people, JSON for the API. The templates themselves aren't pages.
+  const notFound = render('404.html', '/404', '/404');
+  app.get(['/digest.html', '/404.html'], (_req, res) => res.status(404).type('html').send(notFound));
+  // The stylesheet, scripts and images: kept 10 minutes by browsers, so a deploy shows within minutes.
+  app.use(express.static(pub, { index: false, maxAge: '10m' }));
 
-  app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
+  app.use((req, res) => {
+    if (req.method === 'GET' && !req.path.startsWith('/v1/') && req.accepts(['json', 'html']) === 'html') return res.status(404).type('html').send(notFound);
+    res.status(404).json({ error: 'not_found' });
+  });
   app.use(errorHandler);
   return app;
 }

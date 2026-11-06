@@ -259,6 +259,8 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `PUBLIC_URL`, `SIWE_URI` | ✔ | ✔ | `https://rektbull.com` |
 | `SIWE_DOMAIN` | ✔ | | `rektbull.com` |
 | `OPERATOR_NAME`, `PRIVACY_CONTACT` | ✔ | | The person or company responsible; an address someone reads |
+| `INDEXNOW_KEY` | ✔ | | Optional: a random 32-character hex string (`openssl rand -hex 16`). Tells Bing, which feeds ChatGPT's and Copilot's search, when a digest is published |
+| `SAME_AS` | ✔ | | Optional: RektBull's official profile URLs, comma-separated (e.g. the X account), once they exist. Ties the brand together for search and AI answers |
 | `OPERATOR_POSTAL_ADDRESS` | ✔ | ✔ | A postal address for the newsletter's footer (a PO box is fine); without it no newsletter is sent |
 | `CRYPTO_DEPOSIT_XPUB`, `PAYMENT_CHAINS` | ✔ | ✔ | Section 4; `ethereum,bsc,base` |
 | `X402_PAY_TO` | ✔ | | Section 4 |
@@ -445,6 +447,11 @@ checks the record and the listing. About 30 minutes, free.*
 - [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md)):
       section 5 (one small real trade you sign on Base) before
       `TRADING_ENABLED=true`; the rest before automatic trading opens.
+- [ ] Marketing follows [POSITIONING.md](POSITIONING.md) (crypto safety for
+      people and their agents; never "safe" or "earn X%"). The launch campaign
+      is [LAUNCH_CAMPAIGN.md](LAUNCH_CAMPAIGN.md); search is
+      [SEO.md](SEO.md) (at launch: Search Console and Bing verified, sitemap
+      submitted).
 
 ## 8. Turning things on later (not part of this launch)
 

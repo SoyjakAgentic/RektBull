@@ -281,8 +281,8 @@ async function digest(week) {
 }
 
 async function digests() {
-  const { rows } = await db.query(`SELECT week_start, week_end, text IS NOT NULL AS written FROM research_digests WHERE status = 'published' ORDER BY week_start DESC LIMIT 52`);
-  return rows.map(r => ({ week_start: iso(new Date(r.week_start)), week_end: iso(new Date(r.week_end)), written: r.written }));
+  const { rows } = await db.query(`SELECT week_start, week_end, text IS NOT NULL AS written, reviewed_at FROM research_digests WHERE status = 'published' ORDER BY week_start DESC LIMIT 52`);
+  return rows.map(r => ({ week_start: iso(new Date(r.week_start)), week_end: iso(new Date(r.week_end)), written: r.written, published_at: r.reviewed_at, url: `/research/${iso(new Date(r.week_start))}` }));
 }
 
 /** For the owner: a draft with everything needed to review it. */

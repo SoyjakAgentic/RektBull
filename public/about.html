@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+  <main class="tool prose">
+    <section class="card" id="what">
+      <h1>About RektBull</h1>
+      <p class="muted small">RektBull is run by {{OPERATOR}}. Write to <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</p>
+      <p><strong>RektBull checks crypto before it costs you.</strong> Paste a wallet, a token or a contract and it tells you what it is, what's risky about it, and where each fact comes from: open token approvals, tokens that can't be sold or that tax you, rewards you never claimed, DAO votes about to close, and, before you sign, what a transaction or signature would actually do. The same checks are open to AI agents, through an MCP server and pay-per-call with x402.</p>
+      <h2>What we hold to</h2>
+      <ul>
+        <li><strong>Every fact names its source</strong>, and a check that couldn't run says why. Nothing is guessed, by people or by AI.</li>
+        <li><strong>Never your keys, never your funds.</strong> RektBull prepares a revoke, a claim, a trade or a vote; your wallet shows it and you sign it, or you don't. RektBull never asks for a seed phrase or a private key.</li>
+        <li><strong>Charged only for work delivered.</strong> Your input is checked before any charge; a run that fails is refunded, or an x402 payment is never settled. Crypto only: no cards, and nothing that renews by itself.</li>
+        <li><strong>Not advice, and never "safe".</strong> A check finds known patterns. A clean result means nothing known was found, not that something is safe. RektBull never recommends a token, a trade, a campaign or a vote.</li>
+      </ul>
+    </section>
+
+    <section class="card" id="how">
+      <h2>How the checks work</h2>
+      <ul>
+        <li><strong>Wallet checkup:</strong> reads the wallet on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain: its open token, NFT and Permit2 approvals and what they put at risk, rewards it can claim (each verified onchain), stablecoins that could earn more, and DAO votes open for it. A chain that couldn't be read is named, never treated as empty.</li>
+        <li><strong>Token check:</strong> whether the token can be sold, its buy and sell taxes, what its owner can still change, how concentrated its holders are and, in the full report, its liquidity, volume and age.</li>
+        <li><strong>Pre-sign check</strong> (the browser extension and the MetaMask Snap): simulates what a transaction or signature would move out of the wallet, rates every spender and recipient, and checks the site against phishing lists, before the wallet asks you to sign.</li>
+        <li><strong>Rankings and markets:</strong> dapps, stablecoins and tokens with each one's record: recorded hacks, audits listed, age, and pegs.</li>
+        <li><strong>For agents:</strong> the paid APIs AI agents call with x402, ranked by how many different wallets paid them, with signs of fake usage and flagged payment addresses.</li>
+      </ul>
+    </section>
+
+    <section class="card" id="sources">
+      <h2>Where the facts come from</h2>
+      <p class="small">Each finding on the site names which of these it came from.</p>
+      <table>
+        <thead><tr><th>Source</th><th>What RektBull reads from it</th></tr></thead>
+        <tbody>
+          <tr><td>The blockchains themselves (through RPC providers)</td><td>Balances, approvals, contract state, simulations, governor proposals, Aave, Compound and Spark rates</td></tr>
+          <tr><td>GoPlus Security</td><td>Token risks (sellability, taxes, owner powers), flagged addresses, phishing sites</td></tr>
+          <tr><td>Etherscan and Blockscout</td><td>Verified contract sources, approval history, token transfers</td></tr>
+          <tr><td>DefiLlama</td><td>Money locked, fees, DEX volume, stablecoins, recorded hacks, protocol listings and audits, yields</td></tr>
+          <tr><td>Merkl</td><td>Live reward campaigns, and rewards a wallet can claim</td></tr>
+          <tr><td>Snapshot</td><td>DAO proposals and votes</td></tr>
+          <tr><td>GeckoTerminal, DexScreener, CoinGecko</td><td>Trending and new tokens, pools, liquidity, prices, the largest tokens</td></tr>
+          <tr><td>Coinbase's x402 Bazaar</td><td>Paid APIs for agents and their 30-day usage</td></tr>
+          <tr><td>0x and Jupiter</td><td>Trade quotes, and whether a token can be sold</td></tr>
+          <tr><td>Anthropic (Claude)</td><td>Writing only: token reports, proposal summaries and the weekly digest, from facts RektBull gathered and names. It adds no facts of its own</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" id="digest">
+      <h2>How the weekly digest is made</h2>
+      <ol>
+        <li>Every Monday, RektBull gathers the week's facts from its own data (hacks, stablecoins, money flows, reward campaigns, rates and open DAO votes), each with its source.</li>
+        <li>An AI writer drafts the digest from those facts only, told to cite each one and never to predict or recommend.</li>
+        <li>An AI fact-check removes any sentence the facts don't support, and any prediction or recommendation, and lists what it removed.</li>
+        <li>A person reads it, may edit it, and publishes it or skips the week. Nothing goes on the site or out by email before that.</li>
+      </ol>
+      <p>Each digest is published with the facts it was written from, so anyone can check it. Sponsored posts, when there are any, are labelled, kept apart from the digest, and never seen by the writer or the fact-check.</p>
+    </section>
+
+    <section class="card" id="really-us">
+      <h2>How to tell it's really us</h2>
+      <ul>
+        <li>RektBull lives at <strong>rektbull.com</strong>. Links in our emails go there.</li>
+        <li>RektBull will never message you first, never ask for your seed phrase or private key, and never ask you to "verify" or "sync" your wallet.</li>
+        <li>If something claiming to be RektBull asks for any of that, it isn't us. Tell us at <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>More</h2>
+      <p><a href="/privacy">Privacy</a>: what RektBull keeps, why, and for how long. <a href="/developers">Developers</a>: the API, the MCP server and x402 prices.</p>
+    </section>
+  </main>
+
+  <!--#footer:Facts with their sources; never advice, and never proof that something is safe.-->
+  <script src="/common.js"></script>
+</body>
+</html>
