@@ -32,6 +32,8 @@
       $('d-week').textContent = `${day(d.week_start)} to ${day(d.week_end)}`;
       $('d-byline').textContent = `${d.byline}${d.published_at ? ` · published ${new Date(d.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`;
       $('d-byline').hidden = false;
+      $('d-permalink').querySelector('a').href = `/research/${d.week_start}`;
+      $('d-permalink').hidden = false;
       $('d-text').replaceChildren(...(d.text ? markdown(d.text) : []));
       for (const where of ['top', 'bottom']) $(`d-sp-${where}`).replaceChildren(...(d.sponsored || []).filter(s => s.placement === where).map(adBox));
       $('d-text').hidden = !d.text;

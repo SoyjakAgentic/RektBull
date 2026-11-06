@@ -410,9 +410,11 @@ router.post('/v1/admin/research/digest', requireAuth, requireAdmin, researchCall
   const at = req.body?.week_start ? mondayOf(req.body.week_start) : null;
   return research.makeDigest(at ? { start: at, end: new Date(at.getTime() + 7 * 86400000) } : research.lastWeek());
 }));
-router.post('/v1/admin/research/digests/:week/publish', requireAuth, requireAdmin, researchCall(req => {
+router.post('/v1/admin/research/digests/:week/publish', requireAuth, requireAdmin, researchCall(async req => {
   mondayOf(req.params.week);
-  return research.publish(req.params.week, { text: req.body && 'text' in req.body ? req.body.text : undefined, accountId: req.account.id });
+  const published = await research.publish(req.params.week, { text: req.body && 'text' in req.body ? req.body.text : undefined, accountId: req.account.id });
+  require('../services/indexnow').ping([`/research/${req.params.week}`, '/research']); // tells search engines; never holds up the answer
+  return published;
 }));
 router.post('/v1/admin/research/digests/:week/skip', requireAuth, requireAdmin, researchCall(req => {
   mondayOf(req.params.week);

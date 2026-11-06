@@ -58,10 +58,45 @@ canonical, the preview tags, the sitemap, the redirects and the 404.
 | Mobile | Pass | Browser tests at 375 px on every desk |
 | Speed | Pass | gzip, self-hosted fonts, ethers only on `/safety` and `/trade`, no images in pages |
 | Structured data | Pass (basic) | `Organization` and `WebSite` on the home page. FAQ rich results are now limited to government and health sites, so not worth adding |
-| Content rendered in the browser | **Warning** | Tables and results load from `/v1` after the page opens. Google runs the scripts, but more slowly, and many AI crawlers don't run them at all. **Pages meant to rank (below) should be built on the server** |
-| `lastmod` in the sitemap | Warning | Left out until pages have real change dates (the digest and protocol pages will) |
+| Content rendered in the browser | Pass (partly) | Tables still load from `/v1` by script, but each data page now opens with a server-rendered **At a glance** block of its key facts, and digests have their own server-rendered pages. Protocol record pages, when built, should be server-rendered the same way |
+| `lastmod` in the sitemap | Pass | On the digest pages, from their publish dates; the fixed pages have none until they change on a schedule |
+| Breadcrumbs and page data | Pass | `WebPage` and `BreadcrumbList` on every page; `AboutPage` on `/about`; `Article` on each digest |
+| Questions and FAQ data | Pass | A visible Questions section on 12 pages, and `FAQPage` data built from the questions shown, so the two always match |
+| Fonts | Pass | The heading and body fonts are preloaded, so the first view doesn't shift when they arrive |
+| Caching | Pass | Stylesheet, scripts and images kept 10 minutes; fonts a year; digest pages 5 minutes |
 | Search Console and Bing Webmaster | **Not set up** | A launch task: verify by DNS TXT, submit the sitemap |
 | Image alt text | Pass | Pages have no `<img>`; icons are inline SVG marked `aria-hidden` |
+
+## AI search: being the answer, not just a link
+
+ChatGPT, Claude, Perplexity, Gemini and Google's AI answers read pages
+differently from a results page: they quote a passage that answers the
+question, from a page they can read without a script, and prefer sources that
+name where their facts come from. RektBull's sourcing is a natural fit. What's
+in place:
+
+| What | Why it matters for AI answers | Where |
+|---|---|---|
+| **Every crawler welcome**, the AI ones named (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Google-Extended, Applebot-Extended, Bingbot) | An assistant can only cite what it may read. Blocking the training crawlers is the owner's call; the search and user-fetch ones should stay open | `/robots.txt` |
+| **At a glance**, rendered on the server | Most AI crawlers don't run scripts; without this, Markets, Research, Agents and Discover look empty to them. Short, dated, sourced sentences are what gets quoted | `src/pages/glance.js` |
+| **Questions**, answered plainly on 12 pages | Assistants match questions to passages that answer them in the first sentence | `src/pages/seo.js` (`FAQ`) |
+| **Digest pages** with a date, a byline, `Article` data and their sources | Fresh, dated, citable writing, the kind assistants quote for "this week in crypto hacks" | `/research/<Monday>` |
+| **About and sources** | Who runs it, how each check works, every data source: the trust signals search engines weigh for money topics, and what an assistant needs to describe RektBull correctly | `/about` |
+| **`llms.txt`** | A plain-text map of the site and the agent tools (MCP, OpenAPI) for assistants and agents | `/llms.txt` |
+| **IndexNow** | Bing (which feeds ChatGPT's and Copilot's search) hears about a new digest in minutes | `INDEXNOW_KEY`; `src/services/indexnow.js` |
+| **`sameAs`** | Ties the brand's official profiles together, so assistants don't confuse RektBull with lookalikes | `SAME_AS` |
+| **One consistent description** | The same one-line summary in the home page data, `llms.txt`, About and the MCP server's instructions | POSITIONING.md |
+
+**Checking it after launch:** ask ChatGPT, Claude, Perplexity and Gemini
+questions such as "how do I check my wallet's token approvals?", "what is x402?",
+"which x402 APIs do agents actually use?" and "crypto hacks this month", once a
+month. Note whether RektBull is cited, and fix what they get wrong in the page
+they quote. Search Console shows Google's AI answers' clicks within the normal
+search figures; Bing Webmaster Tools shows Copilot's.
+
+**Not done, on purpose:**
+- Separate Markdown copies of every page. `llms.txt` and server-rendered text cover it without a second copy to keep in sync.
+- Hidden text for bots. Everything a crawler reads, people see too.
 
 ## Keyword opportunities
 
@@ -98,7 +133,7 @@ Demand and difficulty are judged from the search results (no tool data).
 | # | Topic | Why | Format | Priority | Effort |
 |---|---|---|---|---|---|
 | 1 | **Protocol record pages**: `/dapps/<slug>` for the 300 largest by money locked, built on the server from DefiLlama with RektBull's signals | Answers the biggest searches better than anyone ranking now; live data stays fresh | Programmatic page: money locked over time, hacks with sources, audits listed, age, token check link | High | Substantial (multi-day) |
-| 2 | **Digest archive pages**: `/research/<week>` built on the server (now `?week=` in the browser) | Fresh, unique, sourced content every week, which search engines reward | Server-rendered article with its facts | High | Moderate |
+| 2 | ~~Digest archive pages~~: **done** (`/research/<week>`, server-rendered, `Article` data, in the sitemap) | Fresh, unique, sourced content every week, which search engines reward | Server-rendered article with its facts | Done | — |
 | 3 | **Hack tracker pages**: by year and by technique ("crypto hacks 2026", "oracle manipulation hacks") | Steady searches; DefiLlama, Rekt News and De.Fi rank with lists, not explanations | Server-rendered stats plus a plain-English "how this attack works" | High | Moderate |
 | 4 | **Guides** (`/learn`): wallet drained, revoking approvals, Permit2, NFT approvals, phishing sites, honeypots, what a token check can't tell you, using an agent safely with x402 | The questions people ask in a panic, each ending in the free checkup | 800 to 1,500 words each, with screenshots | High | Quick win (a few hours) each |
 | 5 | **Glossary**: approval, allowance, Permit2, drainer, honeypot, rug pull, x402, MCP, session key | Links between guides; answers "what is" questions | Short entries on one page or several | Medium | Moderate |
@@ -139,14 +174,25 @@ and the products themselves.
   previews, favicon, structured data, `.html` redirects and the 404 page.
 - The hero now says the checks work for your AI agent too.
 
+**Also done (search and AI answers):**
+- **At a glance** blocks on Research, Markets, Agents and Discover.
+- **Questions** on 12 pages, with matching FAQ data.
+- **Breadcrumbs and page data** on every page.
+- **The About and sources page.**
+- **Server-rendered digest pages**, in the sitemap with their dates.
+- **`llms.txt`**, AI crawlers named in robots.txt, and **IndexNow**.
+- **Font preloading** and **caching**.
+
 **At launch (an hour or two, the owner with Claude):**
 1. **Search Console:** verify `rektbull.com` with a DNS TXT record (one more record next to SPF and the MCP Registry's), then submit `https://rektbull.com/sitemap.xml`. High impact, under an hour.
 2. **Bing Webmaster Tools:** import from Search Console. Bing also feeds some AI assistants' search. 15 minutes.
 3. **Test a shared link** on X and Telegram to confirm the preview shows the image.
+4. **Set `INDEXNOW_KEY`** (`openssl rand -hex 16`), and `SAME_AS` once the official profiles exist.
+5. **Check the pages with Google's Rich Results Test** (the home page, a desk page, a digest page) and the Schema Markup Validator. Claude can run the checks and read the results with you.
 
 **This quarter (Claude builds, in this order):**
 1. **Protocol record pages** (`/dapps/<slug>`, built on the server, in the sitemap with `lastmod`). Impact high, effort several days. Depends on: nothing new; it uses the Discover data.
-2. **Digest archive pages** (`/research/<week>`). Impact high, about a day.
+2. ~~Digest archive pages (`/research/<week>`)~~: done.
 3. **Four guides first:** wallet drained, revoking approvals with Permit2, NFT approvals, using an agent safely with x402. Impact high, a few hours each, written for the owner to review.
 4. **Hack tracker pages** by year and technique. Impact medium to high, about a day.
 5. **The x402 data story**, monthly, from the Agents desk's own numbers. Impact medium, and it earns links.

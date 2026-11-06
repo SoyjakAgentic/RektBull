@@ -28,6 +28,8 @@ const env = {
   // The postal address every newsletter email carries (CAN-SPAM); the newsletter sends nothing without it.
   operatorPostalAddress: process.env.OPERATOR_POSTAL_ADDRESS || '',
   newsletterPerTick: int(process.env.NEWSLETTER_PER_TICK, 50), // newsletter emails per 5-minute worker tick
+  // IndexNow (docs/SEO.md): tells Bing and others when a digest is published. A random 32-character hex string; public by design.
+  indexNowKey: process.env.INDEXNOW_KEY || '',
   publicUrl: (process.env.PUBLIC_URL || process.env.SIWE_URI || 'https://rektbull.com').replace(/\/$/, ''),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',

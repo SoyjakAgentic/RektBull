@@ -446,6 +446,17 @@ label.inline { display: inline-flex; flex-direction: row; align-items: center; g
 #x402 .filters { margin: 0; align-items: end; }
 #x-table td.svc { min-width: 300px; max-width: 560px; }
 #x-table td.svc > * + * { margin-top: 4px; }
+/* "At a glance": server-rendered facts at the top of data pages */
+.glance h2 { font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.glance ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14.5px; }
+.glance li .source { margin-left: 4px; }
+.glance > p.source { margin: 10px 0 0; }
+/* a digest's own page */
+.pagehead .byline { color: var(--muted); font-size: 14px; }
+#digest .report h2 { font-size: 20px; margin: 22px 0 8px; }
+#digest .report h2:first-child { margin-top: 0; }
+#facts .fact-group h3 { margin: 14px 0 4px; font-size: 15px; }
+#questions .qs { display: grid; gap: 10px; margin-top: 8px; }
 .copyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
 .copyrow code { flex: 1 1 260px; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .setup pre.code { font-size: 12px; padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
