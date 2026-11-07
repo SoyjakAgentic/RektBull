@@ -66,7 +66,9 @@ anyway (Google and Meta require certification and limit what can be shown).
 
 | Channel | Why | Format | Effort |
 |---|---|---|---|
-| **X: RektBull's account and the owner's** | Where hacks break and spread; the main place for primary users | Hack-response posts within hours, a weekly digest thread, short screen recordings of the checkup | Medium |
+| **X: the RektBull account** | Where hacks break and spread; the main place for primary users | Hack-response posts within hours, the memes, a weekly digest thread, short screen recordings of the checkup | Medium |
+| **Telegram channel: RektBull** (broadcast, only RektBull posts) | Crypto users live on Telegram; a channel reaches them without the noise of a group | The weekly digest when it's published, alerts for large hacks, launch news | Low (can be automatic: see below) |
+| **Telegram group: the RektBull community** | Questions, "was I drained?", feedback and bug reports; where trust is built or lost | Answers, not announcements. Pin the official links and the "we never DM first" rule | Medium (needs moderation daily) |
 | **The weekly digest (email)** | Already built; it keeps people coming back | Weekly, owner-reviewed, with "check your wallet" in every issue | Low (Claude drafts, the owner reviews) |
 | **Search (SEO)** | Slow but compounding; see SEO.md | Guides, protocol record pages, digest archive | Medium |
 | **Communities** (Reddit, Farcaster, Telegram, Discord) | People ask "was I drained?" there every day | **Helpful answers, not promotion.** Link to the check only where it answers the question, and follow each place's rules | Medium |
@@ -76,6 +78,30 @@ anyway (Google and Meta require certification and limit what can be shown).
 
 **Not now:** paid ads, influencer deals, and sponsored newsletter placements
 (possible later, paid in crypto and only within the ad rules), conferences.
+
+**Who posts (decided 7 November 2026):** RektBull's own accounts: the X account,
+the Telegram channel (broadcast) and the Telegram group (community). Posts speak
+as RektBull, not as a person. The official handles go in `SAME_AS` (search and
+AI answers then tie them to the site) and on the About page's "How to tell it's
+really us".
+
+**Automatic posting:**
+- **Telegram channel:** RektBull's alert bot can post each published digest there, plus alerts for large hacks, once the bot is made an admin of the channel. Claude can build this when wanted; it's not built yet.
+- **X:** posting automatically needs X's paid API, so X stays manual, or goes through a scheduling tool the owner chooses.
+
+### The Telegram group: keeping scammers out
+
+Crypto Telegram groups are where impersonators hunt: fake "admins" DM members
+offering "support", a "wallet sync" or an airdrop link. For a safety brand, one
+member drained this way is the worst possible story. Before the group opens:
+
+- [ ] **Pinned rule, first message:** "RektBull's team never DMs you first, never asks for a seed phrase or private key, and never asks you to connect or 'verify' your wallet. Anyone who does is a scammer: report them." The same line goes in the group description.
+- [ ] **Official links** in the description and the pin: rektbull.com, the X account, the channel. Nothing else is official.
+- [ ] **New members** pass a captcha and can't post links, media or forwards for their first 24 hours (Telegram's own permissions plus an anti-spam bot).
+- [ ] **Few admins**, each with a visible "RektBull team" title. Make admin names hard to copy (the impersonators copy the name and photo exactly).
+- [ ] **Hide the member list** (Telegram's "Hide members" setting), so scammers can't scrape it to DM people.
+- [ ] **A daily look** at the group, at least in the first weeks. Delete scam posts quickly, and say publicly that they were scams.
+- [ ] **Never post a contract address or a "claim" link** in the group: RektBull has no token, and saying so in the pin heads off the most common fake.
 
 ## 5. Content calendar
 
@@ -87,6 +113,7 @@ When one happens, a hack-response post goes out the same day.
 |---|---|---|---|---|
 | −2 | Smoke test passed (LAUNCH_PLAN 5D); Search Console and Bing verified, sitemap submitted | Site | Owner adds the DNS record; Claude checks | To do |
 | −2 | X profile set up: bio, link, pinned "what RektBull is" post, preview image tested | X | Claude drafts; owner posts | To do |
+| −2 | Telegram channel and group created, with the group's safety settings (section 4) and the pinned rule; handles added to `SAME_AS` and the About page | Telegram | Owner creates; Claude drafts the pin and description | To do |
 | −2 | First digest drafted, reviewed and published, so `/research` isn't empty | Site, email | Owner reviews | To do |
 | −1 | Extension submitted to the Chrome Web Store (review takes days to weeks) | Store | LAUNCH_PLAN section 6 | To do |
 | −1 | Guides 1 and 2: "My wallet was drained: what now?" and "Revoking approvals, Permit2 included" | Site | Claude writes; owner reviews | To do |
@@ -176,6 +203,9 @@ Near zero, and paid in crypto only.
 3. **Claude:** draft the launch thread, the X profile, the "it's really us"
    note, the hack-response template and guides 1 and 2, for the owner to
    review.
-4. **Owner:** decide who posts (a RektBull account, the owner's own account, or
-   both) and how the owner wants to appear: named, or as the team.
-5. **Owner:** approve the targets in section 1, or set your own.
+4. ~~Decide who posts~~: **decided**. RektBull's X account, Telegram channel and
+   Telegram group, speaking as RektBull. **Owner:** send the handles once
+   they exist, for `SAME_AS` and the About page.
+5. **Claude, when wanted:** post published digests and large-hack alerts to the
+   Telegram channel automatically (the bot as a channel admin).
+6. **Owner:** approve the targets in section 1, or set your own.

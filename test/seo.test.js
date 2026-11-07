@@ -29,6 +29,7 @@ require('../src/services/markets').overview = (...a) => stand.overview(...a);
 require('../src/services/markets').stablecoinList = (...a) => stand.stablecoinList(...a);
 require('../src/services/agents').x402Services = (...a) => stand.x402(...a);
 require('../src/services/discover').dapps = (...a) => stand.dapps(...a);
+require('../src/providers/llama').protocols = async () => []; // no protocol records here (test/dappPages.test.js covers them)
 
 let server, base;
 test.before(() => { server = require('../src/app').createApp().listen(0); base = `http://127.0.0.1:${server.address().port}`; });

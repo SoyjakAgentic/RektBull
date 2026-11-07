@@ -67,7 +67,7 @@
       say('p-msg', r.not_checked.length ? `Not checked: ${r.not_checked.map(n => `${n.check} (${n.reason})`).join('; ')}` : '', r.not_checked.length ? 'bad' : null);
       $('p-table').tBodies[0].replaceChildren(...r.protocols.map((d, i) => el('tr', {},
         el('td', { class: 'n' }, String(i + 1)),
-        el('td', {}, el('a', { href: d.links.defillama, target: '_blank', rel: 'noopener', class: 'name' }, d.name), el('div', { class: 'sub' }, [d.chains.slice(0, 3).join(', '), d.listed_since ? `listed ${d.listed_since}` : null].filter(Boolean).join(' · '))),
+        el('td', {}, (d.links.record ? el('a', { href: d.links.record, class: 'name' }, d.name) : el('a', { href: d.links.defillama, target: '_blank', rel: 'noopener', class: 'name' }, d.name)), el('div', { class: 'sub' }, [d.chains.slice(0, 3).join(', '), d.listed_since ? `listed ${d.listed_since}` : null].filter(Boolean).join(' · '))),
         el('td', { class: 'num' }, usd(d.tvl_usd)),
         el('td', { class: 'num' }, trend(d.change_7d_pct)),
         el('td', { class: 'num' }, usd(d.fees_24h_usd)),
