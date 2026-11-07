@@ -67,7 +67,11 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   let calls = 0;
   app.post('/test/quick', paidRoute('token_quick_check', { validate: () => ({ ok: true }), run: async () => ({ done: ++calls }) }));
   app.post('/test/quick-fails', paidRoute('token_quick_check', { validate: () => ({ ok: true }), run: async () => { throw new Error('provider down'); } }));
-  app.post('/test/report', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => ({ done: true }) }));
+  // A report's AI cost reaches the gate the way src/ai/claude.js reports it: $0.50 when written, nothing when cached.
+  const aiAllowance = require('../src/payments/aiAllowance');
+  app.post('/test/report', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => { aiAllowance.add(0.5); return { done: true }; } }));
+  app.post('/test/report-cached', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => ({ done: true, cached: true }) }));
+  app.post('/test/report-fails', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => { aiAllowance.add(0.5); throw new Error('Claude refused'); } }));
   app.use('/test', errorHandler);
   app.use(createApp());
   const server = http.createServer(app);
@@ -169,9 +173,22 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   assert.equal(me.body.passes[0].product, 'pro_30d');
   assert.equal((await call('GET', `/v1/invoices/${inv.body.id}`)).body.status, 'paid');
   assert.equal((await call('POST', '/test/quick')).body.run.paid_with, 'pass');
-  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass', 'Safety Pro includes 5 reports a month');
-  assert.deepEqual((await call('GET', '/v1/me')).body.pass_included.token_report, { allowance: 5, used: 5, left: 0 });
-  assert.equal((await call('POST', '/test/report')).status, 402, 'the sixth needs credits ($3, and there are 75 cents)');
+  // Safety Pro's AI allowance: $2 every 30 days, counted at each run's real AI cost, shown as a percentage left.
+  let ai = (await call('GET', '/v1/me')).body.ai_allowance;
+  assert.equal(ai.left_pct, 100);
+  assert.ok(Date.parse(ai.resets_at) - Date.now() > 29 * 86400000, 'resets 30 days from the pass\'s start');
+  assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass');
+  ai = (await call('GET', '/v1/me')).body.ai_allowance;
+  assert.deepEqual([ai.left_pct, ai.used_pct, ai.used_usd], [75, 25, 0.5], 'a $0.50 run uses 25%');
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/test/report-cached')).body.run.paid_with, 'pass');
+  assert.equal((await call('GET', '/v1/me')).body.ai_allowance.left_pct, 75, 'cached answers use none of it');
+  assert.equal((await call('POST', '/test/report-fails')).status, 500);
+  assert.equal((await call('GET', '/v1/me')).body.ai_allowance.left_pct, 75, 'a failed run is never counted');
+  for (let i = 0; i < 3; i++) assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass');
+  assert.equal((await call('GET', '/v1/me')).body.ai_allowance.left_pct, 0);
+  assert.equal((await call('POST', '/test/report')).status, 402, 'used up: a report needs credits ($3, and there are 75 cents)');
+  const { rows: costs } = await db.query(`SELECT ai_cost_usd::float AS c FROM runs WHERE product = 'token_report' AND status = 'succeeded' AND ai_cost_usd IS NOT NULL`);
+  assert.deepEqual(costs.map(r => r.c), [0.5, 0.5, 0.5, 0.5], 'each run\'s AI cost is kept');
   assert.equal((await call('GET', '/v1/me')).body.passes[0].title, 'Safety Pro, 30 days');
 
   // ── A reorged deposit is never credited ──

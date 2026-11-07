@@ -5,7 +5,8 @@
  *
  * It tries, in order: an x402 payment in X-PAYMENT; then, for a signed-in
  * wallet, an active Safety Pro pass that covers the product (within its fair
- * use, or what it includes a month), the month's free points, and credits.
+ * use, its AI allowance for runs that use AI, or what it includes a month),
+ * the month's free points, and credits.
  * If none applies it answers 402 with every way to pay.
  *
  * Nothing is kept unless the run succeeds: pass uses, points and credits are
@@ -20,6 +21,7 @@ const { ipSubject } = require('../privacy/ipKey');
 const credits = require('./credits');
 const passes = require('./passes');
 const x402 = require('./x402');
+const aiAllowance = require('./aiAllowance');
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -70,7 +72,12 @@ async function acquire(p, req, runId) {
   for (const rail of rails(p)) {
     if (rail === 'pass') {
       const pass = await passes.covering(acct.id, p.id);
-      if (pass?.included_per_month) {
+      if (pass?.ai_allowance) {
+        // Counted at the run's real AI cost once it succeeds; nothing to give back if it fails.
+        if (await aiAllowance.hasRoom(acct.id, pass)) {
+          return { method: 'pass', commit: async () => {}, rollback: async () => {}, afterRun: usd => aiAllowance.charge(acct.id, pass, usd) };
+        }
+      } else if (pass?.included_per_month) {
         if (await points.takeIncluded(acct.id, p.id, pass.included_per_month)) {
           return { method: 'pass', commit: async () => {}, rollback: () => points.giveBackIncluded(acct.id, p.id) };
         }
@@ -127,9 +134,9 @@ function paidRoute(productId, { validate, run, record = input => input }) {
       [runId, req.account?.id || null, p.id, charge.method, charge.method === 'credits' || charge.method === 'x402' ? p.price_cents : 0, JSON.stringify(record(input)), charge.payer || null],
     );
 
-    let result;
+    let result, aiUsd = 0;
     try {
-      result = await run(input, req);
+      ({ result, usd: aiUsd } = await aiAllowance.meter(() => run(input, req)));
     } catch (err) {
       await charge.rollback().catch(e => logger.error('could not give a failed run back', { run: runId, error: e.message }));
       await db.query(`UPDATE runs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [runId, err.message]);
@@ -143,7 +150,8 @@ function paidRoute(productId, { validate, run, record = input => input }) {
       await db.query(`UPDATE runs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [runId, `settlement: ${err.message}`]);
       return res.status(402).json(paymentRequired(p, req, { payment_error: `The payment could not be settled: ${err.message}` }));
     }
-    await db.query(`UPDATE runs SET status = 'succeeded', x402_tx = $2, finished_at = now() WHERE id = $1`, [runId, settled?.txHash || null]);
+    await db.query(`UPDATE runs SET status = 'succeeded', x402_tx = $2, ai_cost_usd = $3, finished_at = now() WHERE id = $1`, [runId, settled?.txHash || null, aiUsd || null]);
+    if (charge.afterRun) await charge.afterRun(aiUsd).catch(e => logger.error('could not count a run against the AI allowance', { run: runId, error: e.message }));
     if (settled?.header) res.set('X-PAYMENT-RESPONSE', settled.header);
     res.json({ ...result, run: { id: runId, paid_with: charge.method, ...(charge.method === 'credits' || charge.method === 'x402' ? { price_cents: p.price_cents } : {}), ...(charge.points ? { points: charge.points } : {}) } });
   };

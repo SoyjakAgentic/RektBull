@@ -99,6 +99,11 @@ cost from list prices (`GET /v1/admin/provider-usage`, under `ai`), so the
 real cost per report can be read rather than guessed.
 
 
-At the default model, a report costs a few US cents of AI usage against a $3
-price. Quick checks use no AI. To lower cost further, set `REPORT_MODEL` and
-`REPORT_EFFORT`; no code change needed.
+At the default model (Opus 5.5: $4 per million input tokens, $20 per million
+output), a report costs at most about $0.11 of AI usage (it is capped at 4,000
+output tokens) against a $3 price; a proposal summary is capped at 1,500
+output tokens. Quick checks and the AI agents' scheduled runs use no AI. Each
+run's AI cost is stored (`runs.ai_cost_usd`). Safety Pro's AI runs come out
+of a $2 allowance every 30 days (PAYMENTS.md), so one Pro user can't cost
+more than about $2 a month in AI. To lower cost further, set `REPORT_MODEL`
+and `REPORT_EFFORT`; no code change needed.

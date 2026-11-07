@@ -20,11 +20,13 @@ const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
   covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals', 'governance_summary'],
-  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500, governance_summary: 50 },
-  included_per_month: { token_report: 5 },
+  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
+  // AI runs are counted at what they cost RektBull in Claude usage, up to $2 in each 30 days of the
+  // pass (src/payments/aiAllowance.js); then they're paid like any other run.
+  ai_allowance: { cents_per_30_days: 200, uses: ['token_report', 'governance_summary'] },
   monitor: { wallets: 3, every_hours: 24 },
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), 5 AI reports a month, pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), and DAO votes: proposal summaries, and alerts when a vote opens or is about to close for a wallet you watch.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for full token reports and proposal summaries (about 20 reports; an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), and DAO votes: alerts when a vote opens or is about to close for a wallet you watch.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -139,7 +141,8 @@ function publicCatalog() {
       pay_with: rails(p),
       ...(p.points ? { points: p.points } : {}),
       ...(p.kind === 'fee' ? { fee_bps: p.fee_bps, pro_fee_bps: p.pro_fee_bps } : {}),
-      ...(p.days ? { days: p.days, covers: p.covers, fair_use_per_day: p.fair_use_per_day, included_per_month: p.included_per_month } : {}),
+      ...(SAFETY_PRO.ai_allowance.uses.includes(id) ? { in_pro_ai_allowance: true } : {}),
+      ...(p.days ? { days: p.days, covers: p.covers, fair_use_per_day: p.fair_use_per_day, ai_allowance_usd_per_30_days: p.ai_allowance.cents_per_30_days / 100 } : {}),
       ...(p.x402 && p.price_cents > X402_DEFAULT_CLIENT_CAP_CENTS ? { x402_note: 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.' } : {}),
     };
   });

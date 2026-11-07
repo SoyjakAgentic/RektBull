@@ -109,8 +109,27 @@ not the user.
 
 Crypto can't safely pull a payment every month, so time is prepaid:
 **Safety Pro**, `pro_30d` ($9) and `pro_365d` ($79), covers every Safety
-desk check (fair use), 5 AI reports a month, the risk monitor (up to 3
+desk check (fair use), an AI allowance, the risk monitor (up to 3
 wallets, checked daily; paused while no pass is active), and a 3% claim fee instead of 5%. Buying again while active extends from the current end date.
+
+**The AI allowance** (`src/payments/aiAllowance.js`, decided 7 November 2026):
+- Runs that use AI (full token reports, proposal summaries, and later the
+  AI write-ups of other agents) are counted at **what each one actually cost
+  RektBull in Claude usage**, measured from the tokens of every Claude call
+  the run made, at list prices (`src/ai/claude.js`).
+- Each 30 days of a pass (counted from its start, so a 365-day pass gets a
+  fresh allowance every 30 days) includes **$2** of AI. At Opus 5.5 that is
+  about 20 reports (a report is capped at 4,000 output tokens, at most about
+  $0.11).
+- An answer already cached (a report for an hour, a summary for 30 days)
+  costs nothing, so it uses nothing. A failed or refused run is never counted.
+- Once used up, AI runs are paid like any other run (credits, x402, points
+  where a product takes them) until the allowance resets. The check is made
+  before a run, so the last run of a period can go over by one run's cost.
+- **Users see a percentage**, not dollars: "AI allowance: 65% left · resets
+  5 Dec", with a bar, like an AI subscription's usage meter (Safety page).
+- Each run's AI cost is stored (`runs.ai_cost_usd`), so the margin per
+  product can be read rather than guessed.
 What a pass costs us to serve (AI reports, data plans, hosting) and when
 it breaks even is worked out in the PR that introduced it (#10); the real
 AI cost per report is recorded (`GET /v1/admin/provider-usage`, `ai`).

@@ -71,6 +71,7 @@ router.get('/v1/me', requireAuth, async (req, res) => {
     points: await points.status(req.account),
     passes: active.map(p => ({ ...p, title: productOf(p.product).title })),
     ...(included ? { pass_included: included } : {}),
+    ai_allowance: await require('../payments/aiAllowance').status(req.account.id),
   });
 });
 

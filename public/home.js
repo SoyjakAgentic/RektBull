@@ -23,7 +23,7 @@
     if (p.pro_30d && p.pro_365d) {
       const amount = $('pr-pro');
       amount.replaceChildren(p.pro_30d.price_usd.replace(/\.00$/, ''), ' ', el('small', {}, `for 30 days · ${p.pro_365d.price_usd.replace(/\.00$/, '')} a year`));
-      set('pr-reports', `${p.pro_30d.included_per_month?.token_report || 0} AI token reports a month`);
+      set('pr-reports', 'An AI allowance every 30 days for full token reports and proposal summaries (about 20 reports)');
     }
     if (p.airdrop_claim) {
       $('pr-claim').replaceChildren(pct(p.airdrop_claim.fee_bps), ' ', el('small', {}, `of a claim · ${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro`));

@@ -121,8 +121,17 @@
       $('points-left').textContent = pt ? `${pt.left} of ${pt.allowance}` : '–';
       $('points-note').textContent = pt ? `Back to ${pt.allowance} on ${new Date(pt.resets_at).toLocaleDateString()}.${pt.new_wallet ? ' New wallets start with fewer; a wallet with transactions gets more next month.' : ''}` : '';
       const pass = me.passes?.[0];
-      const reports = me.pass_included?.token_report;
-      $('pass').textContent = pass ? `Until ${new Date(pass.ends_at).toLocaleDateString()}${reports ? ` · ${reports.left} of ${reports.allowance} reports left this month` : ''}` : 'none';
+      $('pass').textContent = pass ? `Until ${new Date(pass.ends_at).toLocaleDateString()}` : 'none';
+      // Safety Pro's AI allowance, as a percentage left (like an AI subscription's usage meter).
+      const ai = me.ai_allowance;
+      $('ai-meter').hidden = !ai;
+      if (ai) {
+        $('ai-left').textContent = `${ai.left_pct}% left`;
+        $('ai-bar').style.width = `${ai.used_pct}%`;
+        $('ai-bar').className = ai.left_pct <= 10 ? 'low' : '';
+        $('ai-bar').parentElement.setAttribute('aria-valuenow', String(ai.used_pct));
+        $('ai-note').textContent = `${ai.left_pct ? 'For full token reports and proposal summaries.' : 'Used up: reports and summaries are paid like any run until it resets.'} Resets ${new Date(ai.resets_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`;
+      }
     } catch (err) { if (err.status !== 401) say('topup-msg', err.message, 'bad'); }
   }
 

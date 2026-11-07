@@ -24,13 +24,16 @@ async function buy(accountId, productId, ref) {
 /** The active pass that covers runProductId, or null. */
 async function covering(accountId, runProductId) {
   const { rows } = await db.query(
-    `SELECT product, ends_at FROM passes WHERE account_id = $1 AND starts_at <= now() AND ends_at > now() ORDER BY ends_at DESC`,
+    `SELECT id, product, starts_at, ends_at FROM passes WHERE account_id = $1 AND starts_at <= now() AND ends_at > now() ORDER BY ends_at DESC`,
     [accountId],
   );
   for (const r of rows) {
     const p = product(r.product);
     if ((p.covers || []).includes(runProductId)) {
-      return { ...r, fair_use_per_day: p.fair_use_per_day?.[runProductId] ?? null, included_per_month: p.included_per_month?.[runProductId] ?? null };
+      return {
+        ...r, fair_use_per_day: p.fair_use_per_day?.[runProductId] ?? null, included_per_month: p.included_per_month?.[runProductId] ?? null,
+        ai_allowance: (p.ai_allowance?.uses || []).includes(runProductId),
+      };
     }
   }
   return null;
