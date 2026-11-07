@@ -3,7 +3,8 @@
  * deleted. Only a normal sign-in can do either (an extension token can't).
  *
  * Deleting removes: the email address, alert channels (Telegram, email,
- * push) and their delivery records, risk monitor wallets and alerts,
+ * push) and their delivery records, risk monitor wallets and alerts, AI
+ * agent settings (switches, schedules, watched tokens, last runs),
  * extension links, trading safety settings, free-use counters and pending
  * codes. It keeps what other records depend on, tied to the wallet address:
  * credits, top-ups, deposits, passes, paid runs, claims, and trades made through
@@ -31,6 +32,7 @@ const TABLES = {
   monitored_wallets: 'SELECT wallet, label, created_at, last_checked_at FROM monitored_wallets WHERE account_id = $1',
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
+  ai_agents: 'SELECT agent, enabled, every_hours, settings, last_run_at, last_result, last_error, updated_at FROM agent_settings WHERE account_id = $1 ORDER BY agent',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
   governance_spaces: 'SELECT space_id, created_at FROM governance_spaces WHERE account_id = $1',
   governance_governors: 'SELECT chain, address, name, created_at FROM governance_governors WHERE account_id = $1',
@@ -67,6 +69,7 @@ async function deleteMine(account, { confirm } = {}) {
     await run('alert_link_codes', 'DELETE FROM alert_link_codes WHERE account_id = $1');
     await run('monitor_alerts', 'DELETE FROM monitor_alerts WHERE account_id = $1');
     await run('monitored_wallets', 'DELETE FROM monitored_wallets WHERE account_id = $1');
+    await run('ai_agents', 'DELETE FROM agent_settings WHERE account_id = $1');
     const { rows: links } = await c.query('DELETE FROM extension_tokens WHERE account_id = $1 RETURNING jti', [account.id]);
     removed.extension_links = links.length;
     require('../auth/extensionTokens').forget(links.map(l => l.jti)); // stop them working at once

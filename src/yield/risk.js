@@ -125,6 +125,7 @@ async function alertHolders(fresh) {
   const raised = [];
   for (const w of rows) {
     if (!(await passes.covering(w.account_id, 'risk_monitor'))) continue;
+    if (!(await require('../services/myAgents').isOn(w.account_id, 'yield_watch'))) continue; // switched off on the AI agents page
     let pos;
     try { pos = await positions.read(w.wallet); } catch (err) { logger.warn('yield risk: positions unreadable', { wallet: w.wallet, error: err.message }); continue; }
     for (const p of pos.positions) {

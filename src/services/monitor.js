@@ -32,6 +32,7 @@ const MAX_SPENDERS_READ = 30;
 const DEPEG = { low: 0.97, high: 1.03 };
 const PER_TICK = 10;
 const RETRY_MINUTES = 60;
+const myAgents = () => require('./myAgents'); // the switch and schedule set on the AI agents page
 const ERC20 = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
 
 /** The EIP-1967 implementation of a contract, or null when it isn't such a proxy. */
@@ -159,7 +160,7 @@ async function check(row) {
   await db.query(
     `UPDATE monitored_wallets SET snapshot = $2, last_checked_at = now(), last_error = NULL,
        next_check_at = now() + make_interval(hours => $3) WHERE id = $1`,
-    [row.id, JSON.stringify(snapshot), SAFETY_PRO.monitor.every_hours],
+    [row.id, JSON.stringify(snapshot), await myAgents().everyHours(row.account_id, 'wallet_guardian')],
   );
   return raised;
 }
@@ -170,6 +171,10 @@ async function tick({ limit = PER_TICK } = {}) {
   for (const row of rows) {
     if (!(await passes.covering(row.account_id, 'risk_monitor'))) {
       await db.query(`UPDATE monitored_wallets SET last_error = 'Paused: Safety Pro has ended', next_check_at = now() + interval '1 day' WHERE id = $1`, [row.id]);
+      continue;
+    }
+    if (!(await myAgents().isOn(row.account_id, 'wallet_guardian'))) {
+      await db.query(`UPDATE monitored_wallets SET last_error = 'Paused: Wallet Guardian is switched off on the AI agents page', next_check_at = now() + interval '1 day' WHERE id = $1`, [row.id]);
       continue;
     }
     try {
@@ -191,7 +196,7 @@ async function list(accountId) {
   const pass = await passes.covering(accountId, 'risk_monitor');
   const { rows } = await db.query('SELECT * FROM monitored_wallets WHERE account_id = $1 ORDER BY created_at', [accountId]);
   const unread = await db.query('SELECT count(*)::int AS n FROM monitor_alerts WHERE account_id = $1 AND read_at IS NULL', [accountId]);
-  return { active: !!pass, ...(pass ? { until: pass.ends_at } : {}), limit: SAFETY_PRO.monitor.wallets, every_hours: SAFETY_PRO.monitor.every_hours, wallets: rows.map(present), unread_alerts: unread.rows[0].n };
+  return { active: !!pass, ...(pass ? { until: pass.ends_at } : {}), limit: SAFETY_PRO.monitor.wallets, every_hours: await myAgents().everyHours(accountId, 'wallet_guardian'), switched_on: await myAgents().isOn(accountId, 'wallet_guardian'), wallets: rows.map(present), unread_alerts: unread.rows[0].n };
 }
 
 class MonitorRefused extends Error {
