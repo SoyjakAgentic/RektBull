@@ -73,7 +73,57 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     await page.waitForFunction(() => document.querySelector('#p-table tbody tr .name').textContent === 'Agent Index');
     console.log('✔ the AI-agent protocols with their record, sortable');
 
-    assert.equal(await page.getAttribute('#yours a.tile >> nth=0', 'href'), '/developers#mcp');
+    assert.equal(await page.getAttribute('#builders a.tile >> nth=0', 'href'), '/developers#mcp');
+
+    // Your agents, signed out: what each does, its schedule and price; switches off until sign-in.
+    const cards = page.locator('#ma-list .agent');
+    await cards.nth(6).waitFor();
+    assert.deepEqual(await cards.locator('h3').allTextContents(), ['Wallet Checkup', 'Wallet Guardian', 'Claim Assistant', 'Token Watch', 'DAO Votes', 'Yield Watch', 'Trading Agent']);
+    assert.equal(await page.locator('#ma-list input[role="switch"]:not([disabled])').count(), 0, 'nothing to switch before sign-in');
+    assert.match(await cards.nth(0).textContent(), /RunsEvery week.*PriceFree.*Open Home/s);
+    assert.match(await page.textContent('#ma-alerts'), /Sign in to switch agents on/);
+    assert.match(await page.textContent('#communities'), /Group Guard.*Channel Poster.*Launch Safety.*Contract Audit/s);
+    console.log('✔ your agents, signed out; agents for communities');
+
+    // Signed in (the account API played here): switches, schedules, the last run, Token Watch's list.
+    const catalog = require('../../src/services/myAgents').catalog();
+    const patches = [];
+    let agentsNow = catalog.map(a => ({ ...a, enabled: a.id === 'wallet_checkup' || a.default_on, every_hours: a.schedules[0].every_hours, schedule: a.id === 'wallet_checkup' ? 'Every week' : a.default_schedule,
+      status: a.plan === 'pro' && a.id !== 'token_watch' ? { state: 'needs_pro', text: 'Part of Safety Pro' } : a.id === 'token_watch' ? { state: 'needs_setup', text: 'Add a token to watch' } : { state: a.id === 'wallet_checkup' ? 'on' : 'off', text: a.id === 'wallet_checkup' ? 'On' : 'Off' },
+      ...(a.id === 'token_watch' ? { tokens: [{ chain: 'base', token: '0x' + '5a'.repeat(20), label: 'PEPE2' }], max_tokens: 10 } : {}),
+      ...(a.id === 'wallet_checkup' ? { last_run_at: new Date(Date.now() - 7200000).toISOString(), last_result: { text: 'What apps can still take: 2 approvals worth revoking', not_checked: ['DAO votes'], alerts: 1 } } : {}) }));
+    const signed = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    signed.on('pageerror', e => errors.push(e.message));
+    await signed.addInitScript(() => { sessionStorage.setItem('rb_token', 'test-token'); sessionStorage.setItem('rb_wallet', '0x' + 'ab'.repeat(20)); });
+    await signed.route('**/v1/me', r => r.fulfill({ json: { wallet: '0x' + 'ab'.repeat(20) } }));
+    await signed.route('**/v1/my-agents', r => r.fulfill({ json: { agents: agentsNow, safety_pro: false, watched_wallets: 0, unread_alerts: 2, alert_channels: ['telegram', 'email'] } }));
+    await signed.route('**/v1/my-agents/*', async r => {
+      const id = r.request().url().split('/').pop();
+      const body = JSON.parse(r.request().postData());
+      patches.push({ id, body });
+      agentsNow = agentsNow.map(a => (a.id === id ? { ...a, ...body, ...(body.every_hours ? { schedule: a.schedules.find(x => x.every_hours === body.every_hours).label } : {}) } : a));
+      await r.fulfill({ json: agentsNow.find(a => a.id === id) });
+    });
+    await signed.goto(url + '/agents');
+    const checkupCard = signed.locator('#agent-wallet_checkup');
+    await checkupCard.locator('select').waitFor();
+    assert.match(await signed.textContent('#ma-alerts'), /Alerts go to Telegram, email\. Change · 2 unread/);
+    assert.match(await checkupCard.textContent(), /Last run 2 h ago: What apps can still take: 2 approvals worth revoking · 1 alert sentNot checked: DAO votes/);
+    assert.equal(await checkupCard.locator('input[role="switch"]').isChecked(), true);
+    const guardian = signed.locator('#agent-wallet_guardian input[role="switch"]');
+    assert.ok(await guardian.isDisabled() && !(await guardian.isChecked()), 'without Safety Pro it can\'t run, so its switch shows off');
+    assert.equal(await signed.locator('#agent-dao_votes a[href="/safety#pro-card"]').textContent(), 'Part of Safety Pro');
+    await checkupCard.locator('select').selectOption('24');
+    await signed.waitForFunction(() => /Saved/.test(document.getElementById('ma-msg').textContent));
+    await signed.locator('#agent-claim_assistant .switch').click();
+    await signed.waitForFunction(() => /Claim Assistant is on/.test(document.getElementById('ma-msg').textContent));
+    assert.deepEqual(patches, [{ id: 'wallet_checkup', body: { every_hours: 24 } }, { id: 'claim_assistant', body: { enabled: true } }]);
+    assert.match(await signed.textContent('#agent-token_watch'), /PEPE2 on Base Remove1 of 10 tokens\./);
+    console.log('✔ your agents, signed in: switch on, pick a schedule, the last run with what wasn\'t checked');
+    await signed.setViewportSize({ width: 375, height: 800 });
+    assert.ok(await signed.evaluate(() => document.documentElement.scrollWidth <= 375), 'the agents fit a phone screen');
+    await signed.close();
+
     await page.setViewportSize({ width: 375, height: 800 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 375), 'no sideways scrolling at phone width');
     console.log('✔ fits a phone screen');

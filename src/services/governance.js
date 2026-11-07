@@ -344,6 +344,7 @@ async function alertTick() {
   const raised = [];
   for (const w of rows) {
     if (!(await passes.covering(w.account_id, 'risk_monitor'))) continue;
+    if (!(await require('./myAgents').isOn(w.account_id, 'dao_votes'))) continue; // switched off on the AI agents page
     let c;
     try { c = await check(w.wallet, { accountId: w.account_id }); } catch { continue; }
     const open = [

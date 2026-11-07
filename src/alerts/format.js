@@ -17,6 +17,14 @@ function reasons(alert) {
   return list.slice(0, 4).map(r => `• ${r.text} (${r.source})`);
 }
 
+/** Where the AI agents' own alerts link (src/services/myAgents.js). */
+const AGENT_LINKS = {
+  checkup: { action: 'See your checkup', path: a => `/?wallet=${encodeURIComponent(a.wallet)}#results` },
+  claimable: { action: 'Review and claim', path: a => `/find?wallet=${encodeURIComponent(a.wallet)}` },
+  token_watch: { action: 'See the token check', path: a => `/safety?chain=${encodeURIComponent(a.detail?.token?.chain || '')}&token=${encodeURIComponent(a.detail?.token?.token || '')}#check-card` },
+  trade_exit: { action: 'See the trade', path: () => '/trade' },
+};
+
 /** { subject, text, url } for an alert. */
 function message(alert) {
   if (alert.kind === 'pass_renewal') {
@@ -30,6 +38,13 @@ function message(alert) {
     `Wallet ${short(alert.wallet)}`,
     ...reasons(alert),
   ];
+  const agent = AGENT_LINKS[alert.kind];
+  if (agent) {
+    return {
+      subject: `RektBull ${alert.severity === 'info' || alert.severity === 'low' ? '' : `${SEVERITY[alert.severity]} `}alert: ${alert.title}`.slice(0, 150),
+      text: lines.join('\n'), url: `${env.publicUrl}${agent.path(alert)}`, action: agent.action,
+    };
+  }
   const yieldRisk = alert.kind === 'yield_risk';
   const governance = alert.kind === 'governance';
   const url = alert.kind === 'depeg' ? `${env.publicUrl}/safety#monitor-card`
