@@ -10,6 +10,35 @@ it changes, change those with it.*
 > claim or pay for, and tells you where every fact comes from. For you, and
 > for your AI agents.
 
+## Update, 7 November 2026: two pillars, crypto safety and AI agents
+
+The owner decided to put **AI agents** in RektBull's identity next to safety,
+now that RektBull has real agents (the AI agents tab, [AI_AGENTS.md](AI_AGENTS.md)).
+
+> **RektBull: crypto safety and AI agents.** Free checks of what you're about to
+> sign, hold, claim or pay for, and AI agents that watch your wallets, tokens
+> and DAOs and tell you what changed. Every fact with its source. Checks your
+> own AI agent can call too.
+
+- **What "AI agents" means here:** agents that check and tell you, or prepare
+  something for your wallet to sign. "An agent that can't make facts up."
+  Never a trading bot that promises returns; the Trading Agent is sold on its
+  onchain limits, not on profit.
+- **Two meanings of "crypto AI agents" in search,** both served honestly:
+  - people looking for an agent to use: one page per agent at
+    `/agents/<name>`, each aimed at a real search ("wallet monitoring bot",
+    "airdrop checker", "token rug alert", "DAO vote alerts");
+  - people researching AI-agent tokens: the AI-agent protocols list on
+    `/agents`, and protocol records with each one's hacks and audits.
+- **What stays:** the free wallet checkup is still the hook (the launch
+  campaign counts checkups), and the never-say rules below are unchanged.
+- **Where it shows:** the home page title and hero, the Organization
+  description, `llms.txt`, the About page, the AI agents tab and the agent
+  pages ([SEO.md](SEO.md)).
+
+The table below explains why "blockchain agents" alone was rejected; the
+pillar is "AI agents" next to safety, with the agents doing safety work.
+
 ## The category: crypto safety
 
 RektBull sells one thing, **safety**, to two audiences: **people** with wallets,

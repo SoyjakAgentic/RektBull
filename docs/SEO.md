@@ -127,12 +127,21 @@ Demand and difficulty are judged from the search results (no tool data).
 | token approval api, wallet risk api | Easy | Medium | Commercial | `/developers`, OpenAPI |
 | crypto safety weekly newsletter | Easy | Medium | Navigational | `/research#newsletter` |
 | crypto portfolio tracker | Very hard (Zerion, DeBank, Zapper) | Low | Commercial | **Don't target**; the portfolio is a feature, not a destination |
+| crypto ai agent, ai crypto agent, crypto ai agents | Hard (agent tokens, trading bots, launchpads) | **High** | Mixed | `/agents` and the agent pages: "AI agents that can't make facts up". Never "AI trading bot that earns" |
+| crypto wallet monitoring bot, wallet alert bot, approval alerts | Moderate | **High** | Commercial | `/agents/wallet-guardian` (live) |
+| airdrop checker bot, unclaimed rewards alert | Hard, and full of scam sites | Medium | Transactional | `/agents/claim-assistant` (live): "never connect a wallet to a DM link" |
+| token rug alert, honeypot alert, rug pull detector bot | Moderate | **High** | Commercial | `/agents/token-watch` (live); Launch Safety when built |
+| dao vote alerts, snapshot proposal notifications | Easy | Medium | Commercial | `/agents/dao-votes` (live) |
+| defi exploit alerts, aave position alerts | Easy to moderate | Medium | Commercial | `/agents/yield-watch` (live) |
+| crypto trading agent with limits, ai trading agent safe | Hard | Medium | Commercial | `/agents/trading-agent` (live): sold on onchain limits, never on returns |
+| ai agent tokens, is \<agent token\> safe | Moderate | Medium | Informational | The AI-agent protocols on `/agents`, linked to protocol records |
 
 ## Content to build, in order
 
 | # | Topic | Why | Format | Priority | Effort |
 |---|---|---|---|---|---|
 | 1 | ~~Protocol record pages~~: **done**. `/dapps/<slug>` for every protocol with $10M or more locked (about 560), plus the `/dapps` index. They're built on the server, use the data Discover already caches, and are in the sitemap; Discover and Agents link to them | Answers the biggest searches better than anyone ranking now; live data stays fresh | Programmatic page: the record as quotable sentences, facts with sources, hacks with write-ups, audits, "Before you use it", related protocols, Questions with FAQ data | Done | — |
+| 1b | ~~AI agent pages~~: **done** (7 November 2026). `/agents/<name>` for each of the seven agents, each aimed at one search: what it checks with sources, schedule, alerts, price, what it never does, Questions with FAQ data, `SoftwareApplication` data. In the sitemap and `llms.txt`; the home page title and hero, About and the Organization description now say "crypto safety and AI agents" (POSITIONING.md) | "Crypto AI agents" is the identity's second pillar | Programmatic page from the agents' own catalog | Done | — |
 | 2 | ~~Digest archive pages~~: **done** (`/research/<week>`, server-rendered, `Article` data, in the sitemap) | Fresh, unique, sourced content every week, which search engines reward | Server-rendered article with its facts | Done | — |
 | 3 | **Hack tracker pages**: by year and by technique ("crypto hacks 2026", "oracle manipulation hacks") | Steady searches; DefiLlama, Rekt News and De.Fi rank with lists, not explanations | Server-rendered stats plus a plain-English "how this attack works" | High | Moderate |
 | 4 | **Guides** (`/learn`): wallet drained, revoking approvals, Permit2, NFT approvals, phishing sites, honeypots, what a token check can't tell you, using an agent safely with x402 | The questions people ask in a panic, each ending in the free checkup | 800 to 1,500 words each, with screenshots | High | Quick win (a few hours) each |
