@@ -32,7 +32,9 @@ test('catalog: runs try Safety Pro, points, credits, then x402; reports take no 
   assert.deepEqual([...pro.covers].sort(), ['airdrop_claim', 'approval_cleanup', 'governance_summary', 'presign_check', 'risk_monitor', 'token_quick_check', 'token_report', 'yield_proposals'], 'airdrop_claim: the 3% claim fee; yield_proposals; governance_summary');
   assert.deepEqual(catalog.rails(catalog.product('presign_check')), ['pass', 'points', 'credits', 'x402']);
   assert.deepEqual(pro.monitor, { wallets: 3, every_hours: 24 });
-  assert.equal(pro.included_per_month.token_report, 5);
+  assert.deepEqual(pro.ai_allowance, { cents_per_30_days: 200, uses: ['token_report', 'governance_summary'] }, '$2 of AI every 30 days, at real cost');
+  assert.equal(pro.fair_use_per_day.governance_summary, undefined, 'summaries come out of the AI allowance, not a daily count');
+  assert.equal(catalog.publicCatalog().find(p => p.id === 'token_report').in_pro_ai_allowance, true);
   assert.equal(catalog.product('token_quick_check').points, 1);
   assert.equal(catalog.product('approval_cleanup').points, 5);
   assert.equal(catalog.FREE_POINTS.per_month, 30);
@@ -341,4 +343,19 @@ test('memory cache expires entries', () => {
   cache._memSet('k', 1, 10, 1000);
   assert.equal(cache._memGet('k', 5000), 1);
   assert.equal(cache._memGet('k', 11001), undefined);
+});
+
+test('AI allowance: 30-day periods from the pass start; a run is metered at its real AI cost; unknown models never count as free', async () => {
+  const ai = require('../src/payments/aiAllowance');
+  const day = 86400000, start = Date.UTC(2026, 0, 1);
+  const pass = { id: 7, starts_at: new Date(start).toISOString(), ends_at: new Date(start + 365 * day).toISOString() };
+  assert.deepEqual(ai.period(pass, start + 5 * day), { key: 'pass:7:0', resets_at: new Date(start + 30 * day).toISOString() });
+  assert.equal(ai.period(pass, start + 31 * day).key, 'pass:7:1', 'a year\'s pass gets a fresh allowance every 30 days');
+  assert.equal(ai.period(pass, start + 361 * day).resets_at, pass.ends_at, 'the last period ends with the pass');
+  const { result, usd, calls } = await ai.meter(async () => { ai.add(0.08); await new Promise(r => setTimeout(r, 1)); ai.add(0.02); return 'ok'; });
+  assert.deepEqual([result, Math.round(usd * 100) / 100, calls], ['ok', 0.1, 2]);
+  ai.add(5); // outside a metered run: counted nowhere
+  const claude = require('../src/ai/claude');
+  assert.equal(claude.costOf('claude-opus-5-5', { input_tokens: 10000, output_tokens: 4000 }), 0.12);
+  assert.equal(claude.costOf('some-new-model', { input_tokens: 10000, output_tokens: 4000 }), 0.12, 'priced at the dearest listed model');
 });

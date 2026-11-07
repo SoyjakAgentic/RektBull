@@ -475,6 +475,15 @@ ul.rules { display: grid; gap: 8px; padding-left: 20px; margin: 0; }
 .fact-group ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 @media (max-width: 620px) { .tiles:has(> .tile-stat:nth-child(3):last-child) { grid-template-columns: 1fr; } .bars:has(.bar-btn) .bar-row { grid-template-columns: minmax(0, 1fr); } }
 
+/* Safety Pro's AI allowance: percent left, like an AI subscription's usage meter */
+.meter { margin-top: 14px; display: grid; gap: 6px; }
+.meter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+.meter-bar { height: 8px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); overflow: hidden; }
+.meter-bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .3s; }
+.meter-bar span.low { background: var(--warn); }
+.meter p { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .meter-bar span { transition: none; } }
+
 /* AI agents: your agents, each with its switch */
 .agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-top: 14px; }
 .agent { border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }

@@ -133,7 +133,7 @@ Object.assign(process.env, {
   try {
     await page.goto(url + '/safety');
     await page.getByText('· 1 point or $0.25').waitFor();
-    await page.getByText('· $3.00 (5 a month with Safety Pro)').waitFor();
+    await page.getByText('· $3.00 (in Safety Pro\'s AI allowance)').waitFor();
     await page.getByText('· 5 points or $1.00').waitFor();
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.card')).borderTopWidth), '1px', 'the stylesheet loaded and parsed');
 
@@ -178,7 +178,7 @@ Object.assign(process.env, {
     console.log('✔ out of free points: the message offers Safety Pro, or paying from credits');
 
     await page.getByRole('button', { name: /Full report/ }).click();
-    await page.locator('#check-msg', { hasText: 'Token due diligence report costs $3.00 from credits (you have $0.00). Safety Pro includes 5 a month.' }).waitFor();
+    await page.locator('#check-msg', { hasText: 'Token due diligence report costs $3.00 from credits (you have $0.00). Safety Pro\'s AI allowance covers it, and resets every 30 days.' }).waitFor();
     console.log('✔ report without credits: says what it costs and what you have');
 
     // Top up: a deposit address, sent from the wallet as a USDC transfer on Base.
@@ -219,10 +219,13 @@ Object.assign(process.env, {
     await credits.add(rows[0].id, 200, 'adjustment', 'test:topup2');
     await page.getByRole('button', { name: 'Safety Pro, 30 days: $9.00' }).click();
     await page.locator('#pass-msg', { hasText: 'is active' }).waitFor();
-    await page.locator('#pass', { hasText: /Until .* 5 of 5 reports left this month/ }).waitFor();
+    await page.locator('#pass', { hasText: /^Until / }).waitFor();
+    await page.locator('#ai-left', { hasText: '100% left' }).waitFor();
+    assert.match(await page.textContent('#ai-note'), /For full token reports and proposal summaries\. Resets \d+ \w+\./);
+    assert.equal(await page.evaluate(() => document.getElementById('ai-bar').style.width), '0%');
     await page.getByRole('button', { name: /Quick check/ }).click();
     await page.getByText('Paid with your Safety Pro pass').first().waitFor();
-    console.log('✔ Safety Pro: refused without enough credits; bought from credits; shows the reports left; then checks use the pass');
+    console.log('✔ Safety Pro: refused without enough credits; bought from credits; shows the AI allowance as a percentage left; then checks use the pass');
 
     // Approval cleanup: a free preview, then the paid list, then revoking from the wallet.
     assert.equal((await page.inputValue('#a-wallet')).toLowerCase(), wallet.address.toLowerCase(), 'the signed-in wallet is filled in');

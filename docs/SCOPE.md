@@ -65,7 +65,7 @@ finds or saves**, and show that figure in the result.
 **Free:** rankings, safety-score summaries, the airdrop and rewards check,
 approval previews, and **30 points a month** for signed-in wallets (a quick
 check is 1, an approval cleanup 5). **Safety Pro** ($9 for 30 days, $79 a
-year) covers every Safety desk check, 5 AI reports a month and the risk
+year) covers every Safety desk check, an AI allowance (about 20 reports every 30 days) and the risk
 monitor, and lowers the claim fee to 3%. Users pay for monitoring, deep
 reports and volume, and a share of money found when they claim it here.
 

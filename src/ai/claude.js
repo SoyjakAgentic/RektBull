@@ -36,6 +36,14 @@ function estimateUsd(model, t) {
   return (t.input_tokens * p.input + t.output_tokens * p.output + (t.cache_read_tokens || 0) * p.cache_read) / 1e6;
 }
 
+/** One call's cost in USD; a model without a listed price is counted at the dearest listed one, never as free. */
+function costOf(model, usage = {}) {
+  const t = { input_tokens: usage.input_tokens || 0, output_tokens: usage.output_tokens || 0, cache_read_tokens: usage.cache_read_input_tokens || 0 };
+  const known = estimateUsd(model, t);
+  if (known !== null) return known;
+  return Math.max(...Object.keys(PRICES).map(m => estimateUsd(m, t)));
+}
+
 /** Adds one call's tokens to today's totals for the model. Never fails the report. */
 async function recordUsage(model, usage = {}) {
   if (!env.databaseUrl) return;
@@ -74,6 +82,7 @@ async function write({ system, prompt, maxTokens = 4000 }) {
     messages: [{ role: 'user', content: prompt }],
   });
   await recordUsage(response.model, response.usage); // billed even when refused
+  require('../payments/aiAllowance').add(costOf(response.model, response.usage)); // the run's AI cost (Safety Pro's allowance)
   if (response.stop_reason === 'refusal') {
     throw Object.assign(new Error('The report could not be written for this token'), { status: 502 });
   }
@@ -82,4 +91,4 @@ async function write({ system, prompt, maxTokens = 4000 }) {
   return { text, model: response.model, usage: response.usage };
 }
 
-module.exports = { write, available, usageReport, estimateUsd, recordUsage, PRICES };
+module.exports = { write, available, usageReport, estimateUsd, recordUsage, costOf, PRICES };

@@ -148,12 +148,10 @@
     return catalog;
   }).catch(() => catalog);
 
-  /** " · 1 point or $0.25", " · $3.00 (5 a month with Safety Pro)" */
+  /** " · 1 point or $0.25", " · $3.00 (in Safety Pro's AI allowance)" */
   function priceLabel(p) {
     if (!p) return '';
-    const pro = catalog.products.pro_30d;
-    const included = pro?.included_per_month?.[p.id];
-    return ` · ${p.points ? `${p.points} point${p.points === 1 ? '' : 's'} or ` : ''}${p.price_usd}${included ? ` (${included} a month with Safety Pro)` : ''}`;
+    return ` · ${p.points ? `${p.points} point${p.points === 1 ? '' : 's'} or ` : ''}${p.price_usd}${p.in_pro_ai_allowance ? ' (in Safety Pro\'s AI allowance)' : ''}`;
   }
 
   /** The message for a 402: how to pay, and the Safety Pro nudge. */
@@ -169,7 +167,7 @@
     const bal = err?.data?.credits_balance_cents;
     const credits = `${p.price_usd} from credits${bal !== undefined ? ` (you have ${usd(bal)})` : ''}`;
     if (p.points) return `You've used this month's free points.${proText} Or pay ${credits}. You weren't charged.`;
-    return `${p.title} costs ${credits}.${pro?.included_per_month?.[p.id] ? ` Safety Pro includes ${pro.included_per_month[p.id]} a month.` : proText} You weren't charged.`;
+    return `${p.title} costs ${credits}.${p.in_pro_ai_allowance ? ` Safety Pro's AI allowance covers it, and resets every 30 days.` : proText} You weren't charged.`;
   }
 
   /** "Paid with 5 free points", "Paid with your Safety Pro pass", ... */
