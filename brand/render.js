@@ -30,7 +30,7 @@ const MEMES = [
   ['bull-market', 'steaming', 'Bull market energy', 'Still checking every signature'],
 ];
 
-(async () => {
+async function render() {
   // SVGs
   for (const m of MOODS) {
     write(out('public', 'brand', `bull-${m}.svg`), bull(m));
@@ -100,6 +100,8 @@ const MEMES = [
   }
   await browser.close();
   console.log(`wrote ${MOODS.length * 2 + 1} SVGs, ${MOODS.length} stickers, ${MEMES.length} memes, the site and store icons and og.png`);
-})().catch(err => { console.error(err); process.exit(1); });
+}
 
-module.exports = { MEMES };
+if (require.main === module) render().catch(err => { console.error(err); process.exit(1); });
+
+module.exports = { MEMES, render };
