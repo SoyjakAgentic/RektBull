@@ -28,6 +28,13 @@ from Soyjak, one piece at a time, each as a separate, confirmed step.
 | Solana | `solanaWatcher.js`, `solanaBalancesAt.js`, Solana deposit pool | Later, with Solana payments |
 | x402 extras | `x402Pricing.js`, `x402Eligibility.js`, `x402AnomalyTracking.js` | Review; RektBull's pricing lives in `payments/catalog.js` |
 
+## The agents themselves
+
+Each of Soyjak's 23 crypto and social agents, and what to do with it, is in
+[AI_AGENTS.md](AI_AGENTS.md). Seven are already RektBull desks. The proposed
+ports are the Contract Audit Agent and the meme-launch safety squad, plus two
+new community agents built from RektBull's checks.
+
 ## Custody: decided, session keys
 
 RektBull **never holds user funds or keys**. Automatic trading is rebuilt on
