@@ -95,8 +95,8 @@ Checked on 4 November 2026: the site already follows this. The hero leads with
 safety; no page calls anything safe. The hero now also says the same checks
 work for your AI agent.
 
-**Open question for the owner:** the logo's shield has an inner mark that's
-currently invisible (its colour token, `--accent-ink`, was never defined). Made
-visible, it reads as a **¥ sign**, which suits a safety brand badly. The site,
-the icons and the preview image use the plain shield people see today. A real
-mark (a bull, horns, a check) is a design decision for later.
+**The logo (decided 6 November 2026):** the bull. Its head is the shield, so the
+mark keeps the safety shape and gains a character, with faces that double as
+meme reaction images (calm, rekt, sweating, shook, steaming, shades). The old
+hidden mark, which read as a ¥ sign, is gone. How to use the faces, and the rules
+that keep the memes on-brand, are in [brand/README.md](../brand/README.md).

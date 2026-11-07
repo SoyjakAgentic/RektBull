@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="RektBull's bull, shades">
+  
+  
+  <defs><clipPath id="h"><path d="M64 18 L106 33 V64 C106 89 88.5 108 64 116 C39.5 108 22 89 22 64 V33 Z"/></clipPath></defs>
+  <path d="M28 38 C14 34 5 22 9 6 C15 18 25 24 40 27 Z" fill="#fff4dd" stroke="#0d1424" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M100 38 C114 34 123 22 119 6 C113 18 103 24 88 27 Z" fill="#fff4dd" stroke="#0d1424" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M64 18 L106 33 V64 C106 89 88.5 108 64 116 C39.5 108 22 89 22 64 V33 Z" fill="#2346d6"/>
+  <g clip-path="url(#h)">
+    <path d="M22 33 L64 18 L64 116 C39.5 108 22 89 22 64 Z" fill="#1b37ad" opacity=".35"/>
+    <ellipse cx="64" cy="96" rx="30" ry="20" fill="#6a88f5"/>
+  </g>
+  <path d="M64 18 L106 33 V64 C106 89 88.5 108 64 116 C39.5 108 22 89 22 64 V33 Z" fill="none" stroke="#0d1424" stroke-width="4.5" stroke-linejoin="round"/>
+  <ellipse cx="54" cy="93" rx="4" ry="5.5" fill="#0d1424"/>
+  <ellipse cx="74" cy="93" rx="4" ry="5.5" fill="#0d1424"/>
+  <path d="M55 99 C55 111 73 111 73 99" fill="none" stroke="#f5b700" stroke-width="4.5" stroke-linecap="round"/>
+  
+    <path d="M30 52 H98 V58 C98 68 90 72 82 72 C74 72 69 66 68 58 H60 C59 66 54 72 46 72 C38 72 30 68 30 58 Z" fill="#0d1424" stroke="#0d1424" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M36 57 L44 57 M74 57 L82 57" stroke="#5f7bff" stroke-width="3" stroke-linecap="round"/>
+  
+</svg>
