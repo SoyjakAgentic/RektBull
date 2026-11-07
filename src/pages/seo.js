@@ -15,7 +15,7 @@
  * Put into each page at <!--#meta--> and before </main> when the app starts.
  */
 const PAGES = {
-  '/': ['Free Crypto Wallet Checkup: Approvals and Scams | RektBull', 'Paste a wallet: see risky token approvals, unclaimed rewards and open DAO votes on six chains in seconds. Free, every finding with its source.'],
+  '/': ['Crypto Safety and AI Agents: Free Wallet Checkup | RektBull', 'Paste a wallet for a free checkup, then let AI agents watch it: risky approvals, scam tokens, unclaimed rewards and DAO votes, every fact with its source.'],
   '/safety': ['Token Scam Checker and Approval Cleanup | RektBull', 'Check a token before you buy: can it be sold, what it taxes, what its owner can do. Find and revoke risky approvals. Every finding sourced.'],
   '/extension': ['Wallet Drainer Check Before You Sign | RektBull Extension', 'A browser extension that simulates what you\'re about to sign, checks every spender and the site, and warns you before your wallet does.'],
   '/discover': ['DeFi Rankings With Hack and Audit Records | RektBull', 'Dapps ranked by money locked, fees and weekly change, each with its hack and audit record, plus trending and new tokens. Free, with sources.'],
@@ -124,7 +124,7 @@ const text = html => String(html).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').
 // JSON in a script tag: "<" escaped so no value can close the tag.
 const ldTag = data => `\n  <script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 
-const organization = base => ({ '@type': 'Organization', '@id': `${base}/#org`, name: 'RektBull', url: `${base}/`, logo: `${base}/icon-512.png`, description: 'Crypto safety checks for people and their AI agents, every fact with its source.', ...(SAME_AS().length ? { sameAs: SAME_AS() } : {}) });
+const organization = base => ({ '@type': 'Organization', '@id': `${base}/#org`, name: 'RektBull', url: `${base}/`, logo: `${base}/icon-512.png`, description: 'Crypto safety checks and AI agents that watch your wallet, every fact with its source. Checks other AI agents can call too.', ...(SAME_AS().length ? { sameAs: SAME_AS() } : {}) });
 // Official profiles (e.g. the X account), from SAME_AS: they tie the brand together for search engines and AI answers.
 const SAME_AS = () => (process.env.SAME_AS || '').split(',').map(s => s.trim()).filter(s => /^https:\/\//.test(s));
 
@@ -236,11 +236,12 @@ function llms(base, digests = []) {
   return [
     '# RektBull',
     '',
-    '> Crypto safety checks for people and their AI agents: what a wallet, token, approval, dapp or x402 service is, and what is risky about it, with the source of every fact. RektBull never holds funds or keys; it prepares transactions for the user\'s own wallet to sign. Nothing here is financial advice, and a clean check is never proof that something is safe.',
+    '> Crypto safety and AI agents: free checks of what a wallet, token, approval, dapp or x402 service is and what is risky about it, and AI agents that watch your wallets, tokens, claims and DAO votes and alert you, with the source of every fact. The same checks are open to other people\'s AI agents (MCP, x402). RektBull never holds funds or keys; it prepares transactions for the user\'s own wallet to sign. Nothing here is financial advice, and a clean check is never proof that something is safe.',
     '',
     'Key facts:',
     '- Free wallet checkup on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain: risky token approvals, unclaimed rewards, idle stablecoins and open DAO votes.',
     '- Paid runs (token quick check $0.25, full token report $3, approval cleanup $1, pre-sign check $0.10, proposal summary $0.10) take x402 (USDC on Base, no account), points, credits or Safety Pro ($9 for 30 days). Charged only when the run succeeds.',
+    '- AI agents (sign in with a wallet, switch one on, alerts by Telegram, email or browser): Wallet Checkup and Claim Assistant are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro. They never sign or move money, and AI never decides a fact.',
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
@@ -248,6 +249,11 @@ function llms(base, digests = []) {
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),
+    '',
+    '## AI agents',
+    ...require('./agentPage').list().map(a => `- [${a.name}](${base}/agents/${a.slug}): ${require('./agentPage').PAGES[a.id].description}`),
+    '',
+    '## Records',
     `- [Protocol records](${base}/dapps): every DeFi protocol with $10M or more locked: its recorded hacks, audits listed, money locked and age, each fact with its source.`,
     ...(digests.length ? ['', '## Weekly digests', ...digests.slice(0, 12).map(d => `- [The week of ${d.week_start}](${base}/research/${d.week_start})`)] : []),
     '',

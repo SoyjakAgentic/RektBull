@@ -107,12 +107,22 @@ function createApp() {
     } catch (err) { next(err); }
   });
 
+  // One page per AI agent: /agents/<slug>, rendered on the server (src/pages/agentPage.js).
+  const agentPage = require('./pages/agentPage');
+  const agentShell = digestShell.replace(/<!--#footer:[\s\S]*?-->/, '<!--#footer:Agents send what RektBull\'s checks found, each with its source; a clean result is never proof that something is safe. Not advice.-->');
+  app.get('/agents/:slug', (req, res, next) => {
+    const p = agentPage.page(req.params.slug, base);
+    if (!p) return next();
+    res.type('html').set('cache-control', 'public, max-age=600').send(seo.withFaqData(shell(agentShell.replace('<!--#meta-->', seo.headFor(p.head)).replace('<!--#body-->', p.body), '/agents')));
+  });
+
   const text = (type, maxAge) => (_req, res, body) => res.type(type).set('cache-control', `public, max-age=${maxAge}`).send(body);
   app.get('/robots.txt', (req, res) => text('text/plain', 3600)(req, res, seo.robots(base)));
   app.get('/sitemap.xml', async (req, res) => {
     const [weeks, dapps] = await Promise.all([published(), records().catch(() => [])]);
     text('application/xml', 3600)(req, res, seo.sitemap(base, [
       ...weeks.map(w => ({ loc: `${base}/research/${w.week_start}`, lastmod: w.published_at ? new Date(w.published_at).toISOString().slice(0, 10) : null })),
+      ...agentPage.list().map(a => ({ loc: `${base}/agents/${a.slug}` })),
       ...(dapps.length ? [{ loc: `${base}/dapps` }] : []),
       ...dapps.map(p => ({ loc: `${base}/dapps/${p.slug}` })),
     ]));

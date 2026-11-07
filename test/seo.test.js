@@ -134,7 +134,7 @@ test('robots.txt, the sitemap, the icons and the preview image', async () => {
   assert.match(robots.body, /^Sitemap: https:\/\/rektbull\.test\/sitemap\.xml$/m);
   const llms = await get('/llms.txt');
   assert.match(llms.type, /text\/plain/);
-  assert.match(llms.body, /^# RektBull\n\n> Crypto safety checks for people and their AI agents/);
+  assert.match(llms.body, /^# RektBull\n\n> Crypto safety and AI agents: free checks/);
   for (const route of Object.keys(seo.PAGES)) assert.ok(llms.body.includes(`(https://rektbull.test${route})`), `llms.txt links ${route}`);
   assert.match(llms.body, /\[MCP server\]\(https:\/\/rektbull\.test\/mcp\)/);
   assert.match(llms.body, /\[OpenAPI\]\(https:\/\/rektbull\.test\/v1\/openapi\.json\)/);
@@ -143,7 +143,7 @@ test('robots.txt, the sitemap, the icons and the preview image', async () => {
   const map = await get('/sitemap.xml');
   assert.match(map.type, /application\/xml/);
   const locs = [...map.body.matchAll(/<loc>([^<]*)<\/loc>/g)].map(m => m[1]);
-  assert.deepEqual(locs, Object.keys(seo.PAGES).map(r => `https://rektbull.test${r}`));
+  assert.deepEqual(locs, [...Object.keys(seo.PAGES), ...require('../src/pages/agentPage').list().map(x => `/agents/${x.slug}`)].map(r => `https://rektbull.test${r}`), 'every page, then each AI agent\'s page');
   assert.ok(!locs.some(l => l.endsWith('/404')));
   for (const f of ['favicon.svg', 'favicon-48.png', 'apple-touch-icon.png', 'icon-512.png', 'og.png']) {
     assert.equal((await fetch(`${base}/${f}`)).status, 200, f);
