@@ -246,6 +246,7 @@ function llms(base, digests = []) {
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),
+    `- [Protocol records](${base}/dapps): every DeFi protocol with $10M or more locked: its recorded hacks, audits listed, money locked and age, each fact with its source.`,
     ...(digests.length ? ['', '## Weekly digests', ...digests.slice(0, 12).map(d => `- [The week of ${d.week_start}](${base}/research/${d.week_start})`)] : []),
     '',
     '## For AI agents and developers',

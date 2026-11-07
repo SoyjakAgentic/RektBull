@@ -96,7 +96,7 @@ async function dapps({ chain = null, category = null, sort = 'tvl', limit = 50 }
     chains: p.chains.map(c => CHAIN_NAMES[c]), more_chains: Math.max(0, p.chain_count - p.chains.length),
     listed_since: p.listed_at ? new Date(p.listed_at * 1000).toISOString().slice(0, 10) : null,
     signals: dappSignals(p, hackOf(p.id)),
-    links: { defillama: `https://defillama.com/protocol/${p.slug}`, site: p.url },
+    links: { defillama: `https://defillama.com/protocol/${p.slug}`, site: p.url, record: p.tvl >= 10e6 && /^[a-z0-9-]{1,80}$/.test(p.slug || '') ? `/dapps/${p.slug}` : null },
     token: p.token ? { ...p.token, check: `/safety?chain=${p.token.chain}&token=${p.token.address}` } : null,
   }));
   const key = { tvl: r => r.tvl_usd, fees: r => r.fees_24h_usd ?? -1, change_7d: r => r.change_7d_pct ?? -Infinity }[sort];
