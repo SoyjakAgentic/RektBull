@@ -521,6 +521,18 @@ router.delete('/v1/monitor/wallets/:id', requireAuth, monitorCall(req => monitor
 router.get('/v1/monitor/alerts', requireAuth, monitorCall(async req => ({ alerts: await monitor.alerts(req.account.id, { unreadOnly: req.query.unread === '1' }) })));
 router.post('/v1/monitor/alerts/read', requireAuth, monitorCall(req => monitor.markRead(req.account.id, req.body?.ids)));
 
+// ── AI agents: each agent's switch, schedule and settings; the runs happen in the worker ──
+const myAgents = require('../services/myAgents');
+const agentCall = fn => async (req, res) => {
+  try { res.json(await fn(req)); } catch (err) {
+    if (err instanceof myAgents.AgentsRefused) return res.status(err.status).json({ error: 'refused', message: err.message, ...(err.offer ? { offer: err.offer } : {}) });
+    res.status(500).json({ error: 'internal', message: 'Something went wrong; try again.' });
+  }
+};
+router.get('/v1/my-agents/catalog', (_req, res) => res.json({ agents: myAgents.catalog() }));
+router.get('/v1/my-agents', requireAuth, agentCall(req => myAgents.list(req.account.id)));
+router.patch('/v1/my-agents/:id', requireAuth, agentCall(req => myAgents.update(req.account.id, req.params.id, req.body || {})));
+
 // ── Where alerts go: Telegram, email, browser push ──
 const alertChannels = require('../alerts/channels');
 const alertDispatch = require('../alerts/dispatch');

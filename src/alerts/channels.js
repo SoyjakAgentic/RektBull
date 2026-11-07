@@ -91,7 +91,7 @@ async function telegramUpdate(headers, update) {
     if (!row) { await reply('This link has expired or was already used. Open RektBull and press "Connect Telegram" again.'); return { ok: true }; }
     const who = msg.from?.username ? `@${msg.from.username}` : msg.from?.first_name || 'Telegram';
     await upsertVerified(row.account_id, 'telegram', String(chatId), who);
-    await reply('Linked. RektBull will send your risk monitor alerts here. Send /stop to turn them off.');
+    await reply('Linked. RektBull will send your alerts here (your AI agents and the risk monitor). Send /stop to turn them off.');
     return { ok: true, linked: true };
   }
   if (/^\/stop(?:@\w+)?$/.test(text)) {
@@ -99,7 +99,7 @@ async function telegramUpdate(headers, update) {
     await reply('Alerts turned off. You can link this chat again from RektBull.');
     return { ok: true, stopped: true };
   }
-  await reply('This bot only sends RektBull alerts. Link it from the Risk monitor on rektbull.com.');
+  await reply('This bot only sends RektBull alerts. Link it from the AI agents or Safety page on rektbull.com.');
   return { ok: true };
 }
 
@@ -117,8 +117,8 @@ async function startEmail(accountId, address) {
   const url = `${env.publicUrl}/v1/alerts/confirm-email?code=${c}`;
   await email.send({
     to, subject: 'Confirm your RektBull alerts',
-    text: `Confirm that RektBull may send risk monitor alerts to this address:\n${url}\n\nIf you didn't ask for this, ignore this email.`,
-    html: `<p>Confirm that RektBull may send risk monitor alerts to this address:</p><p><a href="${escapeHtml(url)}">Confirm my email</a></p><p style="color:#5d6673;font-size:12px">If you didn't ask for this, ignore this email.</p>`,
+    text: `Confirm that RektBull may send your alerts (your AI agents and the risk monitor) to this address:\n${url}\n\nIf you didn't ask for this, ignore this email.`,
+    html: `<p>Confirm that RektBull may send your alerts (your AI agents and the risk monitor) to this address:</p><p><a href="${escapeHtml(url)}">Confirm my email</a></p><p style="color:#5d6673;font-size:12px">If you didn't ask for this, ignore this email.</p>`,
   });
   return { sent: true, to };
 }

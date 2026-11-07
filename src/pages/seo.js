@@ -19,7 +19,7 @@ const PAGES = {
   '/safety': ['Token Scam Checker and Approval Cleanup | RektBull', 'Check a token before you buy: can it be sold, what it taxes, what its owner can do. Find and revoke risky approvals. Every finding sourced.'],
   '/extension': ['Wallet Drainer Check Before You Sign | RektBull Extension', 'A browser extension that simulates what you\'re about to sign, checks every spender and the site, and warns you before your wallet does.'],
   '/discover': ['DeFi Rankings With Hack and Audit Records | RektBull', 'Dapps ranked by money locked, fees and weekly change, each with its hack and audit record, plus trending and new tokens. Free, with sources.'],
-  '/agents': ['x402 APIs and AI Agent Protocols, Ranked | RektBull', 'Paid APIs AI agents call with x402, ranked by real payers, with signals for fake usage and flagged payment addresses. Free, with sources.'],
+  '/agents': ['AI Agents for Crypto Safety, and x402 APIs | RektBull', 'Agents that watch your wallets, tokens, claims and DAO votes and alert you with sources; plus the x402 APIs agents pay for, ranked by real payers.'],
   '/markets': ['DeFi Today: TVL, Stablecoin Pegs and RWA | RektBull', 'DeFi in numbers: money locked, DEX volume, fees, stablecoin supply and how close each is to its peg, real-world assets and largest tokens.'],
   '/opportunities': ['Crypto Rewards and Airdrops to Claim | RektBull', 'Live reward campaigns on six chains with each protocol\'s hack and audit record, plus what your own wallet can claim, earn and vote on.'],
   '/portfolio': ['Crypto Portfolio Tracker on Six Chains | RektBull', 'See what a wallet holds on six chains and what it\'s worth, with the facts on each token: scam airdrops, off-peg stablecoins, risky approvals.'],
@@ -34,7 +34,7 @@ const PAGES = {
 
 /** Short names for breadcrumbs and llms.txt. */
 const NAMES = {
-  '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'Agents', '/markets': 'Markets',
+  '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'AI agents', '/markets': 'Markets',
   '/opportunities': 'Opportunities', '/portfolio': 'Portfolio', '/research': 'Research', '/find': 'Find money', '/governance': 'Governance',
   '/trade': 'Trade', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
 };
@@ -70,6 +70,8 @@ const FAQ = {
     ['Can I check a token from the lists?', 'Yes. Free flags show for any token, and the <a href="/safety">token check</a> goes further: sellability, taxes, owner powers and holders.'],
   ],
   '/agents': [
+    ['What do RektBull\'s AI agents do?', 'Each one runs a check a RektBull desk already has, on a schedule you pick, and sends what it finds by Telegram, email or browser notification, with the source of every fact. The Wallet Checkup and Claim Assistant are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro.'],
+    ['Can an agent move my money?', 'No. The agents check and tell you; anything that moves money is prepared for your own wallet to sign. The one exception is the Trading Agent, which trades only inside limits your wallet signed onchain (a session key you can revoke), and can only send the result back to your wallet.'],
     ['What is x402?', 'An open way for software, including AI agents, to pay for an API per request in stablecoins: the API answers "402 Payment Required" with its price, the client pays (usually in USDC on Base) and retries. No account or card is needed.'],
     ['How are the x402 services ranked?', 'By how many different wallets paid each one in the last 30 days, from Coinbase\'s x402 Bazaar. Services with fewer than 5 payers and testnet-only endpoints are left out; most of the 100,000+ listed endpoints are never called.'],
     ['What do the warnings mean?', '"Usage that looks generated" means about one call per payer, which is how fake traffic usually looks. Others flag few users, no calls in 14 days, plain http, or a payment address that GoPlus flags. RektBull hasn\'t tested these services: check before your agent pays one.'],

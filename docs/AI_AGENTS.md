@@ -94,7 +94,7 @@ The address stays `/agents`, so nothing already shared or indexed breaks.
 
 ## Order (decided)
 
-1. **The tab**, with the seven agents RektBull already has, each with an "on" switch, a schedule and alerts: a day or two.
+1. **The tab**, with the seven agents RektBull already has, each with an "on" switch, a schedule and alerts. **Built** (`src/services/myAgents.js`, `/agents`): Wallet Checkup and Claim Assistant (free), Wallet Guardian, Token Watch, DAO Votes and Yield Watch (Safety Pro), and the Trading Agent's exit alerts.
 2. **Launch Safety** (bundle detector and insider tracer): about a week.
 3. **Group Guard**, with Channel Poster for project teams: about a week, reusing the token, phishing and address checks.
 4. **Contract Audit Agent**, with the analyzer service: several days, plus hosting for Slither.

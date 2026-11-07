@@ -483,3 +483,33 @@ ul.rules { display: grid; gap: 8px; padding-left: 20px; margin: 0; }
 .meter-bar span.low { background: var(--warn); }
 .meter p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .meter-bar span { transition: none; } }
+
+/* AI agents: your agents, each with its switch */
+.agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-top: 14px; }
+.agent { border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.agent.on { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.agent p { margin: 0; }
+.agent-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.agent-head h3 { margin: 0; font-size: 17px; }
+.agent-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.agent-facts dt { color: var(--muted); }
+.agent-facts dd { margin: 0; }
+.agent-facts select { font-size: 13.5px; padding: 4px 8px; }
+.agent-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+.agent .last { border-left: 3px solid var(--soft); padding-left: 10px; }
+.agent .last .block { display: block; }
+.agent .tokens ul { margin: 0 0 4px; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; }
+.agent .tokens-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.agent .tokens-add input { flex: 1 1 160px; font-size: 13.5px; padding: 6px 10px; }
+.agent .tokens-add select { font-size: 13.5px; padding: 6px 8px; }
+.agent .tokens-add button { padding: 6px 14px; font-size: 13.5px; }
+.switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch input:disabled { cursor: not-allowed; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); transition: background .15s; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.switch input:checked + span { background: var(--ok); border-color: var(--ok); }
+.switch input:checked + span::after { transform: translateX(18px); background: #fff; }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:disabled + span { opacity: .5; }
+@media (prefers-reduced-motion: reduce) { .switch span, .switch span::after { transition: none; } }

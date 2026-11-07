@@ -50,6 +50,13 @@ async function main() {
       monitoring = true;
       try { await require('./services/monitor').tick(); } catch (err) { logger.error('monitor tick failed', { error: err.message }); } finally { monitoring = false; }
     }, 5 * 60 * 1000);
+    // AI agents that run on a schedule (wallet checkup, claim assistant, token watch): the due ones, every 5 minutes.
+    let agentsBusy = false;
+    setInterval(async () => {
+      if (agentsBusy) return;
+      agentsBusy = true;
+      try { await require('./services/myAgents').tick(); } catch (err) { logger.error('agents tick failed', { error: err.message }); } finally { agentsBusy = false; }
+    }, 5 * 60 * 1000);
     // Alerts out to Telegram, email and browser push, every 20 seconds.
     let sending = false;
     setInterval(async () => {

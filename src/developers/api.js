@@ -57,6 +57,8 @@ const ENDPOINTS = [
   { method: 'POST', path: '/v1/claims/prepare', group: 'account', summary: 'Prepare claims for the wallet to sign (the fee is a share of what\'s claimed, in the same bundle)', body: { wallet: { required: true, text: 'The wallet' }, chain: { required: true, text: EVM6 }, ids: { required: true, text: 'Ids of found items from /v1/claims/check (up to 20)' } }, limit: 'claims_prepare' },
   { method: 'POST', path: '/v1/yield/moves/prepare', group: 'account', summary: 'Prepare a yield move for the wallet to sign (0.1% of the amount moved)', body: { wallet: { required: true, text: 'The wallet' }, chain: { required: true, text: 'ethereum, base or arbitrum' }, asset: { required: true, text: 'USDC, USDT or ETH' }, from: { text: 'The venue now (or none, for a deposit)' }, to: { text: 'The venue to move to (or none, for a withdrawal)' }, amount_usd: { text: 'How much, in US dollars (or all: true)' } }, limit: 'yield_prepare' },
   { method: 'GET', path: '/v1/monitor', group: 'account', summary: 'The risk monitor: wallets you watch and their alerts (Safety Pro)', auth: true },
+  { method: 'GET', path: '/v1/my-agents', group: 'account', summary: 'Your AI agents: each one\'s switch, schedule, status and last run', auth: true },
+  { method: 'PATCH', path: '/v1/my-agents/:id', group: 'account', summary: 'Switch an AI agent on or off, set its schedule, or (Token Watch) its tokens', auth: true, body: { enabled: { text: 'true or false' }, every_hours: { text: 'One of the agent\'s schedules, in hours' }, tokens: { text: 'Token Watch only: up to 10 of { chain, token }' } } },
 ];
 
 /** A paid endpoint's price line, from the catalog. */

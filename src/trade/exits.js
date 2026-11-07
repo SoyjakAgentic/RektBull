@@ -29,6 +29,18 @@ function exitReason({ valueUsd, costUsd, stopLossPct, takeProfitPct }) {
   return null;
 }
 
+/** Tells the user an exit is under way (the Trading Agent's alert), unless they switched its alerts off. */
+async function alertExit(p, net, intent, reason) {
+  const myAgents = require('../services/myAgents');
+  if (!(await myAgents.isOn(Number(p.account_id), 'trading_agent'))) return 0;
+  const short = `${p.token.slice(0, 6)}…${p.token.slice(-4)}`;
+  return myAgents.raise(Number(p.account_id), [{
+    kind: 'trade_exit', severity: 'medium', wallet: p.wallet, dedupe: `exit:${intent.id}`,
+    title: `Selling ${short} on ${net.name}: ${reason.split(':')[0].toLowerCase()}`,
+    detail: { reasons: [{ text: `${reason} The sale goes back to your wallet, within the limits your wallet signed.`, source: 'Trade desk; value from the Trade Router\'s price view onchain' }], intent: intent.id, token: p.token, chain: net.name },
+  }]);
+}
+
 async function tick() {
   if (!env.tradingEnabled) return;
   for (const chainId of networks.chainIds()) {
@@ -56,6 +68,7 @@ async function tick() {
         const intent = await autonomous.queue({ id: Number(p.account_id), wallet: p.wallet }, { chain_id: chainId, side: 'sell', token: p.token, base: net.defaultBase, sell_amount: p.amount_raw }, { source: 'exit', reason });
         await db.query('UPDATE positions SET exit_intent_id = $4 WHERE account_id = $1 AND chain = $2 AND token = $3', [p.account_id, net.name, p.token, intent.id]);
         logger.info('exit queued', { account: p.account_id, token: p.token, reason });
+        await alertExit(p, net, intent, reason).catch(err => logger.warn('exit alert not raised', { error: err.message }));
       } catch (err) {
         // e.g. no active permission any more: the position is left to the user.
         logger.warn('exit not queued', { account: p.account_id, token: p.token, error: err.message });
@@ -64,4 +77,4 @@ async function tick() {
   }
 }
 
-module.exports = { tick, exitReason };
+module.exports = { tick, exitReason, alertExit };
