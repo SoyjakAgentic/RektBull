@@ -12,6 +12,8 @@ const DB = process.env.TEST_DATABASE_URL;
 const ADMIN = '0x' + 'ad'.repeat(20);
 Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', ADMIN_WALLETS: ADMIN, PUBLIC_URL: 'https://rektbull.test', INDEXNOW_KEY: '0123456789abcdef0123456789abcdef', ...(DB ? { DATABASE_URL: DB } : {}) });
 
+require('../src/providers/llama').protocols = async () => []; // no network; protocol records are tested in dappPages.test.js
+
 test('digest pages, the sitemap and llms.txt from the published weeks', { skip: !DB && 'set TEST_DATABASE_URL' }, async t => {
   const db = require('../src/config/db');
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');

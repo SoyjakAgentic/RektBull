@@ -87,11 +87,35 @@ function createApp() {
     } catch (err) { next(err); }
   });
 
+  // Protocol records: /dapps and /dapps/<slug>, rendered on the server (src/pages/dappPage.js).
+  const dappPage = require('./pages/dappPage');
+  const records = async () => dappPage.eligible(await require('./providers/llama').protocols());
+  const recordShell = digestShell.replace(/<!--#footer:[\s\S]*?-->/, '<!--#footer:Facts from DefiLlama and Merkl, each with its source. A record is never proof that a protocol is safe. Not advice.-->');
+  app.get('/dapps', async (req, res, next) => {
+    try {
+      const p = dappPage.index(await records(), base);
+      res.type('html').set('cache-control', 'public, max-age=600').send(seo.withFaqData(shell(recordShell.replace('<!--#meta-->', seo.headFor(p.head)).replace('<!--#body-->', p.body), '/discover')));
+    } catch (err) { next(err); }
+  });
+  app.get('/dapps/:slug', async (req, res, next) => {
+    if (!/^[a-z0-9-]{1,80}$/.test(req.params.slug)) return next();
+    try {
+      const d = await dappPage.gather(req.params.slug);
+      if (!d) return next();
+      const p = dappPage.page(d, base);
+      res.type('html').set('cache-control', 'public, max-age=600').send(seo.withFaqData(shell(recordShell.replace('<!--#meta-->', seo.headFor(p.head)).replace('<!--#body-->', p.body), '/discover')));
+    } catch (err) { next(err); }
+  });
+
   const text = (type, maxAge) => (_req, res, body) => res.type(type).set('cache-control', `public, max-age=${maxAge}`).send(body);
   app.get('/robots.txt', (req, res) => text('text/plain', 3600)(req, res, seo.robots(base)));
   app.get('/sitemap.xml', async (req, res) => {
-    const weeks = await published();
-    text('application/xml', 3600)(req, res, seo.sitemap(base, weeks.map(w => ({ loc: `${base}/research/${w.week_start}`, lastmod: w.published_at ? new Date(w.published_at).toISOString().slice(0, 10) : null }))));
+    const [weeks, dapps] = await Promise.all([published(), records().catch(() => [])]);
+    text('application/xml', 3600)(req, res, seo.sitemap(base, [
+      ...weeks.map(w => ({ loc: `${base}/research/${w.week_start}`, lastmod: w.published_at ? new Date(w.published_at).toISOString().slice(0, 10) : null })),
+      ...(dapps.length ? [{ loc: `${base}/dapps` }] : []),
+      ...dapps.map(p => ({ loc: `${base}/dapps/${p.slug}` })),
+    ]));
   });
   app.get('/llms.txt', async (req, res) => text('text/plain; charset=utf-8', 3600)(req, res, seo.llms(base, await published())));
   app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon-48.png'));

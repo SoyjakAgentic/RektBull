@@ -132,7 +132,7 @@ Demand and difficulty are judged from the search results (no tool data).
 
 | # | Topic | Why | Format | Priority | Effort |
 |---|---|---|---|---|---|
-| 1 | **Protocol record pages**: `/dapps/<slug>` for the 300 largest by money locked, built on the server from DefiLlama with RektBull's signals | Answers the biggest searches better than anyone ranking now; live data stays fresh | Programmatic page: money locked over time, hacks with sources, audits listed, age, token check link | High | Substantial (multi-day) |
+| 1 | ~~Protocol record pages~~: **done**. `/dapps/<slug>` for every protocol with $10M or more locked (about 560), plus the `/dapps` index. They're built on the server, use the data Discover already caches, and are in the sitemap; Discover and Agents link to them | Answers the biggest searches better than anyone ranking now; live data stays fresh | Programmatic page: the record as quotable sentences, facts with sources, hacks with write-ups, audits, "Before you use it", related protocols, Questions with FAQ data | Done | — |
 | 2 | ~~Digest archive pages~~: **done** (`/research/<week>`, server-rendered, `Article` data, in the sitemap) | Fresh, unique, sourced content every week, which search engines reward | Server-rendered article with its facts | Done | — |
 | 3 | **Hack tracker pages**: by year and by technique ("crypto hacks 2026", "oracle manipulation hacks") | Steady searches; DefiLlama, Rekt News and De.Fi rank with lists, not explanations | Server-rendered stats plus a plain-English "how this attack works" | High | Moderate |
 | 4 | **Guides** (`/learn`): wallet drained, revoking approvals, Permit2, NFT approvals, phishing sites, honeypots, what a token check can't tell you, using an agent safely with x402 | The questions people ask in a panic, each ending in the free checkup | 800 to 1,500 words each, with screenshots | High | Quick win (a few hours) each |
@@ -191,7 +191,7 @@ and the products themselves.
 5. **Check the pages with Google's Rich Results Test** (the home page, a desk page, a digest page) and the Schema Markup Validator. Claude can run the checks and read the results with you.
 
 **This quarter (Claude builds, in this order):**
-1. **Protocol record pages** (`/dapps/<slug>`, built on the server, in the sitemap with `lastmod`). Impact high, effort several days. Depends on: nothing new; it uses the Discover data.
+1. ~~Protocol record pages~~: done (`/dapps`, about 560 pages). **Next for them:** parent pages that group versions (Aave V2 and V3 under "Aave"), since people search for the brand, not the version.
 2. ~~Digest archive pages (`/research/<week>`)~~: done.
 3. **Four guides first:** wallet drained, revoking approvals with Permit2, NFT approvals, using an agent safely with x402. Impact high, a few hours each, written for the owner to review.
 4. **Hack tracker pages** by year and technique. Impact medium to high, about a day.
