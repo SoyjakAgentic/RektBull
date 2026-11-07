@@ -1,7 +1,16 @@
 # AI agents: what to bring over from soyjak-agentic, and the tab
 
-*A proposal, 7 November 2026. Nothing here is built yet; the owner decides
-what's built and in which order.*
+*Proposed and decided 7 November 2026. The owner's decisions are in
+"Decided" below; each step is built in its own PR.*
+
+## Decided (7 November 2026)
+
+- **The seven desks become agents with a schedule and alerts.** Each one gets an "on" switch, a schedule and alert channels (email, Telegram), running what its desk already does.
+- **Port both:** Launch Safety (bundle detector and insider tracer), and the Contract Audit Agent **with Soyjak's `analyzer` service** (Slither in its own container).
+- **Build both community agents:** Group Guard and Channel Poster.
+- **Leave out:** the generic Social Media Poster (LinkedIn, Instagram and the rest), news and sentiment, and the NFT scout.
+- **RektBull's own X agent drafts only;** the owner posts by hand (option C in [SOCIAL_AGENTS.md](SOCIAL_AGENTS.md)), which is free.
+- **Order:** RektBull's own social agents go last, once the Telegram channel, the group and the X account exist (see "Order" below).
 
 ## What "agent" means on RektBull
 
@@ -41,7 +50,7 @@ alerts, not porting.
 | NFT Scout | Floor, rarity, wash trading | **No** | Skip for now (NFTs are a low priority, see [SCOPE.md](SCOPE.md)) |
 | Blockchain Data Validator | Compares indexers | **No** | Skip (an internal tool, not a product) |
 | **Telegram Channel Agent** | Drafts and posts for a user's Telegram channel, with approval | **No** | See "Agents for communities" below |
-| **Social Media Poster** | Posts for a user's X, LinkedIn, Facebook and Instagram | **No** | Leave in Soyjak: a general marketing tool, off-brand for a safety site |
+| **Social Media Poster** | Posts for a user's X, LinkedIn, Facebook and Instagram | **No** | **Left out** (decided): a general marketing tool, off-brand for a safety site |
 
 ## Agents for communities (new, on-brand)
 
@@ -83,13 +92,13 @@ user, and the scheduling tools already do it better.
 
 The address stays `/agents`, so nothing already shared or indexed breaks.
 
-## Suggested order
+## Order (decided)
 
-1. **The tab**, presenting the seven agents RektBull already has: about a day. Mostly page work, plus "turn it on" switches that schedule what the desks already do.
-2. **RektBull's own Telegram channel poster and X queue**, once the owner sends the details ([SOCIAL_AGENTS.md](SOCIAL_AGENTS.md)): one to two days.
-3. **Launch Safety** (bundle detector and insider tracer): about a week.
-4. **Group Guard**: about a week, reusing the token, phishing and address checks.
-5. **Contract Audit Agent**, with the analyzer service: several days, plus hosting for Slither.
+1. **The tab**, with the seven agents RektBull already has, each with an "on" switch, a schedule and alerts: a day or two.
+2. **Launch Safety** (bundle detector and insider tracer): about a week.
+3. **Group Guard**, with Channel Poster for project teams: about a week, reusing the token, phishing and address checks.
+4. **Contract Audit Agent**, with the analyzer service: several days, plus hosting for Slither.
+5. **RektBull's own Telegram channel poster and X drafts**, once the channel, the group and the X account exist and the owner sends the details ([SOCIAL_AGENTS.md](SOCIAL_AGENTS.md)): one to two days.
 6. **Later:** whale tracking, DAO treasury plans, and the meme trader on Solana.
 
 Each step is its own PR, and each port leaves Soyjak untouched until it's

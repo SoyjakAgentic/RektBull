@@ -1,7 +1,9 @@
 # RektBull's own social agents: Telegram poster and X scheduler
 
-*Written 7 November 2026. **Not built yet:** the owner sends the details below
-before launch, then Claude builds them. They post for **RektBull's own**
+*Written 7 November 2026. **Not built yet,** and built last of the agents
+([AI_AGENTS.md](AI_AGENTS.md)): the owner first sets up the Telegram channel,
+the group and the X account, then sends the details below, then Claude builds
+them. **Decided:** X is drafts only, posted by hand (option C). They post for **RektBull's own**
 accounts (the X account, the Telegram channel). Agents that post for users'
 accounts are a separate question ([AI_AGENTS.md](AI_AGENTS.md)).*
 
@@ -55,11 +57,11 @@ Both follow the rules the rest of RektBull follows:
 - X's pricing changes, so check the current tiers before choosing. As of late 2026, the free tier allows only a small number of posts a month, and the paid "Basic" tier is roughly $200 a month.
 - **Option A, the X API directly:** the owner creates an X developer app for the RektBull account and chooses a tier. The keys go in Secret Manager (`X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`), never in the repo.
 - **Option B, a scheduling service** (Buffer, Typefully, Postiz or similar): RektBull's agent puts drafts into that service's queue through its API, and the service posts them. That costs the service's subscription instead of X's API, and its own approval screen can be used.
-- **Option C, no automation on X:** the agent drafts, and the owner copies and posts by hand. It's free, and a sensible start until volume justifies a cost.
+- **Option C, no automation on X (chosen):** the agent drafts, and the owner copies and posts by hand. It's free, and a sensible start until volume justifies a cost. The admin page shows each draft with a "copy" button and an "open in X" link that fills in the post, and the owner marks it posted.
 
 **Details the owner sends before launch:**
 - [ ] The X handle.
-- [ ] Option A, B or C (and, for B, which service).
+- [x] Option C: drafts only, posted by hand (decided 7 November 2026). A or B can come later if volume justifies the cost.
 - [ ] How many posts a day at most, and the posting times (time zone).
 - [ ] Which post types, if any, may go out without approval.
 
