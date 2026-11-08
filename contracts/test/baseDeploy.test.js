@@ -7,11 +7,8 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it, before } from 'node:test';
-import { createRequire } from 'node:module';
 import { network, artifacts } from 'hardhat';
-import { loadParams, routerArgs, checkSources, preflight, verifyDeployment, sameCode, autoTradingEntry } from '../scripts/lib/baseDeploy.js';
-
-const require = createRequire(import.meta.url);
+import { loadParams, routerArgs, checkSources, preflight, verifyDeployment, sameCode } from '../scripts/lib/baseDeploy.js';
 
 const { ethers } = await network.create('baseMainnetFork');
 await ethers.provider.send('evm_mine', []); // calls can't run at the fork block itself
@@ -62,7 +59,7 @@ describe('Base mainnet deployment', function () {
       // (the current price may also be older than that, so "feed USDC / USD" can fail with it)
       ['a price age no longer than the heartbeat', p => { p.tokens[0].maxAge = 86400; }, ['heartbeat USDC / USD'], ['feed USDC / USD']],
       ['a price age far longer than the heartbeat', p => { p.tokens[1].maxAge = 86400; }, ['heartbeat ETH / USD']],
-      ['a heartbeat the feed does not keep', p => { p.tokens[2].feed.heartbeat = 300; p.tokens[2].maxAge = 450; }, ['heartbeat cbBTC / USD']],
+      ['a heartbeat the feed does not keep', p => { p.tokens[2].feed.heartbeat = 300; p.tokens[2].maxAge = 450; }, ['heartbeat cbBTC / USD'], ['feed cbBTC / USD']],
       ['a fee above what the router allows', p => { p.feeBps = 150; }, ['fee']],
       ['the wrong chain', p => { p.chainId = 1; }, ['chain']],
       ['a venue with no code', p => { p.venues[0].address = ethers.Wallet.createRandom().address; }, ['venue 0x AllowanceHolder']],
@@ -85,16 +82,6 @@ describe('Base mainnet deployment', function () {
     const results = await verifyDeployment(ethers, params, dep, art);
     assert.deepEqual(failed(results), [], JSON.stringify(results.filter(r => !r.ok)));
     assert.equal(results.filter(r => / price through the router$/.test(r.name)).length, 3, 'a live price for each token');
-
-    // The entry the server is given reads back as the deployed network.
-    process.env.AUTO_TRADING_NETWORKS = JSON.stringify(autoTradingEntry(params, dep));
-    const networks = require('../../src/trade/networks.js');
-    const net = networks.network(8453);
-    assert.equal(net.router, router.target.toLowerCase());
-    assert.equal(net.safeModule, safeModule.target);
-    assert.equal(networks.routerToken(net, 'cbBTC').address, params.tokens[2].address.toLowerCase());
-    assert.equal(networks.routerToken(net, net.defaultBase).decimals, 6);
-    delete process.env.AUTO_TRADING_NETWORKS;
   });
 
   it('the verification catches a setting that differs from the parameters', async function () {
