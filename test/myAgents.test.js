@@ -59,7 +59,7 @@ test('AI agents: switches, schedules, scheduled runs and their alerts', { skip: 
 
   /* ── the catalog, and an account's agents ── */
   const cat = (await (await fetch(base + '/v1/my-agents/catalog')).json()).agents;
-  assert.deepEqual(cat.map(a => a.id), ['wallet_checkup', 'wallet_guardian', 'claim_assistant', 'token_watch', 'dao_votes', 'yield_watch', 'trading_agent']);
+  assert.deepEqual(cat.map(a => a.id), ['wallet_checkup', 'wallet_guardian', 'claim_assistant', 'token_watch', 'launch_safety', 'dao_votes', 'yield_watch', 'trading_agent']);
   assert.ok(cat.every(a => a.does && a.alerts && a.desk.href.startsWith('/')), 'each says what it does, what it alerts and where its desk is');
   assert.equal((await fetch(base + '/v1/my-agents')).status, 401, 'an account\'s agents need sign-in');
 
@@ -150,6 +150,45 @@ test('AI agents: switches, schedules, scheduled runs and their alerts', { skip: 
   assert.deepEqual(ta[0].detail.reasons, [{ text: 'GoPlus reports a honeypot. is_honeypot = 1', source: 'GoPlus' }]);
   await dispatch.tick();
   assert.equal(sent.at(-1).url, `https://rektbull.test/safety?chain=base&token=${tok}#check-card`);
+
+  /* ── Safety Pro agents: Launch Safety finds a bundle once, then watches its wallets sell ── */
+  const launch = require('../src/services/launchSafety');
+  const BUNDLE_FUNDER = '0x' + 'f0'.repeat(20);
+  let held = 15;
+  launch.check = async ({ chain, token }) => ({
+    chain, token, verdict: 'bundle_found', summary: 'A bundle bought 20% of the supply at launch.',
+    groups: [
+      { funder: BUNDLE_FUNDER, funder_kind: 'wallet', bought_pct: 20, holds_pct: 15, wallets: [{ address: '0x' + 'a1'.repeat(20) }, { address: '0x' + 'a2'.repeat(20) }, { address: '0x' + 'a3'.repeat(20) }] },
+      { funder: '0x' + 'ee'.repeat(20), funder_kind: 'busy', bought_pct: 6, holds_pct: 6, wallets: [] },
+    ],
+    flags: [{ severity: 'high', title: 'A bundle bought 20% of the supply at launch', evidence: '3 early buyers funded from 0xf0f0…f0f0 bought 20%.', source: 'Block explorer and RPC' }, { severity: 'info', title: 'busy', evidence: '', source: 'x' }],
+  });
+  launch.holdingsNow = async (_c, _t, groups) => { assert.deepEqual(groups.map(g => g.funder), [BUNDLE_FUNDER], 'only the counted groups are watched'); return { [BUNDLE_FUNDER]: held }; };
+  assert.match((await call('PATCH', '/v1/my-agents/launch_safety', { tokens: Array.from({ length: 6 }, (_, i) => ({ chain: 'base', token: '0x' + String(i).padStart(40, '0') })) })).body.message, /Launch Safety holds up to 5 tokens/);
+  const meme = '0x' + '4d'.repeat(20);
+  assert.equal((await call('PATCH', '/v1/my-agents/launch_safety', { enabled: true, tokens: [{ chain: 'base', token: meme, label: 'BULLMEME' }] })).status, 200);
+  await myAgents.tick();
+  const launchAlerts = async () => (await db.query(`SELECT * FROM monitor_alerts WHERE kind = 'launch_safety' ORDER BY id`)).rows;
+  let la = await launchAlerts();
+  assert.equal(la.length, 1);
+  assert.deepEqual([la[0].severity, la[0].title], ['high', 'BULLMEME on base: A bundle bought 20% of the supply at launch']);
+  assert.deepEqual(la[0].detail.reasons, [{ text: 'A bundle bought 20% of the supply at launch. 3 early buyers funded from 0xf0f0…f0f0 bought 20%.', source: 'Block explorer and RPC' }]);
+  launch.check = async () => { throw new Error('the launch is only checked once'); };
+  held = 13; // 35% of what they bought is gone, from 25% when reported: not yet 20 points more
+  await due(); await myAgents.tick();
+  assert.equal((await launchAlerts()).length, 1);
+  held = 6; // 70% gone
+  await due(); await myAgents.tick();
+  la = await launchAlerts();
+  assert.equal(la.length, 2);
+  assert.deepEqual([la[1].severity, la[1].title], ['critical', 'BULLMEME on base: bundle wallets are selling (70% of what they bought at launch is gone)']);
+  assert.match(la[1].detail.reasons[0].text, /bought 20% of the supply at launch and hold 6% now \(15% when last reported\)/);
+  await dispatch.tick();
+  assert.equal(sent.at(-1).url, `https://rektbull.test/safety?chain=base&token=${meme}#check-card`);
+  assert.equal(sent.at(-1).action, 'See the launch check');
+  await due(); await myAgents.tick();
+  assert.equal((await launchAlerts()).length, 2, 'no repeat while nothing more is sold');
+  await call('PATCH', '/v1/my-agents/launch_safety', { enabled: false });
 
   /* ── a run that fails is kept for retry, with the reason ── */
   tokenRisk.scanToken = async () => { throw new Error('GoPlus timed out'); };

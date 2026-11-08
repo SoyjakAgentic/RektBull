@@ -22,6 +22,7 @@ const AGENT_LINKS = {
   checkup: { action: 'See your checkup', path: a => `/?wallet=${encodeURIComponent(a.wallet)}#results` },
   claimable: { action: 'Review and claim', path: a => `/find?wallet=${encodeURIComponent(a.wallet)}` },
   token_watch: { action: 'See the token check', path: a => `/safety?chain=${encodeURIComponent(a.detail?.token?.chain || '')}&token=${encodeURIComponent(a.detail?.token?.token || '')}#check-card` },
+  launch_safety: { action: 'See the launch check', path: a => `/safety?chain=${encodeURIComponent(a.detail?.token?.chain || '')}&token=${encodeURIComponent(a.detail?.token?.token || '')}#check-card` },
   trade_exit: { action: 'See the trade', path: () => '/trade' },
 };
 

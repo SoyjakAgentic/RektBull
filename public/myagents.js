@@ -40,7 +40,7 @@
         el('dt', {}, 'Runs'), el('dd', {}, schedule),
         el('dt', {}, 'Alerts'), el('dd', {}, a.alerts),
         el('dt', {}, 'Price'), el('dd', {}, a.price)),
-      a.id === 'token_watch' && live && a.status.state !== 'needs_pro' ? tokens(a) : null,
+      a.tokens && live && a.status.state !== 'needs_pro' ? tokens(a) : null,
       el('div', { class: 'agent-foot' }, state, el('span', { class: 'small' }, el('a', { href: `/agents/${a.id.replace(/_/g, '-')}` }, 'How it works'), ' · ', el('a', { href: a.desk.href }, `Open ${a.desk.name}`))),
       last);
   }

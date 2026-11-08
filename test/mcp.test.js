@@ -94,7 +94,7 @@ test('a call: the result with its sources, input refused before anything runs, e
   assert.equal((await call('no_such_tool', {})).body.error.code, -32602);
 
   const paid = (await call('paid_services', {})).body.result.structuredContent;
-  assert.deepEqual(paid.services.map(s => s.path), ['/v1/tokens/quick-check', '/v1/tokens/report', '/v1/approvals/cleanup', '/v1/presign/check', '/v1/governance/summary']);
+  assert.deepEqual(paid.services.map(s => s.path), ['/v1/tokens/quick-check', '/v1/tokens/report', '/v1/launch/check', '/v1/approvals/cleanup', '/v1/presign/check', '/v1/governance/summary']);
   assert.equal(paid.services[0].url, 'https://rektbull.test/v1/tokens/quick-check');
   assert.equal(paid.services[0].price.price_usd, '$0.25');
   assert.match(paid.how_to_pay, /402[\s\S]*X-PAYMENT[\s\S]*only when the run succeeds/);
@@ -119,7 +119,7 @@ test('the reference: every documented endpoint is a real route; paid ones priced
   for (const e of api.ENDPOINTS) assert.ok(routes.includes(`${e.method} ${e.path}`), `${e.method} ${e.path} is a route`);
   const { catalog } = { catalog: require('../src/payments/catalog') };
   for (const e of api.ENDPOINTS.filter(x => x.product)) assert.ok(catalog.PRODUCTS[e.product], e.product);
-  assert.deepEqual(api.ENDPOINTS.filter(e => e.group === 'paid').map(e => e.product).sort(), ['approval_cleanup', 'governance_summary', 'presign_check', 'token_quick_check', 'token_report']);
+  assert.deepEqual(api.ENDPOINTS.filter(e => e.group === 'paid').map(e => e.product).sort(), ['approval_cleanup', 'governance_summary', 'launch_check', 'presign_check', 'token_quick_check', 'token_report']);
 
   const ref = await (await fetch(base + '/v1/developers')).json();
   assert.equal(ref.mcp.url, 'https://rektbull.test/mcp');

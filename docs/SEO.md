@@ -130,7 +130,7 @@ Demand and difficulty are judged from the search results (no tool data).
 | crypto ai agent, ai crypto agent, crypto ai agents | Hard (agent tokens, trading bots, launchpads) | **High** | Mixed | `/agents` and the agent pages: "AI agents that can't make facts up". Never "AI trading bot that earns" |
 | crypto wallet monitoring bot, wallet alert bot, approval alerts | Moderate | **High** | Commercial | `/agents/wallet-guardian` (live) |
 | airdrop checker bot, unclaimed rewards alert | Hard, and full of scam sites | Medium | Transactional | `/agents/claim-assistant` (live): "never connect a wallet to a DM link" |
-| token rug alert, honeypot alert, rug pull detector bot | Moderate | **High** | Commercial | `/agents/token-watch` (live); Launch Safety when built |
+| token rug alert, honeypot alert, rug pull detector bot, bundle checker | Moderate | **High** | Commercial | `/agents/token-watch` and `/agents/launch-safety` (live) |
 | dao vote alerts, snapshot proposal notifications | Easy | Medium | Commercial | `/agents/dao-votes` (live) |
 | defi exploit alerts, aave position alerts | Easy to moderate | Medium | Commercial | `/agents/yield-watch` (live) |
 | crypto trading agent with limits, ai trading agent safe | Hard | Medium | Commercial | `/agents/trading-agent` (live): sold on onchain limits, never on returns |

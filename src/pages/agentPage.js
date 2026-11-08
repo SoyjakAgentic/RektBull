@@ -80,6 +80,23 @@ const PAGES = {
       ['What does it cost?', 'It\'s part of Safety Pro ($9 for 30 days). A single check without it is 1 free point or $0.25 on the Safety page.'],
     ],
   },
+  launch_safety: {
+    title: 'Rug Pull Detector: Bundled Launch Checks | RektBull',
+    description: 'An AI agent that checks new tokens for a bundled launch: early buyers sharing a funder, links to the deployer, and alerts when those wallets start selling.',
+    lead: 'was the launch bundled, and are they selling?',
+    checks: [
+      ['The token\'s largest buyers in its first hour (pools, routers and program accounts set aside)', 'Token transfers from the block explorer (Etherscan V2 or Blockscout); on Solana, the mint\'s first transactions over RPC'],
+      ['Where each early buyer\'s first ETH, BNB, POL or SOL came from', 'Each wallet\'s first incoming transfer, from the explorer or Solana RPC'],
+      ['Buyers funded from the same wallet, and how much of the supply they bought', 'The same transfers; supply read onchain'],
+      ['Whether a funding chain leads back to the deployer, up to 3 steps', 'Contract creation from the explorer; each funder\'s own first funding'],
+      ['What those wallets hold now, and whether they\'ve sold', 'Balances read onchain'],
+    ],
+    faq: [
+      ['What is a bundled launch?', 'A token launch where the team, or one person, buys a large share of the supply in the first minutes through many wallets made to look independent, then sells into later buyers. The wallets usually give themselves away by being funded from the same place shortly before the launch.'],
+      ['Does a shared funder prove a rug pull?', 'No. It is evidence to weigh, not proof of intent: an exchange paying out withdrawals funds many wallets too, so a funder that has sent thousands of transactions is named as busy and not counted. And a launch with no bundle can still go to zero.'],
+      ['Which chains and what does it cost?', 'Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and Solana. The agent is part of Safety Pro; a single launch check is 2 free points or $0.50 on the Safety page.'],
+    ],
+  },
   dao_votes: {
     title: 'DAO Vote Alert Agent: Snapshot and Onchain | RektBull',
     description: 'An AI agent that alerts you when a DAO vote opens that your wallet can cast, and a day before it closes, on Snapshot and onchain governors.',
