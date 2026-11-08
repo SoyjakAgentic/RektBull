@@ -39,6 +39,11 @@ now that RektBull has real agents (the AI agents tab, [AI_AGENTS.md](AI_AGENTS.m
 The table below explains why "blockchain agents" alone was rejected; the
 pillar is "AI agents" next to safety, with the agents doing safety work.
 
+**Not financial advice (decided 8 November 2026):** every page says nothing
+on RektBull is financial, investment, legal or tax advice or a
+recommendation (`/about#not-advice` has the full statement). Copy anywhere,
+including posts and the digest, keeps to it.
+
 ## The category: crypto safety
 
 RektBull sells one thing, **safety**, to two audiences: **people** with wallets,
