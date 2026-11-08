@@ -461,9 +461,11 @@ deploy the trade service, then `YIELD_AUTO_ENABLED=true`.
 
 **Automatic trading (trade desk, stage 2):**
 
-1. Deploy the Trade Router on Base from the owner's Safe, with the parameters
-   in [AUDIT_BRIEF.md](AUDIT_BRIEF.md) section 6, and verify its source on
-   Basescan (Claude guides; done together with the Yield Router once its audit passes).
+1. Deploy the Trade Router and Safe Module on Base from the owner's hardware
+   wallet, fees to the owners' Safe, and verify the source on Basescan:
+   [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md). The script checks every parameter
+   onchain first and prints the `AUTO_TRADING_NETWORKS` entry for step 3.
+   (The Yield Router follows once its own audit passes.)
 2. Create the KMS key and the `rektbull-trade` service account
    ([DEPLOY.md](DEPLOY.md)); sign one Base Sepolia transaction with it.
 3. Set `SESSION_KEY_ADDRESS` (the key's address) and `AUTO_TRADING_NETWORKS`

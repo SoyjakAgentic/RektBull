@@ -37,12 +37,14 @@ All green in CI when we stopped.
    signing rights, and sign one Base Sepolia transaction with it.
 4. **One small real approve-each trade on Base mainnet** (checklist section 5).
    This path doesn't need the router or the audit.
+5. **The mainnet deployment** itself, from the owner's hardware wallet:
+   [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md). Everything for it is ready.
 
 ## Not done yet (code)
 
 | Item | Notes |
 |---|---|
-| Mainnet router deployment | After the audit. From a hardware wallet; parameters in AUDIT_BRIEF section 6 (still to confirm: cbBTC's token address and each feed's heartbeat). Then verify source on Basescan |
+| Mainnet router deployment | ✅ **Prepared** (2026-11-08): parameters confirmed onchain (cbBTC's address, each feed's heartbeat), `contracts/config/base.json`, a hardware-wallet deploy script with pre-flight checks, a verify script, rehearsed on a Base mainnet fork in CI. The owner runs it: [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md) |
 | Verify the testnet contracts on Basescan | Not done; harmless, nice for testers |
 | Milestone 4: Ethereum and Arbitrum | Router per chain with that chain's feeds (no sequencer feed on Ethereum); Flashbots Protect for sends on Ethereum; `src/trade/networks.js` entries |
 | Milestone 5: Solana with Phantom | Squads Smart Account or Swig; needs a devnet proof first (SESSION_KEYS section 3) |
