@@ -148,6 +148,10 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
   run: input => dd.fullReport(input),
 }));
 
+// ── Contract Audit: a first-pass review of a verified contract, with Slither in the analyzer service ──
+const contractAudit = require('../services/contractAudit');
+router.post('/v1/contracts/audit', paidRoute('contract_audit', { validate: req => contractAudit.parse(req.body), run: input => contractAudit.run(input) }));
+
 // ── Launch Safety: was a new token's supply bundled at launch, and are the bundlers selling? ──
 const launchSafety = require('../services/launchSafety');
 router.post('/v1/launch/check', paidRoute('launch_check', { validate: req => launchSafety.parse(req.body), run: input => launchSafety.check(input) }));

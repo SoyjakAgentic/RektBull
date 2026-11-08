@@ -1,0 +1,78 @@
+# The Slither analyzer -> Artifact Registry -> its own Cloud Run service.
+# See docs/DEPLOY.md, "The contract analyzer".
+#
+#   gcloud builds submit analyzer --config analyzer/cloudbuild.yaml \
+#     --substitutions=_REGION=us-central1
+#
+# Separate from backend/cloudbuild.yaml: it changes only when Slither is
+# upgraded, and the API's build passes its address as _ANALYZER_URL.
+#
+# --no-allow-unauthenticated: only accounts granted roles/run.invoker on it
+# (the API's) can call it. --ingress=all because the API reaches it at its
+# run.app address, outside the VPC connector (private-ranges-only egress).
+# --concurrency=1: one analysis per instance, with its 4GiB to itself.
+# --min-instances=0: nothing is paid between audits; the first call after a
+# quiet spell waits for a cold start (a few seconds) and a solc download.
+
+substitutions:
+  _REGION: us-central1
+  _REPO: rektbull
+  _IMAGE: rektbull-analyzer
+  _SERVICE: rektbull-analyzer
+  _MAX_INSTANCES: '5'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:latest
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}"
+        docker pull "$$IMG:latest" || echo "no cache image yet — first build"
+        docker build \
+          --cache-from "$$IMG:latest" \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          -t "$$IMG:${BUILD_ID}" \
+          -t "$$IMG:latest" \
+          .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}"
+        docker push "$$IMG:${BUILD_ID}"
+        docker push "$$IMG:latest"
+
+  - id: deploy
+    name: gcr.io/cloud-builders/gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${BUILD_ID}
+      - --region=${_REGION}
+      - --platform=managed
+      - --no-allow-unauthenticated
+      - --ingress=all
+      - --port=8080
+      - --cpu=2
+      - --memory=4Gi
+      - --concurrency=1
+      - --min-instances=0
+      - --max-instances=${_MAX_INSTANCES}
+      - --timeout=300
+
+timeout: 1200s

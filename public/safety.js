@@ -27,6 +27,9 @@
       $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
       $('report-price').textContent = window.RB.priceLabel(catalog.token_report);
       $('launch-price').textContent = window.RB.priceLabel(catalog.launch_check);
+      $('audit-price').textContent = window.RB.priceLabel(catalog.contract_audit);
+      $('audit-chain').replaceChildren(...chains.filter(c => c !== 'solana').map(c => el('option', { value: c }, CHAIN_NAMES[c] || c)));
+      if (/^0x[0-9a-fA-F]{40}$/.test(link.get('audit') || '')) { $('audit-address').value = link.get('audit'); if (chains.includes(link.get('chain'))) $('audit-chain').value = link.get('chain'); }
       renderPasses();
     } catch (err) { say('check-msg', 'Could not load the page\'s settings: ' + err.message, 'bad'); }
   })();
@@ -127,6 +130,60 @@
     parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, window.RB.paidLabel(r.run || {}), ` · Sources: ${r.sources.join('; ')}`));
     $('result').replaceChildren(...parts);
     $('result').hidden = false;
+  }
+
+  /* ── contract audit ── */
+  $('audit').addEventListener('click', async () => {
+    const body = { chain: $('audit-chain').value, address: $('audit-address').value.trim() };
+    if (!body.address) return say('audit-msg', 'Paste the contract\'s address first.', 'bad');
+    $('audit').disabled = true;
+    $('audit-result').hidden = true;
+    say('audit-msg', 'Reading the verified source, compiling it and running Slither, then writing the summary. This can take a few minutes…');
+    try {
+      showAudit(await api('POST', '/v1/contracts/audit', body));
+      say('audit-msg', '');
+    } catch (err) {
+      say('audit-msg', explain(err, 'contract_audit'), 'bad');
+      if (err.status === 402) $('account-card').scrollIntoView({ behavior: 'smooth' });
+    } finally {
+      $('audit').disabled = false;
+      if (window.RB.signedIn()) loadAccount();
+    }
+  });
+
+  const IMPACT = { High: 'high', Medium: 'medium', Low: 'low' };
+  function showAudit(r) {
+    const where = l => `${l.file || '?'}${l.lines?.length ? `:${l.lines[0]}${l.lines[1] !== l.lines[0] ? `-${l.lines[1]}` : ''}` : ''}`;
+    const parts = [
+      el('h3', {}, r.contract.name || 'Contract', ' ', el('span', { class: 'mono small' }, r.address), ' on ', CHAIN_NAMES[r.chain] || r.chain),
+      el('p', { class: 'small muted' }, r.units.map(u => `${u.role === 'implementation' ? 'Implementation' : r.contract.proxy ? 'Proxy' : 'Contract'} ${u.contract_name || ''}: ${u.verified ? `verified, ${u.own_files} of its own file${u.own_files === 1 ? '' : 's'} (${u.files} with libraries), ${u.compiler}` : 'not verified'}`).join(' · ')),
+    ];
+    if (r.summary?.markdown) parts.push(el('div', { class: 'report' }, markdown(r.summary.markdown)), el('p', { class: 'small muted' }, `Written by ${r.summary.written_by} from the findings below only; it doesn't add or confirm any.`));
+    else if (r.summary?.not_written) parts.push(el('p', { class: 'small muted' }, r.summary.not_written));
+    for (const s of r.slither) {
+      parts.push(el('h3', {}, `Slither${r.slither.length > 1 ? ` (${s.role})` : ''}`));
+      if (s.not_run) { parts.push(el('p', { class: 'small risk' }, s.not_run)); continue; }
+      parts.push(el('p', { class: 'small muted' }, `${s.detectors} detectors, Slither ${s.slither}, solc ${s.solc}, ${s.seconds}s. ${Object.values(s.informational_counts || {}).reduce((a, b) => a + b, 0)} informational notes not listed${s.library_findings_hidden ? `; ${s.library_findings_hidden} in libraries not listed` : ''}.`));
+      parts.push(s.findings.length ? el('ul', { class: 'flags' }, s.findings.map(f => el('li', { class: IMPACT[f.impact] || 'low' },
+        el('div', {}, el('span', { class: 'sev' }, `${f.impact} · ${f.confidence} confidence`), el('strong', {}, f.check)),
+        el('div', { class: 'small' }, f.description),
+        el('div', { class: 'source' }, 'Where: ', f.locations.slice(0, 3).map(where).join(', ') || 'not given', ' · Source: Slither')))) : el('p', {}, 'Slither listed no high, medium or low findings in the contract\'s own code.'));
+    }
+    const leads = r.leads.filter(l => l.severity !== 'info');
+    const powers = r.leads.filter(l => l.severity === 'info');
+    if (leads.length) {
+      parts.push(el('h3', {}, 'Checklist patterns'), el('ul', { class: 'flags' }, leads.map(l => el('li', { class: l.severity },
+        el('div', {}, el('span', { class: 'sev' }, l.severity), el('strong', {}, l.title)),
+        el('div', { class: 'small mono' }, l.snippet), el('div', { class: 'source' }, `Where: ${l.file}:${l.line} · Source: pattern check (${l.rule})`)))));
+    }
+    if (powers.length) parts.push(el('h3', {}, 'Who holds power over it'), el('ul', { class: 'small' }, powers.map(l => el('li', {}, `${l.title} (${l.file}:${l.line})`))));
+    const bugs = r.compiler.flatMap(c => (c.known_bugs || []).filter(b => b.applies !== false).map(b => ({ ...b, role: c.role })));
+    if (bugs.length) parts.push(el('h3', {}, 'Known compiler bugs that may apply'), el('ul', { class: 'small' }, bugs.slice(0, 10).map(b => el('li', {}, el('strong', {}, b.name), ` (${b.severity}${b.applies === 'unknown' ? `, ${b.why}` : ''}): ${b.summary}`))), el('p', { class: 'source' }, 'Source: the Solidity team\'s bug list. A bug matters only where the code uses what it breaks.'));
+    if (r.not_checked?.length) parts.push(el('h3', {}, 'What we couldn\'t check'), el('ul', { class: 'small' }, r.not_checked.map(n => el('li', {}, el('strong', {}, n.check), ': ', n.reason))));
+    parts.push(el('p', { class: 'muted small' }, r.note));
+    parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, window.RB.paidLabel(r.run || {}), ` · Sources: ${r.sources.join('; ')}`));
+    $('audit-result').replaceChildren(...parts);
+    $('audit-result').hidden = false;
   }
 
   function marketFacts(m) {

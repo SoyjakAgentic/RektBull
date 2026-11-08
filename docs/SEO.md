@@ -134,6 +134,7 @@ Demand and difficulty are judged from the search results (no tool data).
 | dao vote alerts, snapshot proposal notifications | Easy | Medium | Commercial | `/agents/dao-votes` (live) |
 | defi exploit alerts, aave position alerts | Easy to moderate | Medium | Commercial | `/agents/yield-watch` (live) |
 | crypto trading agent with limits, ai trading agent safe | Hard | Medium | Commercial | `/agents/trading-agent` (live): sold on onchain limits, never on returns |
+| smart contract audit tool, free smart contract scanner, slither online | Moderate (audit firms, scanners) | **High** | Commercial | `/agents/contract-audit` and the Safety page's audit (live): "first pass, flags to confirm", never "audited" |
 | ai agent tokens, is \<agent token\> safe | Moderate | Medium | Informational | The AI-agent protocols on `/agents`, linked to protocol records |
 
 ## Content to build, in order

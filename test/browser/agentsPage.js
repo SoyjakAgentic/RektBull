@@ -82,7 +82,8 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     assert.equal(await page.locator('#ma-list input[role="switch"]:not([disabled])').count(), 0, 'nothing to switch before sign-in');
     assert.match(await cards.nth(0).textContent(), /RunsEvery week.*PriceFree.*Open Home/s);
     assert.match(await page.textContent('#ma-alerts'), /Sign in to switch agents on/);
-    assert.match(await page.textContent('#communities'), /Group Guard.*Channel Poster.*Contract Audit/s);
+    assert.match(await page.textContent('#communities'), /Group Guard.*Channel Poster/s);
+    assert.equal(await page.getAttribute('#yours a[href="/agents/contract-audit"]', 'href'), '/agents/contract-audit', 'Contract Audit, on request, with your agents');
     console.log('✔ your agents, signed out; agents for communities');
 
     // Signed in (the account API played here): switches, schedules, the last run, Token Watch's list.

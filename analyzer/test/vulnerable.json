@@ -1,0 +1,8 @@
+{
+  "compiler": "0.8.24",
+  "settings": { "optimizer": { "enabled": true, "runs": 200 }, "evmVersion": "paris" },
+  "sources": {
+    "src/Vault.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\nimport {IToken} from \"./IToken.sol\";\n\n/// A deliberately broken vault: the analyzer's CI check expects each of its bugs to be found.\ncontract Vault {\n    mapping(address => uint256) public balances;\n    IToken public token;\n\n    function deposit() external payable {\n        balances[msg.sender] += msg.value;\n    }\n\n    // reentrancy-eth: the balance is cleared after the external call.\n    function withdraw() external {\n        uint256 amount = balances[msg.sender];\n        (bool ok, ) = msg.sender.call{value: amount}(\"\");\n        require(ok);\n        balances[msg.sender] = 0;\n    }\n\n    // unchecked-transfer: the token's return value is ignored.\n    function pay(address to, uint256 amount) external {\n        token.transfer(to, amount);\n    }\n}\n",
+    "src/IToken.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ninterface IToken {\n    function transfer(address to, uint256 amount) external returns (bool);\n}\n"
+  }
+}
