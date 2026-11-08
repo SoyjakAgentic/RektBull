@@ -60,7 +60,7 @@ Set `PUBLIC_URL=https://rektbull.com` so links in alerts point to the site.
    ```bash
    curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
      -d url=https://rektbull.com/v1/telegram/webhook \
-     -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message","edited_message","my_chat_member","chat_member"]'
+     -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message","edited_message","my_chat_member","chat_member","callback_query"]'
    ```
    Requests without that secret are refused.
 

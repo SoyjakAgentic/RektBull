@@ -28,4 +28,8 @@ module.exports = {
   deleteMessage: (chatId, messageId) => call('deleteMessage', { chat_id: chatId, message_id: messageId }),
   admins: chatId => call('getChatAdministrators', { chat_id: chatId }),
   member: (chatId, userId) => call('getChatMember', { chat_id: chatId, user_id: userId }),
+  /** A message with one row of buttons: [{ text, data }] (callback buttons) or [{ text, url }]. */
+  buttons: (chatId, text, row) => call('sendMessage', { chat_id: chatId, text, disable_web_page_preview: true, reply_markup: { inline_keyboard: [row.map(b => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data }))] } }),
+  edit: (chatId, messageId, text) => call('editMessageText', { chat_id: chatId, message_id: messageId, text, disable_web_page_preview: true }),
+  answer: (callbackId, text) => call('answerCallbackQuery', { callback_query_id: callbackId, ...(text ? { text } : {}) }),
 };

@@ -146,6 +146,21 @@ const PAGES = {
       ['What does it cost?', 'It\'s free. Each group has daily limits on replies and checks, so it can never flood a chat; plans for very large groups may come later, paid in crypto.'],
     ],
   },
+  channel_poster: {
+    title: 'Telegram Channel Post Drafts for Crypto Projects | RektBull',
+    description: 'Free drafts for your crypto project\'s Telegram channel: hacks on your chains, your DAO\'s votes, new reward campaigns. Sourced, and posted only when you approve.',
+    lead: 'drafts for your Telegram channel, posted when you say so',
+    checks: [
+      ['Large hacks on the chains you choose ($1M or more, in the last 3 days)', 'DefiLlama\'s hack record, with the write-up linked'],
+      ['New votes in your Snapshot space, and votes closing within a day', 'Snapshot'],
+      ['New Merkl reward campaigns on your protocol (stated as facts, never as a rate to earn)', 'Merkl'],
+    ],
+    faq: [
+      ['How do I set up Channel Poster?', 'Start RektBull\'s bot in a private chat (Telegram only lets a bot message people who started it), then add it to your channel as an admin with "Post messages". Choose topics with /poster_topics, and set your chains, Snapshot space and protocol. Drafts then arrive in that private chat.'],
+      ['Does it post without asking?', 'No. Every draft waits for an admin of the channel to tap Post; Skip drops it, and a draft left for 3 days expires. Each item is drafted once.'],
+      ['What does it cost?', 'It\'s free. Each post ends with the source of its facts; the drafts carry no advice, no prices to buy at and no promised returns.'],
+    ],
+  },
   trading_agent: {
     title: 'Crypto Trading Agent With Onchain Limits | RektBull',
     description: 'A crypto trading agent that buys and sells only within limits your wallet signs onchain, checks each token first, and exits at your stop-loss or take-profit.',
@@ -179,6 +194,19 @@ const COMMUNITY = {
       where: 'In your Telegram group, as RektBull\'s bot, made an admin with the "Delete messages" right',
     };
   },
+};
+
+COMMUNITY.channel_poster = () => {
+  const add = require('../services/channelPoster').addLink();
+  return {
+    id: 'channel_poster', name: 'Channel Poster', plan: 'free', price: 'Free', community: true,
+    does: 'Drafts posts for your Telegram channel from RektBull\'s data: large hacks on your chains, votes in your Snapshot space, new reward campaigns on your protocol. Each one is posted only when you tap Post.',
+    alerts: 'Drafts arrive in your private chat with the bot, with Post and Skip buttons.',
+    schedules: [{ label: 'Checked every 30 minutes' }],
+    desk: add ? { name: 'Telegram', href: add } : { name: 'AI agents', href: '/agents#communities' },
+    action: add ? { text: 'Add it to your channel', href: add } : { text: 'Opening soon', href: '/agents#communities' },
+    where: 'In your Telegram channel, as RektBull\'s bot, made an admin with the "Post messages" right',
+  };
 };
 
 const list = () => [

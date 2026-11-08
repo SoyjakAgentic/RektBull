@@ -57,6 +57,8 @@ async function main() {
       agentsBusy = true;
       try { await require('./services/myAgents').tick(); } catch (err) { logger.error('agents tick failed', { error: err.message }); } finally { agentsBusy = false; }
     }, 5 * 60 * 1000);
+    // Channel Poster: new drafts for project channels, sent to their admins to approve, every 30 minutes.
+    setInterval(() => require('./services/channelPoster').tick().catch(err => logger.warn('channel poster failed', { error: err.message })), 30 * 60 * 1000);
     // Alerts out to Telegram, email and browser push, every 20 seconds.
     let sending = false;
     setInterval(async () => {
