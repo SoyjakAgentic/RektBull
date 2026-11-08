@@ -56,8 +56,8 @@ const PRODUCTS = {
   contract_audit: {
     kind: 'run',
     title: 'Contract audit',
-    description: 'A first-pass security review of a verified contract (and a proxy\'s implementation): Slither\'s ~100 detectors on the contract compiled as it was verified, pattern checks from an audit checklist, the compiler\'s known bugs, and who holds power over it, explained in plain English. Flags for a person to confirm, not a full audit.',
-    price_cents: 900,
+    description: 'A first-pass security review of a verified contract (and a proxy\'s implementation): Slither\'s ~100 detectors on the contract compiled as it was verified, pattern checks from an audit checklist, the compiler\'s known bugs, and who holds power over it, explained in plain English, with a downloadable PDF report. Flags for a person to confirm, not a full audit. Not financial advice.',
+    price_cents: 10000,
     points: null,
     x402: true,
   },

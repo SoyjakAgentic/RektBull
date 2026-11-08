@@ -415,13 +415,31 @@ async function audit({ chain, address }) {
       ...compiler.filter(c => c.not_checked).map(c => ({ check: `the compiler's known bugs (${c.role})`, reason: c.not_checked })),
     ],
     sources: ['Verified source from the block explorer (Etherscan V2, or Blockscout)', 'Slither, run on the contract compiled with its own solc version', 'Pattern checks from the audit checklist, in the contract\'s own code', 'The Solidity team\'s list of known compiler bugs'],
-    note: 'A first-pass review: Slither\'s findings and the pattern leads are flags for a person to confirm by reading the code at their lines, not confirmed vulnerabilities, and some are false positives. It doesn\'t find business-logic flaws, price manipulation or economic attacks, and it is not a full audit. A clean result is never proof that a contract is safe. Not advice.',
+    note: 'A first-pass review: Slither\'s findings and the pattern leads are flags for a person to confirm by reading the code at their lines, not confirmed vulnerabilities, and some are false positives. It doesn\'t find business-logic flaws, price manipulation or economic attacks, and it is not a full audit. A clean result is never proof that a contract is safe. Nothing here is financial, investment, legal or tax advice.',
   };
   report.summary = await writeUp(report);
   return report;
 }
 
+/** Keeps a paid audit's result for its PDF report. */
+async function saveReport(runId, accountId, input, result) {
+  if (!runId || !require('../config/env').databaseUrl) return;
+  await require('../config/db').query(
+    'INSERT INTO audit_reports (run_id, account_id, chain, address, result) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (run_id) DO NOTHING',
+    [runId, accountId, input.chain, input.address, JSON.stringify(result)],
+  );
+}
+
+/** A completed audit's stored result, by run id (the report's download key), or null. */
+async function report(runId) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(runId)) || !require('../config/env').databaseUrl) return null;
+  const { rows } = await require('../config/db').query(
+    `SELECT a.*, r.payment_method AS paid_with FROM audit_reports a JOIN runs r ON r.id = a.run_id
+     WHERE a.run_id = $1 AND r.status = 'succeeded' AND r.product = 'contract_audit'`, [runId]);
+  return rows[0] || null;
+}
+
 /** Audits are cached a day per contract (the code at an address doesn't change; a proxy's implementation can, so a day). */
 const run = input => cached(`audit:${input.chain}:${input.address}`, 24 * 3600, () => audit(input));
 
-module.exports = { solcLists, parse, run, audit, slither, scanLeads, parseSolidity, strip, parseSource, compilerBugs, conditionsHold, shape, AuditRefused, CHAINS, SYSTEM };
+module.exports = { saveReport, report, solcLists, parse, run, audit, slither, scanLeads, parseSolidity, strip, parseSource, compilerBugs, conditionsHold, shape, AuditRefused, CHAINS, SYSTEM };

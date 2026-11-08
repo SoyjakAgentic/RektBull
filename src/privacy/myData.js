@@ -32,6 +32,7 @@ const TABLES = {
   monitored_wallets: 'SELECT wallet, label, created_at, last_checked_at FROM monitored_wallets WHERE account_id = $1',
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
+  contract_audits: 'SELECT run_id, chain, address, created_at FROM audit_reports WHERE account_id = $1 ORDER BY created_at',
   ai_agents: 'SELECT agent, enabled, every_hours, settings, last_run_at, last_result, last_error, updated_at FROM agent_settings WHERE account_id = $1 ORDER BY agent',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
   governance_spaces: 'SELECT space_id, created_at FROM governance_spaces WHERE account_id = $1',

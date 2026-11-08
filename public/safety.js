@@ -181,6 +181,7 @@
     if (bugs.length) parts.push(el('h3', {}, 'Known compiler bugs that may apply'), el('ul', { class: 'small' }, bugs.slice(0, 10).map(b => el('li', {}, el('strong', {}, b.name), ` (${b.severity}${b.applies === 'unknown' ? `, ${b.why}` : ''}): ${b.summary}`))), el('p', { class: 'source' }, 'Source: the Solidity team\'s bug list. A bug matters only where the code uses what it breaks.'));
     if (r.not_checked?.length) parts.push(el('h3', {}, 'What we couldn\'t check'), el('ul', { class: 'small' }, r.not_checked.map(n => el('li', {}, el('strong', {}, n.check), ': ', n.reason))));
     parts.push(el('p', { class: 'muted small' }, r.note));
+    if (r.report_pdf) parts.push(el('p', {}, el('a', { class: 'btn primary', href: r.report_pdf, download: '' }, 'Download the PDF report'), el('span', { class: 'small muted' }, ' Keep the link: it is the key to your report.')));
     parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, window.RB.paidLabel(r.run || {}), ` · Sources: ${r.sources.join('; ')}`));
     $('audit-result').replaceChildren(...parts);
     $('audit-result').hidden = false;

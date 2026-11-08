@@ -36,7 +36,7 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     assert.equal(await prices.count(), 7);
     assert.match(await prices.nth(0).textContent(), /POST \/v1\/tokens\/quick-check\$0\.251$/);
     assert.match(await prices.nth(1).textContent(), /\$3\.00over \$1/);
-    assert.match(await prices.nth(2).textContent(), /POST \/v1\/contracts\/audit\$9\.00over \$1/, 'the contract audit: $9, above most x402 clients\' default cap');
+    assert.match(await prices.nth(2).textContent(), /POST \/v1\/contracts\/audit\$100\.00over \$1/, 'the contract audit: $100, above most x402 clients\' default cap');
     assert.match(await prices.nth(3).textContent(), /POST \/v1\/launch\/check\$0\.502$/, 'the launch check: $0.50 or 2 points');
     console.log('✔ x402: how it works, and the prices from the catalog');
 
