@@ -98,6 +98,7 @@ member drained this way is the worst possible story. Before the group opens:
 - [ ] **Pinned rule, first message:** "RektBull's team never DMs you first, never asks for a seed phrase or private key, and never asks you to connect or 'verify' your wallet. Anyone who does is a scammer: report them." The same line goes in the group description.
 - [ ] **Official links** in the description and the pin: rektbull.com, the X account, the channel. Nothing else is official.
 - [ ] **New members** pass a captcha and can't post links, media or forwards for their first 24 hours (Telegram's own permissions plus an anti-spam bot).
+- [ ] **Group Guard on in RektBull's own group** (`/agents/group-guard`): the bot as an admin with "Delete messages", `/official_site rektbull.com`, and no official contract (RektBull has no token, so every posted "contract" gets the not-official warning once one is set; until then, admins pin the no-token note). It's also the best demo of the bot for project teams.
 - [ ] **Few admins**, each with a visible "RektBull team" title. Make admin names hard to copy (the impersonators copy the name and photo exactly).
 - [ ] **Hide the member list** (Telegram's "Hide members" setting), so scammers can't scrape it to DM people.
 - [ ] **A daily look** at the group, at least in the first weeks. Delete scam posts quickly, and say publicly that they were scams.

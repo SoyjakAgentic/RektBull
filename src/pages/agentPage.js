@@ -129,6 +129,23 @@ const PAGES = {
       ['What does it cost?', 'It\'s part of Safety Pro ($9 for 30 days).'],
     ],
   },
+  group_guard: {
+    title: 'Telegram Anti-Scam Bot for Crypto Groups | RektBull',
+    description: 'A free Telegram bot for crypto groups: removes known phishing links, warns about fake sites and contracts, and flags admin impersonators. Every warning sourced.',
+    lead: 'scams caught in your Telegram group',
+    checks: [
+      ['Every link posted: is it a known phishing site?', 'GoPlus phishing site list'],
+      ['A link that looks like your official site but isn\'t', 'Your official sites, set by your admins; the link\'s domain compared letter by letter'],
+      ['A contract address that isn\'t your official one, posted as "the contract" or "CA"', 'Your official contracts, set by your admins'],
+      ['A token posted on your chains that can\'t be sold, or whose owner can change balances', 'GoPlus token security'],
+      ['A member whose name copies an admin\'s, or who calls themselves support or admin', 'Telegram\'s list of the group\'s admins; look-alike letters (0 for o, Cyrillic а for a) matched'],
+    ],
+    faq: [
+      ['How do I add Group Guard to my group?', 'Add RektBull\'s bot to the group as an admin with the "Delete messages" right, then set your official site and contract with /official_site and /official_contract. /guard shows the settings, and only your group\'s admins can change them.'],
+      ['Does it read or store our messages?', 'It reads messages posted in the group to check their links and addresses, and stores no message text and no record of who said what: only the group\'s settings and daily counts of what it did.'],
+      ['What does it cost?', 'It\'s free. Each group has daily limits on replies and checks, so it can never flood a chat; plans for very large groups may come later, paid in crypto.'],
+    ],
+  },
   trading_agent: {
     title: 'Crypto Trading Agent With Onchain Limits | RektBull',
     description: 'A crypto trading agent that buys and sells only within limits your wallet signs onchain, checks each token first, and exits at your stop-loss or take-profit.',
@@ -148,13 +165,34 @@ const PAGES = {
 };
 
 /** The agents that have a page, with their slug. */
-const list = () => AGENTS.filter(a => PAGES[a.id]).map(a => ({ id: a.id, slug: slugOf(a.id), name: a.name }));
+/** Agents for communities: they run in a group, not for one account. */
+const COMMUNITY = {
+  group_guard: () => {
+    const add = require('../services/groupGuard').addLink();
+    return {
+      id: 'group_guard', name: 'Group Guard', plan: 'free', price: 'Free', community: true,
+      does: 'A Telegram bot for crypto groups. It checks every link and contract address posted, removes known phishing links, warns about look-alike sites and fake contracts, and flags members whose names copy an admin\'s.',
+      alerts: 'In the group itself, as a reply to the message, with the source.',
+      schedules: [{ label: 'On every message' }],
+      desk: add ? { name: 'Telegram', href: add } : { name: 'AI agents', href: '/agents#communities' },
+      action: add ? { text: 'Add it to your group', href: add } : { text: 'Opening soon', href: '/agents#communities' },
+      where: 'In your Telegram group, as RektBull\'s bot, made an admin with the "Delete messages" right',
+    };
+  },
+};
+
+const list = () => [
+  ...AGENTS.filter(a => PAGES[a.id]).map(a => ({ id: a.id, slug: slugOf(a.id), name: a.name })),
+  ...Object.keys(COMMUNITY).filter(id => PAGES[id]).map(id => ({ id, slug: slugOf(id), name: COMMUNITY[id]().name })),
+];
+/** An agent's facts: from the agents' catalog, or the community agents above. */
+const info = id => (COMMUNITY[id] ? COMMUNITY[id]() : catalog().find(x => x.id === id));
 const bySlug = slug => list().find(a => a.slug === slug) || null;
 
 function page(slug, base) {
   const a = bySlug(slug);
   if (!a) return null;
-  const c = catalog().find(x => x.id === a.id);
+  const c = info(a.id);
   const p = PAGES[a.id];
   const url = `${base}/agents/${a.slug}`;
   const schedule = c.schedules.map(s => s.label.toLowerCase()).join(' or ');
@@ -163,7 +201,7 @@ function page(slug, base) {
     {
       '@type': 'WebPage', '@id': `${url}#page`, name: p.title.replace(/ \| RektBull$/, ''), description: p.description, url,
       isPartOf: { '@type': 'WebSite', name: 'RektBull', url: `${base}/` },
-      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: 'FinanceApplication', operatingSystem: 'Web', description: c.does, offers: { '@type': 'Offer', price: c.plan === 'free' ? '0' : c.plan === 'pro' ? '9' : '0', priceCurrency: 'USD', description: c.price } },
+      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: c.community ? 'SecurityApplication' : 'FinanceApplication', operatingSystem: c.community ? 'Telegram' : 'Web', description: c.does, offers: { '@type': 'Offer', price: c.plan === 'free' ? '0' : c.plan === 'pro' ? '9' : '0', priceCurrency: 'USD', description: c.price } },
     },
     seo.breadcrumbs(base, [['Home', `${base}/`], ['AI agents', `${base}/agents`], [c.name, url]]),
   ];
@@ -172,7 +210,7 @@ function page(slug, base) {
       <span class="eyebrow">AI agent · ${esc(c.price)}</span>
       <h1>${esc(c.name)}: <em>${esc(p.lead)}</em></h1>
       <p>${esc(c.does)}</p>
-      <p><a class="btn primary" href="/agents#agent-${esc(a.id)}">Switch it on</a> <a class="btn" href="${esc(c.desk.href)}">Open ${esc(c.desk.name)}</a></p>
+      <p>${c.community ? `<a class="btn primary" href="${esc(c.action.href)}"${/^https:/.test(c.action.href) ? ' rel="noopener" target="_blank"' : ''}>${esc(c.action.text)}</a>` : `<a class="btn primary" href="/agents#agent-${esc(a.id)}">Switch it on</a> <a class="btn" href="${esc(c.desk.href)}">Open ${esc(c.desk.name)}</a>`}</p>
       <nav class="jump" aria-label="On this page"><a href="#checks">What it checks</a><a href="#how">How it runs</a><a href="#never">What it never does</a><a href="#questions">Questions</a></nav>
     </div>
   </section>
@@ -190,9 +228,9 @@ function page(slug, base) {
       <h2>How it runs</h2>
       <div class="tablewrap"><table class="rank"><tbody>
         <tr><th scope="row">Schedule</th><td>${esc(schedule.charAt(0).toUpperCase() + schedule.slice(1))}</td></tr>
-        <tr><th scope="row">Alerts</th><td>${esc(c.alerts)} By Telegram, email or browser notification.</td></tr>
+        <tr><th scope="row">Alerts</th><td>${esc(c.alerts)}${c.community ? '' : ' By Telegram, email or browser notification.'}</td></tr>
         <tr><th scope="row">Price</th><td>${esc(c.price)}</td></tr>
-        <tr><th scope="row">Where it runs</th><td>The same check as the <a href="${esc(c.desk.href)}">${esc(c.desk.name)}</a> page, on a schedule</td></tr>
+        <tr><th scope="row">Where it runs</th><td>${c.community ? esc(c.where) : `The same check as the <a href="${esc(c.desk.href)}">${esc(c.desk.name)}</a> page, on a schedule`}</td></tr>
       </tbody></table></div>
     </section>
 
@@ -200,7 +238,7 @@ function page(slug, base) {
       <h2>What it never does</h2>
       <ul class="rules">
         <li><strong>It never asks for your seed phrase or private key.</strong> Nobody legitimate ever does.</li>
-        <li><strong>It never signs or moves your money.</strong> ${a.id === 'trading_agent' ? 'It trades only within the limits your wallet signed onchain, and only back to your wallet.' : 'Anything that needs a transaction is prepared for your own wallet to sign.'}</li>
+        <li><strong>It never signs or moves your money${c.community ? ', and never DMs anyone' : ''}.</strong> ${c.community ? 'It only reads what is posted in the group, and stores no message text.' : a.id === 'trading_agent' ? 'It trades only within the limits your wallet signed onchain, and only back to your wallet.' : 'Anything that needs a transaction is prepared for your own wallet to sign.'}</li>
         <li><strong>It never makes facts up.</strong> AI may write a summary, but only from facts that name their source; it never fills a gap with a guess.</li>
         <li><strong>It never calls anything safe.</strong> A clean result means nothing was found in the sources checked.</li>
       </ul>
@@ -221,4 +259,4 @@ function page(slug, base) {
   return { head: { title: p.title, description: p.description, url, base, graph }, body };
 }
 
-module.exports = { page, list, bySlug, PAGES, slugOf };
+module.exports = { page, list, bySlug, info, PAGES, slugOf };

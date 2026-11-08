@@ -11,7 +11,6 @@ const assert = require('node:assert/strict');
 Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DATABASE_URL: '', PUBLIC_URL: 'https://rektbull.test' });
 require('../src/providers/llama').protocols = async () => [];
 const agentPage = require('../src/pages/agentPage');
-const { catalog } = require('../src/services/myAgents');
 
 let server, base;
 test.before(() => { server = require('../src/app').createApp().listen(0); base = `http://127.0.0.1:${server.address().port}`; });
@@ -21,11 +20,11 @@ const graph = html => [...html.matchAll(/<script type="application\/ld\+json">([
 const plain = html => html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/&#39;/g, '\'').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 test('a page for each agent, written for a real search', async () => {
-  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'trading-agent']);
+  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'trading-agent', 'group-guard']);
   const titles = new Set();
   for (const { id, slug } of agentPage.list()) {
     const p = agentPage.PAGES[id];
-    const c = catalog().find(x => x.id === id);
+    const c = agentPage.info(id);
     assert.ok(p.title.length <= 60 && p.title.endsWith(' | RektBull'), `${slug} title fits`);
     assert.ok(p.description.length >= 70 && p.description.length <= 160, `${slug} description fits (${p.description.length})`);
     assert.ok(!titles.has(p.title)); titles.add(p.title);
@@ -41,7 +40,8 @@ test('a page for each agent, written for a real search', async () => {
     assert.ok(text.includes('It never asks for your seed phrase or private key.'));
     assert.ok(!/\b(is|are) safe\b(?!\?)/i.test(text.replace(/never calls anything safe|that something is safe|a token is safe\?|mean a token is safe/gi, '')), `${slug}: never calls anything safe`);
     assert.ok(!/\bguarantee|earn \d|(?<!take-)profit(able)?\b/i.test(text), `${slug}: no promise of returns`);
-    assert.match(body, new RegExp(`href="/agents#agent-${id}"`), 'switch it on, on the tab');
+    if (c.community) assert.ok(body.includes(`href="${c.action.href}"`), 'add it to your group');
+    else assert.match(body, new RegExp(`href="/agents#agent-${id}"`), 'switch it on, on the tab');
     for (const o of agentPage.list().filter(x => x.slug !== slug)) assert.ok(body.includes(`href="/agents/${o.slug}"`), `${slug} links ${o.slug}`);
 
     const g = graph(body);
