@@ -80,6 +80,15 @@ const secretOk = got => {
 /** Telegram's webhook: "/start <code>" links the chat; "/stop" unlinks it. Always answers 200 for well-formed calls. */
 async function telegramUpdate(headers, update) {
   if (!secretOk(headers['x-telegram-bot-api-secret-token'])) throw new ChannelRefused('forbidden', 403);
+  // Groups and their members go to Group Guard (src/services/groupGuard.js). Always 200, or Telegram retries.
+  const groupUpdate = update?.my_chat_member || update?.chat_member || ['group', 'supergroup'].includes((update?.message || update?.edited_message)?.chat?.type);
+  if (groupUpdate) {
+    if (!env.databaseUrl) return { ok: true };
+    try { return await require('../services/groupGuard').handle(update); } catch (err) {
+      require('../config/logger').error('group guard failed', { error: err.message });
+      return { ok: true };
+    }
+  }
   const msg = update?.message;
   const chatId = msg?.chat?.id;
   const text = String(msg?.text || '').trim();

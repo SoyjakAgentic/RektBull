@@ -341,7 +341,7 @@ gcloud run services update rektbull-api --region=us-central1 \
     ```bash
     curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
       -d url=https://rektbull.com/v1/telegram/webhook \
-      -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message"]'
+      -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message","edited_message","my_chat_member","chat_member"]'
     ```
 
 **D. Smoke test (before telling anyone)**

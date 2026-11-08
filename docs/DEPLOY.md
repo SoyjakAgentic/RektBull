@@ -47,15 +47,20 @@ optional; one that isn't set up shows as "not available yet" on the page.
 Set `PUBLIC_URL=https://rektbull.com` so links in alerts point to the site.
 
 **Telegram** (free):
-1. In Telegram, message @BotFather: `/newbot`, name it (e.g. RektBull Alerts)
-   and get its token. `/setprivacy` → Enable (it only needs its own chats).
+1. In Telegram, message @BotFather: `/newbot`, name it **RektBull** (it sends
+   alerts and is the Group Guard bot, so the name is what group members see)
+   and get its token. `/setprivacy` → Enable, and `/setjoingroups` → Enable.
+   Group Guard is made an admin in each group, and admins receive every
+   message even with privacy on; members' joins come as `chat_member`
+   updates, which Telegram sends only when listed in `allowed_updates` below.
+   Give it the bull's calm face as its picture (`public/brand/`).
 2. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without @), and
    `TELEGRAM_WEBHOOK_SECRET` (a long random string: `openssl rand -hex 32`).
 3. Point Telegram at the web service, with the same secret:
    ```bash
    curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
      -d url=https://rektbull.com/v1/telegram/webhook \
-     -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message"]'
+     -d secret_token=$TELEGRAM_WEBHOOK_SECRET -d 'allowed_updates=["message","edited_message","my_chat_member","chat_member"]'
    ```
    Requests without that secret are refused.
 
