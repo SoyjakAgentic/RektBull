@@ -80,6 +80,16 @@ const secretOk = got => {
 /** Telegram's webhook: "/start <code>" links the chat; "/stop" unlinks it. Always answers 200 for well-formed calls. */
 async function telegramUpdate(headers, update) {
   if (!secretOk(headers['x-telegram-bot-api-secret-token'])) throw new ChannelRefused('forbidden', 403);
+  // Channels and Post/Skip taps go to Channel Poster (src/services/channelPoster.js). Always 200, or Telegram retries.
+  const forPoster = update?.callback_query?.data?.startsWith('cp:') ? 'callback' : update?.my_chat_member?.chat?.type === 'channel' ? 'membership' : null;
+  if (forPoster) {
+    if (!env.databaseUrl) return { ok: true };
+    try { return (await require('../services/channelPoster')[forPoster](update.callback_query || update.my_chat_member)) || { ok: true }; } catch (err) {
+      require('../config/logger').error('channel poster failed', { error: err.message });
+      return { ok: true };
+    }
+  }
+  if (update?.channel_post || update?.callback_query) return { ok: true };
   // Groups and their members go to Group Guard (src/services/groupGuard.js). Always 200, or Telegram retries.
   const groupUpdate = update?.my_chat_member || update?.chat_member || ['group', 'supergroup'].includes((update?.message || update?.edited_message)?.chat?.type);
   if (groupUpdate) {
@@ -102,6 +112,14 @@ async function telegramUpdate(headers, update) {
     await upsertVerified(row.account_id, 'telegram', String(chatId), who);
     await reply('Linked. RektBull will send your alerts here (your AI agents and the risk monitor). Send /stop to turn them off.');
     return { ok: true, linked: true };
+  }
+  if (/^\/poster/i.test(text) && env.databaseUrl) {
+    try { await require('../services/channelPoster').command(msg); } catch (err) { require('../config/logger').error('channel poster failed', { error: err.message }); }
+    return { ok: true, poster: true };
+  }
+  if (/^\/(start|help)(?:@\w+)?$/.test(text)) {
+    await reply('This is RektBull\'s bot. It does three things:\n\n1. Your alerts: link it from the AI agents or Safety page on rektbull.com.\n2. Group Guard: add it to your Telegram group as an admin to catch scam links, fake contracts and impersonators.\n3. Channel Poster: add it to your channel as an admin to get post drafts here, posted only when you approve them. /poster\n\nRektBull never asks for a seed phrase or private key, and never DMs first.');
+    return { ok: true };
   }
   if (/^\/stop(?:@\w+)?$/.test(text)) {
     await db.query(`UPDATE alert_channels SET disabled_at = now(), disabled_reason = 'Turned off in Telegram (/stop)' WHERE kind = 'telegram' AND target = $1 AND disabled_at IS NULL`, [String(chatId)]);
