@@ -19,8 +19,8 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
 const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 
 const SAFETY_PRO = {
-  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals', 'governance_summary'],
-  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500 },
+  covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals', 'governance_summary', 'launch_check'],
+  fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500, launch_check: 30 },
   // AI runs are counted at what they cost RektBull in Claude usage, up to $2 in each 30 days of the
   // pass (src/payments/aiAllowance.js); then they're paid like any other run.
   ai_allowance: { cents_per_30_days: 200, uses: ['token_report', 'governance_summary'] },
@@ -43,6 +43,14 @@ const PRODUCTS = {
     description: 'The full scan plus liquidity, volume and age, explained in plain English.',
     price_cents: 300,
     points: null,
+    x402: true,
+  },
+  launch_check: {
+    kind: 'run',
+    title: 'Launch check',
+    description: 'Was a new token\'s early supply bundled by insiders, and are they selling? The largest buyers in its first hour, where each one\'s funds came from, wallets sharing a funder, links back to the deployer, and what they hold now. Every finding with its source.',
+    price_cents: 50,
+    points: 2,
     x402: true,
   },
   presign_check: {

@@ -22,6 +22,9 @@ class AgentsRefused extends Error {
 }
 
 const TOKEN_WATCH_MAX = 10;
+const LAUNCH_SAFETY_MAX = 5;
+/** The agents that take a token list, and how many tokens each holds. */
+const TOKEN_LISTS = { token_watch: TOKEN_WATCH_MAX, launch_safety: LAUNCH_SAFETY_MAX };
 const PER_TICK = 10;
 const RETRY_MINUTES = 60;
 const RANK = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
@@ -57,6 +60,12 @@ const AGENTS = [
     does: `Re-checks up to ${TOKEN_WATCH_MAX} tokens you hold or plan to buy, every day: can it still be sold, did its tax or owner powers change, did GoPlus flag it.`,
     alerts: 'When a token gets a new medium, high or critical flag.',
     plan: 'pro', every: [24], default_every: 24, default_on: false, runs_here: true, wallets: 'none',
+  },
+  {
+    id: 'launch_safety', name: 'Launch Safety', was: 'Launch Bundle Detector and Insider Wallet Tracer', desk: { name: 'Safety', href: '/safety#check-card' },
+    does: `Checks up to ${LAUNCH_SAFETY_MAX} new tokens for a bundled launch: early buyers funded from the same wallet, links back to the deployer, and how much they bought. Then keeps watching those wallets.`,
+    alerts: 'When a bundle is found, and when its wallets start selling.',
+    plan: 'pro', every: [6, 24], default_every: 6, default_on: false, runs_here: true, wallets: 'none',
   },
   {
     id: 'dao_votes', name: 'DAO Votes', was: 'DAO Governance Digest', desk: { name: 'Governance', href: '/governance' },
@@ -128,11 +137,11 @@ async function list(accountId) {
     if (a.plan === 'pro' && !pro) status = { state: 'needs_pro', text: 'Part of Safety Pro' };
     else if (a.wallets === 'watched' && !watched.rows[0].n) status = { state: 'needs_wallets', text: 'Watch a wallet on the Safety page first' };
     else if (a.id === 'trading_agent' && !trading.rows[0].n) status = { state: 'needs_setup', text: 'Set limits on the Trade desk first' };
-    else if (a.id === 'token_watch' && !(r?.settings?.tokens || []).length) status = { state: 'needs_setup', text: 'Add a token to watch' };
+    else if (TOKEN_LISTS[a.id] && !(r?.settings?.tokens || []).length) status = { state: 'needs_setup', text: 'Add a token to watch' };
     else status = on ? { state: 'on', text: 'On' } : { state: 'off', text: 'Off' };
     return {
       ...c, enabled: on, every_hours: every, schedule: scheduleText(every), status,
-      ...(a.id === 'token_watch' ? { tokens: r?.settings?.tokens || [], max_tokens: TOKEN_WATCH_MAX } : {}),
+      ...(TOKEN_LISTS[a.id] ? { tokens: r?.settings?.tokens || [], max_tokens: TOKEN_LISTS[a.id] } : {}),
       last_run_at: r?.last_run_at || null, last_result: r?.last_result || null, last_error: r?.last_error || null,
       next_run_at: a.runs_here && on ? r?.next_run_at || null : null,
     };
@@ -147,10 +156,10 @@ async function list(accountId) {
 
 const TOKEN_RE = { evm: /^0x[0-9a-fA-F]{40}$/, solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/ };
 
-function parseTokens(list) {
+function parseTokens(list, max = TOKEN_WATCH_MAX, name = 'Token Watch') {
   const { SCAN_CHAINS } = require('./tokenRisk');
   if (!Array.isArray(list)) throw new AgentsRefused('tokens must be a list of { chain, token }.');
-  if (list.length > TOKEN_WATCH_MAX) throw new AgentsRefused(`Token Watch holds up to ${TOKEN_WATCH_MAX} tokens.`);
+  if (list.length > max) throw new AgentsRefused(`${name} holds up to ${max} tokens.`);
   const seen = new Set();
   return list.map(t => {
     const chain = String(t?.chain || '').toLowerCase();
@@ -179,8 +188,8 @@ async function update(accountId, agentId, body = {}) {
   }
   const settings = { ...(current?.settings || {}) };
   if (body.tokens !== undefined) {
-    if (agentId !== 'token_watch') throw new AgentsRefused('Only Token Watch takes a token list.');
-    settings.tokens = parseTokens(body.tokens);
+    if (!TOKEN_LISTS[agentId]) throw new AgentsRefused('Only Token Watch and Launch Safety take a token list.');
+    settings.tokens = parseTokens(body.tokens, TOKEN_LISTS[agentId], a.name);
   }
   // Switching on a Safety Pro agent needs Safety Pro; switching off never does.
   if (body.enabled === true && a.plan === 'pro' && !(await passes.covering(accountId, 'risk_monitor'))) {
@@ -318,6 +327,70 @@ const RUNNERS = {
       result: { text: `${tokens.length} token${tokens.length === 1 ? '' : 's'} checked, ${flagged} with a medium or worse flag`, not_checked: notChecked.slice(0, 10) },
     };
   },
+
+  /**
+   * Each token's launch checked once (src/services/launchSafety.js); a bundle found is alerted.
+   * After that, only what the flagged groups hold is read again: wallets that sold another 20% or
+   * more of what they bought at launch are alerted.
+   */
+  async launch_safety({ account, row }) {
+    const ls = require('./launchSafety');
+    const tokens = row?.settings?.tokens || [];
+    const prev = row?.snapshot?.launches || {};
+    const now = {};
+    const alerts = [];
+    const notChecked = [];
+    const nameOf = t => t.label || `${t.token.slice(0, 6)}…${t.token.slice(-4)}`;
+    for (const t of tokens) {
+      const key = `${t.chain}:${t.token}`;
+      const token = { chain: t.chain, token: t.token };
+      try {
+        if (!prev[key]) {
+          const r = await ls.check(token);
+          const groups = r.groups.filter(g => g.funder_kind !== 'busy' && g.bought_pct >= 3)
+            .map(g => ({ funder: g.funder, wallets: g.wallets.map(w => ({ address: w.address })), bought_pct: g.bought_pct, holds_pct: g.holds_pct, reported_pct: g.holds_pct }));
+          now[key] = { verdict: r.verdict, groups };
+          if (r.verdict !== 'no_bundle_found') {
+            alerts.push({
+              kind: 'launch_safety', severity: r.verdict === 'bundle_found' ? 'high' : 'medium', wallet: account.wallet, dedupe: `launch:${key}:found`,
+              title: `${nameOf(t)} on ${t.chain}: ${r.summary.replace(/\.$/, '')}`,
+              detail: { reasons: r.flags.filter(f => f.severity !== 'info').slice(0, 4).map(f => ({ text: `${f.title}. ${f.evidence}`, source: f.source })), token },
+            });
+          }
+          continue;
+        }
+        const p = { ...prev[key], groups: prev[key].groups.map(g => ({ ...g })) };
+        now[key] = p;
+        if (!p.groups.length) continue;
+        const holds = await ls.holdingsNow(t.chain, t.token, p.groups);
+        for (const g of p.groups) {
+          const h = holds[g.funder];
+          if (h === null || h === undefined || !g.bought_pct) continue;
+          // Compared with what they held when last reported, so slow selling adds up to an alert too.
+          const reported = g.reported_pct ?? g.holds_pct;
+          const soldBefore = reported === null || reported === undefined ? 0 : Math.max(0, Math.round((1 - reported / g.bought_pct) * 100));
+          const soldNow = Math.max(0, Math.round((1 - h / g.bought_pct) * 100));
+          if (soldNow - soldBefore >= 20) {
+            alerts.push({
+              kind: 'launch_safety', severity: 'critical', wallet: account.wallet, dedupe: `launch:${key}:${g.funder}:sold:${Math.floor(soldNow / 20)}`,
+              title: `${nameOf(t)} on ${t.chain}: bundle wallets are selling (${soldNow}% of what they bought at launch is gone)`,
+              detail: { reasons: [{ text: `${g.wallets.length} wallets funded from ${g.funder.slice(0, 6)}…${g.funder.slice(-4)} bought ${g.bought_pct}% of the supply at launch and hold ${h}% now (${reported ?? 'unknown'}% when last reported).`, source: t.chain === 'solana' ? 'Solana RPC' : `${t.chain} RPC (balanceOf)` }], token },
+            });
+            g.reported_pct = h;
+          }
+          g.holds_pct = h;
+        }
+      } catch (err) {
+        notChecked.push(`${nameOf(t)}: ${err.message}`);
+        if (prev[key]) now[key] = prev[key];
+      }
+    }
+    const bundles = Object.values(now).filter(x => x.verdict !== 'no_bundle_found').length;
+    return {
+      alerts, snapshot: { launches: now },
+      result: { text: `${tokens.length} token${tokens.length === 1 ? '' : 's'} watched, ${bundles} with a bundle or possible bundle`, not_checked: notChecked.slice(0, 10) },
+    };
+  },
 };
 
 async function walletsFor(account, which) {
@@ -363,4 +436,4 @@ async function tick({ limit = PER_TICK } = {}) {
   return rows.length;
 }
 
-module.exports = { AGENTS, catalog, list, update, isOn, everyHours, tick, runOne, raise, parseTokens, scheduleText, AgentsRefused, TOKEN_WATCH_MAX, RUNNERS };
+module.exports = { AGENTS, catalog, list, update, isOn, everyHours, tick, runOne, raise, parseTokens, scheduleText, AgentsRefused, TOKEN_WATCH_MAX, LAUNCH_SAFETY_MAX, TOKEN_LISTS, RUNNERS };

@@ -33,9 +33,10 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     console.log('✔ the MCP server: its address, setup for Claude, Claude Code and others, and its tools as the server lists them');
 
     const prices = page.locator('#prices tbody tr');
-    assert.equal(await prices.count(), 5);
+    assert.equal(await prices.count(), 6);
     assert.match(await prices.nth(0).textContent(), /POST \/v1\/tokens\/quick-check\$0\.251$/);
     assert.match(await prices.nth(1).textContent(), /\$3\.00over \$1/);
+    assert.match(await prices.nth(2).textContent(), /POST \/v1\/launch\/check\$0\.502$/, 'the launch check: $0.50 or 2 points');
     console.log('✔ x402: how it works, and the prices from the catalog');
 
     const groups = page.locator('.ref-group');

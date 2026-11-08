@@ -95,7 +95,7 @@ The address stays `/agents`, so nothing already shared or indexed breaks.
 ## Order (decided)
 
 1. **The tab**, with the seven agents RektBull already has, each with an "on" switch, a schedule and alerts. **Built** (`src/services/myAgents.js`, `/agents`): Wallet Checkup and Claim Assistant (free), Wallet Guardian, Token Watch, DAO Votes and Yield Watch (Safety Pro), and the Trading Agent's exit alerts.
-2. **Launch Safety** (bundle detector and insider tracer): about a week.
+2. **Launch Safety** (bundle detector and insider tracer). **Built** (`src/services/launchSafety.js`): the launch check on the Safety page ($0.50, 2 points, in Safety Pro) and the Launch Safety agent, on the six EVM chains and Solana. Rebuilt as deterministic onchain checks with sources (Soyjak's were AI prompts with tools): first-hour buyers, shared funders, links to the deployer up to 3 steps, what they hold now, and alerts when they sell.
 3. **Group Guard**, with Channel Poster for project teams: about a week, reusing the token, phishing and address checks.
 4. **Contract Audit Agent**, with the analyzer service: several days, plus hosting for Slither.
 5. **RektBull's own Telegram channel poster and X drafts**, once the channel, the group and the X account exist and the owner sends the details ([SOCIAL_AGENTS.md](SOCIAL_AGENTS.md)): one to two days.

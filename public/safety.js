@@ -26,6 +26,7 @@
       Object.assign(catalog, window.RB.catalog.products);
       $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
       $('report-price').textContent = window.RB.priceLabel(catalog.token_report);
+      $('launch-price').textContent = window.RB.priceLabel(catalog.launch_check);
       renderPasses();
     } catch (err) { say('check-msg', 'Could not load the page\'s settings: ' + err.message, 'bad'); }
   })();
@@ -33,22 +34,24 @@
   /* ── checks ── */
   $('quick').addEventListener('click', () => run('quick-check', 'token_quick_check'));
   $('report').addEventListener('click', () => run('report', 'token_report'));
+  $('launch').addEventListener('click', () => run('launch', 'launch_check'));
+  const BUTTONS = ['quick', 'report', 'launch'];
 
   async function run(path, productId) {
     const body = { chain: $('chain').value, token_address: $('token').value.trim() };
     if (!body.token_address) return say('check-msg', 'Paste the token\'s contract address first.', 'bad');
-    for (const b of [$('quick'), $('report')]) b.disabled = true;
-    say('check-msg', productId === 'token_report' ? 'Checking, then writing the report (up to a minute)…' : 'Checking…');
+    for (const b of BUTTONS) $(b).disabled = true;
+    say('check-msg', productId === 'token_report' ? 'Checking, then writing the report (up to a minute)…' : productId === 'launch_check' ? 'Reading the launch: its first buyers and where their funds came from (up to a minute)…' : 'Checking…');
     $('result').hidden = true;
     try {
-      const out = await api('POST', '/v1/tokens/' + path, body);
-      showResult(out);
+      const out = await api('POST', path === 'launch' ? '/v1/launch/check' : '/v1/tokens/' + path, body);
+      if (path === 'launch') showLaunch(out); else showResult(out);
       say('check-msg', '');
     } catch (err) {
       say('check-msg', explain(err, productId), 'bad');
       if (err.status === 402) $('account-card').scrollIntoView({ behavior: 'smooth' });
     } finally {
-      for (const b of [$('quick'), $('report')]) b.disabled = false;
+      for (const b of BUTTONS) $(b).disabled = false;
       if (window.RB.signedIn()) loadAccount();
     }
   }
@@ -90,6 +93,40 @@
     parts.push(el('p', { class: 'paid' }, `Checked ${r.checked_at ? new Date(r.checked_at).toLocaleString() : ''}`, window.RB.paidLabel(run), r.written_by ? ` · Written by ${r.written_by} from these results only` : ''));
     box.replaceChildren(...parts);
     box.hidden = false;
+  }
+
+  /* The launch check: bundles, links to the deployer, and what they hold now. */
+  const LAUNCH = { bundle_found: ['high', 'Bundle found'], possible_bundle: ['medium', 'Possible bundle'], no_bundle_found: ['low', 'No bundle found'] };
+  const shortAddr = a => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+  const pc = v => (v === null || v === undefined ? '–' : `${v}%`);
+  function showLaunch(r) {
+    const [cls, label] = LAUNCH[r.verdict] || ['medium', r.verdict];
+    const parts = [
+      el('h3', {}, 'Launch check: ', el('span', { class: 'mono' }, shortAddr(r.token)), ' on ', CHAIN_NAMES[r.chain] || r.chain),
+      el('p', {}, el('span', { class: 'verdict ' + cls }, label), ' ', r.summary),
+      el('p', { class: 'small muted' }, `Launched ${new Date(r.launch.at).toLocaleString()}`, r.launch.deployer ? ` by ${shortAddr(r.launch.deployer)}` : '', ` · ${r.early_buyers.traced} largest buyers in the first ${r.launch.window_minutes} minutes traced; together they bought ${pc(r.early_buyers.bought_pct)} of the supply`, r.early_buyers.contracts_set_aside ? ` · ${r.early_buyers.contracts_set_aside} pool, router or program account${r.early_buyers.contracts_set_aside === 1 ? '' : 's'} set aside` : ''),
+    ];
+    if (r.groups.length) {
+      parts.push(el('h3', {}, 'Early buyers sharing a funder'), el('div', { class: 'tablewrap' }, el('table', { class: 'rank' },
+        el('thead', {}, el('tr', {}, el('th', {}, 'Funded from'), el('th', { class: 'num' }, 'Wallets'), el('th', { class: 'num' }, 'Bought at launch'), el('th', { class: 'num' }, 'Hold now'), el('th', { class: 'num' }, 'Sold'), el('th', {}, 'Deployer link'))),
+        el('tbody', {}, r.groups.map(g => el('tr', {},
+          el('td', {}, el('span', { class: 'mono', title: g.funder }, shortAddr(g.funder)), g.funder_kind === 'busy' ? el('span', { class: 'small muted' }, ' (busy: likely an exchange, not counted)') : g.funder_kind === 'contract' ? el('span', { class: 'small muted' }, ' (a contract)') : null),
+          el('td', { class: 'num' }, String(g.wallets.length)), el('td', { class: 'num' }, pc(g.bought_pct)), el('td', { class: 'num' }, pc(g.holds_pct)),
+          el('td', { class: 'num' }, g.sold_pct === null ? '–' : `${g.sold_pct}%`),
+          el('td', { class: 'small' }, g.linked_to_deployer ? `${g.linked_to_deployer.hops} step${g.linked_to_deployer.hops === 1 ? '' : 's'}` : 'none found')))))));
+    }
+    const flags = r.flags.filter(f => f.severity !== 'info');
+    if (flags.length) {
+      parts.push(el('h3', {}, 'What we found'), el('ul', { class: 'flags' }, flags.map(f => el('li', { class: f.severity },
+        el('div', {}, el('span', { class: 'sev' }, f.severity), el('strong', {}, f.title)),
+        el('div', { class: 'small' }, f.evidence), el('div', { class: 'source' }, 'Source: ', f.source)))));
+    }
+    for (const f of r.flags.filter(x => x.severity === 'info')) parts.push(el('p', { class: 'small muted' }, f.title, ': ', f.evidence));
+    if (r.not_checked?.length) parts.push(el('h3', {}, 'What we couldn\'t check'), el('ul', { class: 'small' }, r.not_checked.map(n => el('li', {}, el('strong', {}, n.check), ': ', n.reason))));
+    parts.push(el('p', { class: 'muted small' }, r.note, ' ', el('a', { href: '/agents#agent-launch_safety' }, 'Watch it with Launch Safety'), ' to be told if these wallets start selling.'));
+    parts.push(el('p', { class: 'paid' }, `Checked ${new Date(r.checked_at).toLocaleString()}`, window.RB.paidLabel(r.run || {}), ` · Sources: ${r.sources.join('; ')}`));
+    $('result').replaceChildren(...parts);
+    $('result').hidden = false;
   }
 
   function marketFacts(m) {

@@ -54,6 +54,21 @@ desks' caches). It's cached 5 minutes per wallet and limited to 5 a day
 without signing in, 30 signed in. A slow part (a wallet with thousands of
 approvals) is cut off after 25 seconds and named, so the page still answers.
 
+## The launch check's cost (Launch Safety)
+
+One check reads the token's first 1,000 transfers and its creation (2
+explorer calls), whether each of the 60 largest early receivers is a contract
+(RPC), each of the 30 largest early buyers' first funding (1 or 2 explorer
+calls each), each funder's funding up to 3 steps back toward the deployer
+(shared funders are read once), balances and supply (RPC). That is roughly
+60 to 120 explorer calls and 100 RPC reads on EVM chains, and about 150
+Solana RPC calls. It's cached 30 minutes per token, sold at 2 points or $0.50
+(30 a day in Safety Pro), and the agent reads only the flagged wallets'
+balances after its first check. Explorer free plans allow about 5 calls a
+second, so a check takes 10 to 30 seconds. **Set `RPC_URLS_SOLANA`** (a free
+Helius or Alchemy plan): the public Solana endpoint rate-limits hard, and a
+check that reads too little is refused and not charged, rather than guessed.
+
 ## The risk monitor's cost
 
 Each watched wallet gets one fresh approval scan a day (about 18 explorer

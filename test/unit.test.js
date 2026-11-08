@@ -29,7 +29,8 @@ test('catalog: runs try Safety Pro, points, credits, then x402; reports take no 
   assert.deepEqual(catalog.rails(catalog.product('pro_30d')), ['credits']);
   for (const id of ['token_quick_check', 'approval_cleanup']) assert.ok(catalog.product(id).price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, `${id} must work with default x402 clients`);
   const pro = catalog.product('pro_30d');
-  assert.deepEqual([...pro.covers].sort(), ['airdrop_claim', 'approval_cleanup', 'governance_summary', 'presign_check', 'risk_monitor', 'token_quick_check', 'token_report', 'yield_proposals'], 'airdrop_claim: the 3% claim fee; yield_proposals; governance_summary');
+  assert.deepEqual([...pro.covers].sort(), ['airdrop_claim', 'approval_cleanup', 'governance_summary', 'launch_check', 'presign_check', 'risk_monitor', 'token_quick_check', 'token_report', 'yield_proposals'], 'airdrop_claim: the 3% claim fee; yield_proposals; governance_summary; launch_check');
+  assert.deepEqual(catalog.rails(catalog.product('launch_check')), ['pass', 'points', 'credits', 'x402']);
   assert.deepEqual(catalog.rails(catalog.product('presign_check')), ['pass', 'points', 'credits', 'x402']);
   assert.deepEqual(pro.monitor, { wallets: 3, every_hours: 24 });
   assert.deepEqual(pro.ai_allowance, { cents_per_30_days: 200, uses: ['token_report', 'governance_summary'] }, '$2 of AI every 30 days, at real cost');

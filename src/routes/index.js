@@ -148,6 +148,10 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
   run: input => dd.fullReport(input),
 }));
 
+// ── Launch Safety: was a new token's supply bundled at launch, and are the bundlers selling? ──
+const launchSafety = require('../services/launchSafety');
+router.post('/v1/launch/check', paidRoute('launch_check', { validate: req => launchSafety.parse(req.body), run: input => launchSafety.check(input) }));
+
 // ── Approval cleanup: a free preview (how many, how much at risk), then the paid cleanup ──
 const { FREE_LIMITS } = require('../payments/freeLimits');
 const PREVIEWS_PER_DAY = FREE_LIMITS.approval_preview;

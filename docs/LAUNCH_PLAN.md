@@ -266,7 +266,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `X402_PAY_TO` | ✔ | | Section 4 |
 | `CLAIM_FEE_WALLET_EVM`, `YIELD_FEE_WALLET_EVM` | ✔ | | Section 4 |
 | `ADMIN_WALLETS` | ✔ | | Your address |
-| `RPC_URLS_ETHEREUM`, `_BASE`, `_BSC`, `_ARBITRUM`, `_OPTIMISM`, `_POLYGON`, `_SOLANA` | ✔ | ✔ | Your endpoints. They carry API keys: restrict them to RektBull's use in the provider's dashboard |
+| `RPC_URLS_ETHEREUM`, `_BASE`, `_BSC`, `_ARBITRUM`, `_OPTIMISM`, `_POLYGON`, `_SOLANA` | ✔ | ✔ | Your endpoints. They carry API keys: restrict them to RektBull's use in the provider's dashboard. **Set `RPC_URLS_SOLANA` before launch** (a free Helius or Alchemy plan): the launch check reads about 150 Solana calls per token, and the public endpoint refused about a third of them in testing (the check then refuses rather than guess, and isn't charged) |
 | `PROVIDER_DAILY_LIMITS` | ✔ | ✔ | Just under each free plan's daily limit (see `.env.example`) |
 | `TELEGRAM_BOT_USERNAME` | ✔ | ✔ | Without the @ |
 | `EMAIL_FROM` | ✔ | ✔ | `RektBull <alerts@rektbull.com>` |
