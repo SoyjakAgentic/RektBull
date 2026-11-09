@@ -37,6 +37,7 @@
       <div id="result" hidden></div>
     </section>
 
+    <!--agent:contract_audit-->
     <section class="card" id="audit-card">
       <h2>Audit a contract <span class="tag">First pass</span></h2>
       <p class="muted">A first-pass security review of a verified contract, and a proxy's implementation with it: Slither's detectors on the contract compiled as it was verified, checks from an audit checklist, the compiler's known bugs, and who holds power over it, explained in plain English, with a downloadable PDF report. These are flags for a person to confirm, not a full audit, and nothing in it is financial advice.</p>
@@ -49,7 +50,7 @@
       <div class="row"><button id="audit" class="primary">Run the audit<span class="price" id="audit-price"></span></button></div>
       <p id="audit-msg" class="msg"></p>
       <div id="audit-result" hidden></div>
-    </section>
+    </section><!--/agent:contract_audit-->
 
     <section class="card" id="approvals-card">
       <h2>Clean up your approvals</h2>
@@ -100,7 +101,7 @@
 
     <section class="card" id="account-card">
       <h2>Your account</h2>
-      <p class="muted">Sign in with your wallet for 30 free points a month: a quick check is 1 point, an approval cleanup 5. Signing in costs nothing and moves no funds.</p>
+      <p class="muted">Sign in with your wallet for {{free_points}} free points a month: a quick check is 1 point, an approval cleanup 5. Signing in costs nothing and moves no funds.</p>
       <div id="wallets" class="row"></div>
       <button id="signin" class="primary" disabled>Sign in with this wallet</button>
       <p id="connect-msg" class="msg"></p>

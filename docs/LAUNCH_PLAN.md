@@ -218,7 +218,7 @@ Later (section 6): Chrome Web Store ($5 once), Microsoft Partner Center
 |---|---|---|
 | `CRYPTO_DEPOSIT_XPUB` | Extended **public** key; each top-up gets its own address from it | From a hardware wallet account used only for RektBull deposits. Write down its derivation path. Sweeping deposits is done by you, from that wallet |
 | `X402_PAY_TO` | Where x402 USDC on Base arrives | A Safe or hardware-wallet address. Receive-only |
-| `ADMIN_WALLETS` | Wallets that can read `/v1/admin/*` | Your own address(es) |
+| `ADMIN_WALLETS` | Wallets that can use the admin panel (`/admin`, [ADMIN.md](ADMIN.md)) | Your own address(es) |
 | `CLAIM_FEE_WALLET_EVM` | Where claim fees arrive (many different tokens) | A Safe or hardware-wallet address, receive-only; on every EVM chain we cover (a Safe needs deploying on each). Unset = claims carry no fee |
 | `SWAP_FEE_WALLET_EVM` | Where the 1% trade fee arrives, on Base | A Safe or hardware-wallet address, receive-only. Needed for the trade desk at launch |
 | `SESSION_KEY_ADDRESS` | RektBull's trading key (the KMS key's address) | Automatic trading only (section 8). Leave unset at launch |

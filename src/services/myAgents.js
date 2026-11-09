@@ -16,6 +16,7 @@ const db = require('../config/db');
 const logger = require('../config/logger');
 const passes = require('../payments/passes');
 const { SAFETY_PRO } = require('../payments/catalog');
+const agentStates = require('../admin/agentStates');
 
 class AgentsRefused extends Error {
   constructor(message, status = 400, extra = {}) { super(message); this.status = status; Object.assign(this, extra); }
@@ -90,14 +91,18 @@ const BY_ID = Object.fromEntries(AGENTS.map(a => [a.id, a]));
 
 const scheduleText = h => (h === null ? 'When a trade or exit is due' : h < 1 ? 'Every 5 minutes' : h === 1 ? 'Every hour' : h === 168 ? 'Every week' : h === 24 ? 'Every day' : `Every ${h} hours`);
 
-/** The agents as the page and the API describe them (no account needed). */
-function catalog() {
-  return AGENTS.map(a => ({
+/**
+ * The agents as the page and the API describe them (no account needed). Only
+ * the listed ones, unless all: an admin can hide an agent or switch it off.
+ */
+function catalog({ all = false } = {}) {
+  return AGENTS.filter(a => all || agentStates.listed(a.id)).map(a => ({
     id: a.id, name: a.name, was: a.was, does: a.does, alerts: a.alerts, desk: a.desk,
     plan: a.plan, price: a.plan === 'free' ? 'Free' : a.plan === 'pro' ? 'Safety Pro' : 'Trade desk fees',
     schedules: (a.every.length ? a.every : [a.default_every]).map(h => ({ every_hours: h, label: scheduleText(h) })),
     default_schedule: scheduleText(a.default_every),
     default_on: a.default_on,
+    ...(all ? { state: agentStates.state(a.id) } : {}),
   }));
 }
 
@@ -108,6 +113,7 @@ async function rowsFor(accountId) {
 
 /** Is the agent on for this account? (Rows win; no row means its default.) */
 async function isOn(accountId, agentId) {
+  if (agentStates.isOff(agentId)) return false;
   const { rows } = await db.query('SELECT enabled FROM agent_settings WHERE account_id = $1 AND agent = $2', [accountId, agentId]);
   return rows.length ? rows[0].enabled : BY_ID[agentId].default_on;
 }
@@ -128,13 +134,15 @@ async function list(accountId) {
     db.query('SELECT kind FROM alert_channels WHERE account_id = $1 AND verified_at IS NOT NULL AND disabled_at IS NULL', [accountId]),
   ]);
   const trading = await db.query(`SELECT count(*)::int AS n FROM trade_permissions WHERE account_id = $1 AND status = 'active'`, [accountId]).catch(() => ({ rows: [{ n: 0 }] }));
-  const agents = catalog().map(c => {
+  // A hidden agent still shows for an account that uses it; one that's off shows as paused to an account that had it on.
+  const agents = catalog({ all: true }).filter(c => c.state === 'active' || (rows[c.id]?.enabled ?? (BY_ID[c.id].default_on && c.state === 'off'))).map(c => {
     const a = BY_ID[c.id];
     const r = rows[c.id];
-    const on = r ? r.enabled : a.default_on;
+    const on = c.state === 'off' ? false : r ? r.enabled : a.default_on;
     const every = r?.every_hours ?? a.default_every;
     let status;
-    if (a.plan === 'pro' && !pro) status = { state: 'needs_pro', text: 'Part of Safety Pro' };
+    if (c.state === 'off') status = { state: 'paused', text: 'Paused by RektBull for now; your settings are kept' };
+    else if (a.plan === 'pro' && !pro) status = { state: 'needs_pro', text: 'Part of Safety Pro' };
     else if (a.wallets === 'watched' && !watched.rows[0].n) status = { state: 'needs_wallets', text: 'Watch a wallet on the Safety page first' };
     else if (a.id === 'trading_agent' && !trading.rows[0].n) status = { state: 'needs_setup', text: 'Set limits on the Trade desk first' };
     else if (TOKEN_LISTS[a.id] && !(r?.settings?.tokens || []).length) status = { state: 'needs_setup', text: 'Add a token to watch' };
@@ -177,6 +185,7 @@ function parseTokens(list, max = TOKEN_WATCH_MAX, name = 'Token Watch') {
 async function update(accountId, agentId, body = {}) {
   const a = BY_ID[agentId];
   if (!a) throw new AgentsRefused('No such agent.', 404);
+  if (agentStates.isOff(agentId)) throw new AgentsRefused(`${a.name} is paused by RektBull for now; your settings are kept.`, 503);
   const current = (await rowsFor(accountId))[agentId];
   const enabled = body.enabled === undefined ? (current ? current.enabled : a.default_on) : body.enabled;
   if (typeof enabled !== 'boolean') throw new AgentsRefused('enabled must be true or false.');
@@ -422,7 +431,8 @@ async function runOne(row) {
 
 /** The worker's job: run the agents that are due, a few at a time. */
 async function tick({ limit = PER_TICK } = {}) {
-  const ids = Object.keys(RUNNERS);
+  const ids = Object.keys(RUNNERS).filter(id => !agentStates.isOff(id));
+  if (!ids.length) return 0;
   const { rows } = await db.query(
     'SELECT * FROM agent_settings WHERE enabled AND agent = ANY($1::text[]) AND next_run_at <= now() ORDER BY next_run_at LIMIT $2',
     [ids, limit],

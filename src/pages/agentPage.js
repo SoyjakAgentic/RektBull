@@ -11,6 +11,7 @@
  */
 const seo = require('./seo');
 const { AGENTS, catalog } = require('../services/myAgents');
+const agentStates = require('../admin/agentStates');
 
 const esc = seo.esc;
 const slugOf = id => id.replace(/_/g, '-');
@@ -45,7 +46,7 @@ const PAGES = {
     faq: [
       ['How often does it check my wallet?', 'Every 12 or 24 hours, as you choose, for up to 3 wallets. Each new risk is alerted once, with the reasons and their sources.'],
       ['Can it stop a drainer?', 'It can\'t sign or move anything, so it can\'t stop a transaction. It tells you about risky approvals so you can revoke them from your own wallet, ideally before a drainer uses them. To check a transaction before you sign it, use the RektBull extension.'],
-      ['What does it cost?', 'It\'s part of Safety Pro: $9 for 30 days or $79 for a year, paid in crypto. Nothing renews automatically.'],
+      ['What does it cost?', 'It\'s part of Safety Pro: {{price:pro_30d}} for 30 days or {{price:pro_365d}} for a year, paid in crypto. Nothing renews automatically.'],
     ],
   },
   claim_assistant: {
@@ -58,7 +59,7 @@ const PAGES = {
       ['Whether a reward token is worth claiming', 'GoPlus token flags; DefiLlama prices'],
     ],
     faq: [
-      ['Is the airdrop checker free?', 'Yes. Checking is free, and claiming on the project\'s own site is free. If you claim through RektBull, 5% of what arrives (3% with Safety Pro) goes to RektBull in a separate transfer you sign with the claim.'],
+      ['Is the airdrop checker free?', 'Yes. Checking is free, and claiming on the project\'s own site is free. If you claim through RektBull, {{fee:airdrop_claim}} of what arrives ({{profee:airdrop_claim}} with Safety Pro) goes to RektBull in a separate transfer you sign with the claim.'],
       ['Will it claim for me?', 'No. It tells you what can be claimed and prepares the claim for your own wallet to sign. Nothing moves without your signature.'],
       ['Someone sent me a link to claim an airdrop. Is it real?', 'Treat it as a scam until proven otherwise: fake claim pages are the most common way wallets are drained. RektBull never sends claim links in DMs; check from rektbull.com or the project\'s own site, typed in yourself.'],
     ],
@@ -77,7 +78,7 @@ const PAGES = {
     faq: [
       ['Does a clean result mean a token is safe?', 'No. The checks look for known patterns (unsellable, taxed, owner powers, flags), not intent. A token can pass every check and still be dumped by its team.'],
       ['Which chains does it cover?', 'Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and Solana.'],
-      ['What does it cost?', 'It\'s part of Safety Pro ($9 for 30 days). A single check without it is 1 free point or $0.25 on the Safety page.'],
+      ['What does it cost?', 'It\'s part of Safety Pro ({{price:pro_30d}} for 30 days). A single check without it is {{points:token_quick_check}} free point or {{price:token_quick_check}} on the Safety page.'],
     ],
   },
   launch_safety: {
@@ -94,7 +95,7 @@ const PAGES = {
     faq: [
       ['What is a bundled launch?', 'A token launch where the team, or one person, buys a large share of the supply in the first minutes through many wallets made to look independent, then sells into later buyers. The wallets usually give themselves away by being funded from the same place shortly before the launch.'],
       ['Does a shared funder prove a rug pull?', 'No. It is evidence to weigh, not proof of intent: an exchange paying out withdrawals funds many wallets too, so a funder that has sent thousands of transactions is named as busy and not counted. And a launch with no bundle can still go to zero.'],
-      ['Which chains and what does it cost?', 'Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and Solana. The agent is part of Safety Pro; a single launch check is 2 free points or $0.50 on the Safety page.'],
+      ['Which chains and what does it cost?', 'Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and Solana. The agent is part of Safety Pro; a single launch check is {{points:launch_check}} free points or {{price:launch_check}} on the Safety page.'],
     ],
   },
   dao_votes: {
@@ -126,7 +127,7 @@ const PAGES = {
     faq: [
       ['Will it withdraw my money for me?', 'No. It alerts you, with "withdraw now" when it\'s critical, and the withdrawal is prepared for your own wallet to sign.'],
       ['Which lending venues does it watch?', 'Aave v3, Compound v3 and Spark, on Ethereum, Base and Arbitrum, for the wallets you watch.'],
-      ['What does it cost?', 'It\'s part of Safety Pro ($9 for 30 days).'],
+      ['What does it cost?', 'It\'s part of Safety Pro ({{price:pro_30d}} for 30 days).'],
     ],
   },
   group_guard: {
@@ -176,7 +177,7 @@ const PAGES = {
     faq: [
       ['Is this a full smart contract audit?', 'No. It\'s a first pass: Slither\'s findings and the checklist patterns are flags for a person to confirm by reading the code at their lines, and some are false positives. It doesn\'t find business-logic flaws, price manipulation or economic attacks, and it never calls a contract safe.'],
       ['Which contracts can it review?', 'Contracts with verified source on Ethereum, Base, Arbitrum, Optimism, Polygon or BNB Chain. A proxy\'s verified implementation is reviewed with it. Unverified code can\'t be reviewed, and that alone is a reason for caution.'],
-      ['What does it cost, and what if it fails?', '$99 an audit, with a downloadable PDF report, from credits or by x402. If the analyzer can\'t run, the audit is refused and nothing is charged. The plain-English summary is written by AI from the findings only; it never adds or confirms one.'],
+      ['What does it cost, and what if it fails?', '{{price:contract_audit}} an audit, with a downloadable PDF report, from credits or by x402. If the analyzer can\'t run, the audit is refused and nothing is charged. The plain-English summary is written by AI from the findings only; it never adds or confirms one.'],
     ],
   },
   trading_agent: {
@@ -228,7 +229,7 @@ COMMUNITY.channel_poster = () => {
 };
 
 COMMUNITY.contract_audit = () => ({
-  id: 'contract_audit', name: 'Contract Audit', plan: 'paid', price: '$99 an audit, with a downloadable PDF report (credits or x402)', offer_usd: '99',
+  id: 'contract_audit', name: 'Contract Audit', plan: 'paid', price: '{{price:contract_audit}} an audit, with a downloadable PDF report (credits or x402)', offer_usd: '{{usd:contract_audit}}',
   does: 'A first-pass security review of a verified contract, and a proxy\'s implementation with it: Slither\'s ~100 detectors on the contract compiled as it was verified, checks from an audit checklist, the compiler\'s known bugs and who holds power over it, explained in plain English.',
   alerts: 'The review, on the page, when it\'s done (usually under a few minutes).',
   schedules: [{ label: 'When you ask' }],
@@ -237,13 +238,16 @@ COMMUNITY.contract_audit = () => ({
   where: 'On the Safety page; Slither runs in RektBull\'s own analyzer service',
 });
 
-const list = () => [
+const everyPage = () => [
   ...AGENTS.filter(a => PAGES[a.id]).map(a => ({ id: a.id, slug: slugOf(a.id), name: a.name })),
   ...Object.keys(COMMUNITY).filter(id => PAGES[id]).map(id => ({ id, slug: slugOf(id), name: COMMUNITY[id]().name })),
 ];
+/** The agents listed in menus, the sitemap and llms.txt: not the ones an admin hid or switched off. */
+const list = () => everyPage().filter(a => agentStates.listed(a.id));
 /** An agent's facts: from the agents' catalog, or the community agents above. */
-const info = id => (COMMUNITY[id] ? COMMUNITY[id]() : catalog().find(x => x.id === id));
-const bySlug = slug => list().find(a => a.slug === slug) || null;
+const info = id => (COMMUNITY[id] ? COMMUNITY[id]() : catalog({ all: true }).find(x => x.id === id));
+/** Any agent's page, listed or not (a hidden agent still works by its link). */
+const bySlug = slug => everyPage().find(a => a.slug === slug) || null;
 
 function page(slug, base) {
   const a = bySlug(slug);
@@ -257,12 +261,14 @@ function page(slug, base) {
     {
       '@type': 'WebPage', '@id': `${url}#page`, name: p.title.replace(/ \| RektBull$/, ''), description: p.description, url,
       isPartOf: { '@type': 'WebSite', name: 'RektBull', url: `${base}/` },
-      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: c.action ? 'SecurityApplication' : 'FinanceApplication', operatingSystem: c.community ? 'Telegram' : 'Web', description: c.does, offers: { '@type': 'Offer', price: c.offer_usd || (c.plan === 'pro' ? '9' : '0'), priceCurrency: 'USD', description: c.price } },
+      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: c.action ? 'SecurityApplication' : 'FinanceApplication', operatingSystem: c.community ? 'Telegram' : 'Web', description: c.does, offers: { '@type': 'Offer', price: c.offer_usd || (c.plan === 'pro' ? '{{usd:pro_30d}}' : '0'), priceCurrency: 'USD', description: c.price } },
     },
     seo.breadcrumbs(base, [['Home', `${base}/`], ['AI agents', `${base}/agents`], [c.name, url]]),
   ];
+  const paused = agentStates.isOff(a.id);
   const body = `<section class="pagehead">
     <div class="wrap wide">
+      ${paused ? '<p class="notice" role="status"><strong>Paused for now.</strong> RektBull has paused this agent; it isn\'t running or taking new requests. Settings are kept.</p>' : ''}
       <span class="eyebrow">AI agent · ${esc(c.price)}</span>
       <h1>${esc(c.name)}: <em>${esc(p.lead)}</em></h1>
       <p>${esc(c.does)}</p>
@@ -312,7 +318,7 @@ function page(slug, base) {
       </div>
     </section>
   </main>`;
-  return { head: { title: p.title, description: p.description, url, base, graph }, body };
+  return { head: { title: p.title, description: p.description, url, base, graph, noindex: !agentStates.listed(a.id) }, body };
 }
 
 module.exports = { page, list, bySlug, info, PAGES, slugOf };

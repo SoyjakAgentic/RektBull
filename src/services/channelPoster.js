@@ -134,6 +134,7 @@ async function offer(ch) {
 
 /** The worker's job: expire old drafts, draft what's new, send drafts for approval. */
 async function tick() {
+  if (require('../admin/agentStates').isOff('channel_poster')) return { paused: true };
   await db.query(`UPDATE poster_drafts SET status = 'expired' WHERE status = 'pending' AND created_at < now() - make_interval(days => $1)`, [EXPIRE_DAYS]);
   const { rows } = await db.query(`SELECT * FROM poster_channels WHERE enabled AND removed_at IS NULL`);
   let drafted = 0;
@@ -171,6 +172,7 @@ async function command(msg) {
   const [cmdRaw, nRaw, ...rest] = (msg.text || '').trim().split(/\s+/);
   const cmd = cmdRaw.toLowerCase().replace(/@\w+$/, '');
   const reply = text => tg.send(msg.chat.id, text).catch(err => logger.warn('channel poster: reply failed', { error: err.message }));
+  if (require('../admin/agentStates').isOff('channel_poster')) return reply('Channel Poster is paused by RektBull for now. Your channels and settings are kept.');
   const list = await channelsOf(userId);
   if (cmd === '/poster') return reply(describe(list));
   const ch = list[Number(nRaw) - 1];
@@ -228,6 +230,7 @@ async function callback(q) {
   if (!m) return { ok: true };
   const { rows: [d] } = await db.query('SELECT d.*, c.title, c.removed_at FROM poster_drafts d JOIN poster_channels c ON c.chat_id = d.chat_id WHERE d.id = $1', [Number(m[2])]);
   const answer = text => tg.answer(q.id, text).catch(() => {});
+  if (require('../admin/agentStates').isOff('channel_poster')) return answer('Channel Poster is paused for now.');
   if (!d) return answer('That draft is gone.');
   if (d.status !== 'pending') return answer(`Already ${d.status}.`);
   if (d.removed_at) return answer('RektBull is no longer in that channel.');

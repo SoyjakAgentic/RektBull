@@ -22,6 +22,10 @@ async function main() {
   if (role === 'web' || role === 'all') {
     createApp().listen(env.port, () => logger.info(`RektBull API listening on ${env.port}`));
   }
+  if (role !== 'web' && env.databaseUrl) {
+    // Prices, agents' states and switches set in the admin panel: read again every minute (the web role does it per request).
+    setInterval(() => require('./admin/settings').fresh(), 60 * 1000);
+  }
   if ((role === 'worker' || role === 'all') && env.databaseUrl) {
     watcher.start();
     setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);

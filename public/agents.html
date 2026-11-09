@@ -24,8 +24,8 @@
       <p class="small muted">Switch an agent on and it runs on its schedule, checks what its desk checks, and sends what it finds to your alert channels. Each one also runs on its desk whenever you open it.</p>
       <p id="ma-msg" class="msg"></p>
       <div class="agents" id="ma-list"></div>
-      <p><strong>On request:</strong> <a href="/agents/contract-audit">Contract Audit</a>, a first-pass security review of any verified contract: Slither's detectors, audit-checklist patterns, known compiler bugs and who holds power over it, in plain English, with a PDF report ($99). <a href="/safety#audit-card">Audit a contract</a></p>
-      <p class="small">About each agent: <a href="/agents/wallet-checkup">Wallet Checkup</a> · <a href="/agents/wallet-guardian">Wallet Guardian</a> · <a href="/agents/claim-assistant">Claim Assistant</a> · <a href="/agents/token-watch">Token Watch</a> · <a href="/agents/launch-safety">Launch Safety</a> · <a href="/agents/dao-votes">DAO Votes</a> · <a href="/agents/yield-watch">Yield Watch</a> · <a href="/agents/trading-agent">Trading Agent</a> · <a href="/agents/contract-audit">Contract Audit</a> · <a href="/agents/group-guard">Group Guard</a> and <a href="/agents/channel-poster">Channel Poster</a> (for Telegram groups and channels)</p>
+      <!--agent:contract_audit--><p><strong>On request:</strong> <a href="/agents/contract-audit">Contract Audit</a>, a first-pass security review of any verified contract: Slither's detectors, audit-checklist patterns, known compiler bugs and who holds power over it, in plain English, with a PDF report ({{price:contract_audit}}). <a href="/safety#audit-card">Audit a contract</a></p><!--/agent:contract_audit-->
+      <p class="small">About each agent: <!--#agent-links--></p>
       <p class="source">Each agent runs the same check as its desk, with the same sources. An agent that couldn't check something says so; nothing found means nothing in those sources, not nothing anywhere.</p>
     </section>
 
@@ -33,8 +33,8 @@
       <h2>For crypto communities</h2>
       <p class="small muted">Agents a project adds to its own Telegram group or channel. Projects add RektBull's bot; RektBull never asks for anyone's account login.</p>
       <div class="cards three">
-        <a class="tile" href="/agents/group-guard"><h3>Group Guard</h3><p>Checks every link and contract address posted in your Telegram group. Removes known phishing links, warns about fake sites, fake contracts and risky tokens with the source, and flags members copying an admin's name.</p><span class="price">Free · add it to your group</span></a>
-        <a class="tile" href="/agents/channel-poster"><h3>Channel Poster</h3><p>Drafts posts for your Telegram channel from RektBull's data: your DAO's votes, reward campaigns on your protocol, hacks on your chains. You approve each one before it goes out.</p><span class="price">Free · add it to your channel</span></a>
+        <!--agent:group_guard--><a class="tile" href="/agents/group-guard"><h3>Group Guard</h3><p>Checks every link and contract address posted in your Telegram group. Removes known phishing links, warns about fake sites, fake contracts and risky tokens with the source, and flags members copying an admin's name.</p><span class="price">Free · add it to your group</span></a><!--/agent:group_guard-->
+        <!--agent:channel_poster--><a class="tile" href="/agents/channel-poster"><h3>Channel Poster</h3><p>Drafts posts for your Telegram channel from RektBull's data: your DAO's votes, reward campaigns on your protocol, hacks on your chains. You approve each one before it goes out.</p><span class="price">Free · add it to your channel</span></a><!--/agent:channel_poster-->
       </div>
     </section>
 
@@ -63,7 +63,7 @@
       <h2>For your agent</h2>
       <div class="cards three">
         <a class="tile" href="/developers#mcp"><h3>Give it RektBull's checks</h3><p>Add the MCP server: wallet checkups, approvals, token flags, hacks, stablecoin pegs and these x402 listings, free within daily allowances, every fact with its source.</p><span class="price">MCP server · free</span></a>
-        <a class="tile" href="/developers#x402"><h3>Let it pay per call</h3><p>The token check, full report, approval cleanup and pre-sign check take x402: USDC on Base, no account, charged only when the run succeeds.</p><span class="price">From $0.10 a call</span></a>
+        <a class="tile" href="/developers#x402"><h3>Let it pay per call</h3><p>The token check, full report, approval cleanup and pre-sign check take x402: USDC on Base, no account, charged only when the run succeeds.</p><span class="price">From {{price:presign_check}} a call</span></a>
         <a class="tile" href="/trade"><h3>Let it trade within limits</h3><p>Automatic trading on RektBull uses a session key you sign: limited, expiring, revocable, and enforced onchain. The agent never holds your keys.</p><span class="price">Trade desk</span></a>
       </div>
       <h3>Before your agent pays anyone</h3>

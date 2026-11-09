@@ -87,7 +87,7 @@
       $('y-result').hidden = false;
       say('y-msg', '');
     } catch (err) {
-      say('y-msg', err.status === 402 ? 'Yield proposals are part of Safety Pro ($9 for 30 days, on the Safety page). The free check above shows how much more you could earn.' : err.message, 'bad');
+      say('y-msg', err.status === 402 ? 'Yield proposals are part of Safety Pro (on the Safety page). The free check above shows how much more you could earn.' : err.message, 'bad');
     }
   });
 

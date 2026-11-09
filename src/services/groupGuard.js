@@ -313,6 +313,12 @@ async function joined(chat, by) {
 
 /** One update from Telegram for a group: the bot added or removed, a member joining, or a message. */
 async function handle(update) {
+  // Switched off in the admin panel: nothing is checked or removed; a command gets one plain answer.
+  if (require('../admin/agentStates').isOff('group_guard')) {
+    const m = update.message;
+    if (m && /^\/guard/i.test(m.text || '')) await say(m.chat.id, m.message_id, 'Group Guard is paused by RektBull for now. Your settings are kept.');
+    return { ok: true, group: true, paused: true };
+  }
   const change = update.my_chat_member;
   if (change && ['group', 'supergroup'].includes(change.chat.type)) {
     const now = change.new_chat_member?.status;

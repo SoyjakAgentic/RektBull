@@ -29,4 +29,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { optionalAuth, requireAuth, requireAdmin };
+/** Changes in the admin panel need a sign-in from the last 15 minutes: a fresh wallet signature, not an old session. */
+const FRESH_SECONDS = 15 * 60;
+function requireFreshAdmin(req, res, next) {
+  if (!req.account || req.account.scope || !env.adminWallets.includes(req.account.wallet)) return res.status(403).json({ error: 'forbidden' });
+  if (!req.account.iat || Date.now() / 1000 - req.account.iat > FRESH_SECONDS) {
+    return res.status(401).json({ error: 'sign_in_again', message: 'Sign in again with your wallet to make changes (an admin change needs a signature from the last 15 minutes).' });
+  }
+  next();
+}
+
+module.exports = { optionalAuth, requireAuth, requireAdmin, requireFreshAdmin, FRESH_SECONDS };

@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DATABASE_URL: '', PUBLIC_URL: 'https://rektbull.test' });
 require('../src/providers/llama').protocols = async () => [];
 const agentPage = require('../src/pages/agentPage');
+const { fill } = require('../src/payments/catalog');
 
 let server, base;
 test.before(() => { server = require('../src/app').createApp().listen(0); base = `http://127.0.0.1:${server.address().port}`; });
@@ -36,7 +37,7 @@ test('a page for each agent, written for a real search', async () => {
     assert.ok(body.includes(`<h1>${c.name}:`), `${slug}: named in the heading`);
     const text = plain(body);
     assert.ok(text.includes(c.does), `${slug}: what it does, from the catalog`);
-    assert.ok(text.includes(c.price), `${slug}: its price, from the catalog`);
+    assert.ok(text.includes(fill(c.price)), `${slug}: its price, from the catalog (today's price filled in)`);
     assert.ok(text.includes('It never asks for your seed phrase or private key.'));
     assert.ok(!/\b(is|are) safe\b(?!\?)/i.test(text.replace(/never calls anything safe|that something is safe|a token is safe\?|mean a token is safe/gi, '')), `${slug}: never calls anything safe`);
     assert.ok(!/\bguarantee|earn \d|(?<!take-)profit(able)?\b/i.test(text), `${slug}: no promise of returns`);
@@ -49,7 +50,8 @@ test('a page for each agent, written for a real search', async () => {
     assert.deepEqual(g.find(x => x['@type'] === 'BreadcrumbList').itemListElement.map(i => i.name), ['Home', 'AI agents', c.name]);
     const app = g.find(x => x['@type'] === 'WebPage').about;
     assert.equal(app['@type'], 'SoftwareApplication');
-    assert.equal(app.offers.price, c.offer_usd || (c.plan === 'pro' ? '9' : '0'));
+    assert.equal(app.offers.price, fill(c.offer_usd || (c.plan === 'pro' ? '{{usd:pro_30d}}' : '0')));
+    assert.ok(!body.includes('{{'), `${slug}: no placeholder left`);
   }
   assert.equal((await get('/agents/no-such-agent')).status, 404);
   assert.match((await get('/agents/trading-agent')).body, /No one can promise that, and RektBull doesn&#39;t\./, 'the trading agent is sold on its limits, not on returns');

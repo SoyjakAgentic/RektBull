@@ -43,6 +43,7 @@ async function alertExit(p, net, intent, reason) {
 
 async function tick() {
   if (!env.tradingEnabled) return;
+  if (await require('../admin/stops').isStopped('auto_trading')) return; // the emergency stop (admin panel)
   for (const chainId of networks.chainIds()) {
     const net = networks.network(chainId);
     const { rows } = await db.query(

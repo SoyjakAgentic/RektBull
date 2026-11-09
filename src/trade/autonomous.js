@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const core = require('@metamask/delegation-core');
 const abis = require('@metamask/delegation-abis');
+const stops = require('../admin/stops');
 const db = require('../config/db');
 const env = require('../config/env');
 const logger = require('../config/logger');
@@ -127,6 +128,7 @@ async function activePermission(accountId, chainId) {
 /** Queues an autonomous trade for the signed-in wallet. */
 async function queue(account, input, { source = 'user', reason = null } = {}) {
   if (!env.tradingEnabled) throw new IntentRefused('Trading is switched off (TRADING_ENABLED).');
+  if (await stops.isStopped('auto_trading')) throw new IntentRefused('Automatic trading is paused by RektBull for now. You can still trade from your own wallet on the Trade desk.');
   const net = networks.network(Number(input.chain_id));
   const perm = await activePermission(account.id, net.chainId);
   if (!perm) throw new IntentRefused('There is no active automatic-trading permission for this wallet on this network. Grant one first.');
@@ -317,6 +319,12 @@ async function tick() {
     try {
       const { rows: sent } = await db.query(`SELECT * FROM trade_intents WHERE status = 'sent' ORDER BY sent_at LIMIT 50`);
       for (const i of sent) await confirm(i).catch(err => logger.error('autonomous confirm failed', { intent: i.id, error: err.message }));
+      // The emergency stop (admin panel): what's waiting is cancelled, not kept for later at a stale price.
+      if (await stops.isStopped('auto_trading')) {
+        const { rows: waiting } = await db.query(`SELECT * FROM trade_intents WHERE status = 'queued'`);
+        for (const i of waiting) await fail(i, 'Cancelled: automatic trading was paused by RektBull. Nothing was sent.').catch(err => logger.error('could not cancel a queued trade', { intent: i.id, error: err.message }));
+        return;
+      }
       const { rows: queued } = await db.query(`SELECT * FROM trade_intents WHERE status = 'queued' ORDER BY created_at LIMIT 10`);
       for (const i of queued) {
         try { await execute(i); } catch (err) {

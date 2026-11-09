@@ -15,7 +15,7 @@
 const crypto = require('crypto');
 const db = require('../config/db');
 const logger = require('../config/logger');
-const { product, rails, usd, FREE_POINTS } = require('./catalog');
+const { product, rails, usd, short, FREE_POINTS } = require('./catalog');
 const points = require('./points');
 const { ipSubject } = require('../privacy/ipKey');
 const credits = require('./credits');
@@ -51,7 +51,7 @@ function paymentRequired(p, req, extra = {}) {
       x402: accepts.length ? 'Retry with an X-PAYMENT header (USDC on Base).' : null,
       credits: req.account ? 'Top up with USDT or USDC: POST /v1/invoices.' : 'Sign in with your wallet (POST /v1/auth/nonce), then top up with USDT or USDC.',
       ...(p.points ? { points: req.account ? `This month's free points are used up (it costs ${p.points}).` : `Sign in with your wallet for ${FREE_POINTS.per_month} free points a month (this costs ${p.points}).` } : {}),
-      safety_pro: 'Safety Pro covers it: POST /v1/passes/pro_30d ($9 for 30 days).',
+      safety_pro: `Safety Pro covers it: POST /v1/passes/pro_30d (${short(product('pro_30d').price_cents)} for 30 days).`,
     },
     ...extra,
   };
@@ -110,11 +110,21 @@ async function acquire(p, req, runId) {
  * of it). The pre-sign check keeps only the method and chain, not what was
  * being signed or where.
  */
+/** Paid runs that are an AI agent of their own: refused, before any charge, while an admin has it switched off. */
+const AGENT_OF = { contract_audit: 'contract_audit' };
+
 function paidRoute(productId, { validate, run, record = input => input }) {
-  const p = product(productId);
+  product(productId); // an unknown product fails when the route is made, not on its first request
   return async (req, res) => {
+    const p = product(productId); // read on each request: an admin may have changed the price
     const input = validate(req);
     if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
+    if (AGENT_OF[productId]) {
+      try { await require('../admin/agentStates').refuseIfOff(AGENT_OF[productId]); } catch (err) {
+        if (err.code === 'agent_paused') return res.status(503).json({ error: 'agent_paused', message: err.message });
+        throw err;
+      }
+    }
 
     const runId = crypto.randomUUID();
     let charge;

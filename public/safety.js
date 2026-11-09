@@ -27,9 +27,11 @@
       $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
       $('report-price').textContent = window.RB.priceLabel(catalog.token_report);
       $('launch-price').textContent = window.RB.priceLabel(catalog.launch_check);
+      if ($('audit-card')) {
       $('audit-price').textContent = window.RB.priceLabel(catalog.contract_audit);
       $('audit-chain').replaceChildren(...chains.filter(c => c !== 'solana').map(c => el('option', { value: c }, CHAIN_NAMES[c] || c)));
       if (/^0x[0-9a-fA-F]{40}$/.test(link.get('audit') || '')) { $('audit-address').value = link.get('audit'); if (chains.includes(link.get('chain'))) $('audit-chain').value = link.get('chain'); }
+      }
       renderPasses();
     } catch (err) { say('check-msg', 'Could not load the page\'s settings: ' + err.message, 'bad'); }
   })();
@@ -133,7 +135,7 @@
   }
 
   /* ── contract audit ── */
-  $('audit').addEventListener('click', async () => {
+  $('audit')?.addEventListener('click', async () => {
     const body = { chain: $('audit-chain').value, address: $('audit-address').value.trim() };
     if (!body.address) return say('audit-msg', 'Paste the contract\'s address first.', 'bad');
     $('audit').disabled = true;

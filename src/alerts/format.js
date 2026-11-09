@@ -24,6 +24,7 @@ const AGENT_LINKS = {
   token_watch: { action: 'See the token check', path: a => `/safety?chain=${encodeURIComponent(a.detail?.token?.chain || '')}&token=${encodeURIComponent(a.detail?.token?.token || '')}#check-card` },
   launch_safety: { action: 'See the launch check', path: a => `/safety?chain=${encodeURIComponent(a.detail?.token?.chain || '')}&token=${encodeURIComponent(a.detail?.token?.token || '')}#check-card` },
   trade_exit: { action: 'See the trade', path: () => '/trade' },
+  agent_paused: { action: 'See your agents', path: () => '/agents#yours' },
 };
 
 /** { subject, text, url } for an alert. */
