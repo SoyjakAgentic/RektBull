@@ -441,8 +441,16 @@ checks the record and the listing. About 30 minutes, free.*
 
 - [ ] A lawyer reviews `/privacy` and terms of use for where we serve
       (EU/UK GDPR at least), and the fee wording for paid checks and claims.
-- [ ] Before yield proposals or vote recommendations go live: whether they
-      count as investment advice where we serve.
+- [x] **Stated on the site (decided 8 November 2026):** nothing on RektBull
+      is financial, investment, legal or tax advice or a recommendation: in
+      every footer, in full on `/about#not-advice` (every desk named), as a
+      notice on Find money, Governance, Trade and Opportunities, in the
+      results of yield proposals and proposal summaries, and on every page of
+      the contract audit's PDF.
+- [ ] The lawyer still confirms that the yield proposals and governance tools
+      don't count as regulated investment advice where we serve: a
+      disclaimer states our position, but regulators look at what a feature
+      does, so the review stays on this list.
 - [ ] Terms of use page (not written yet): no guarantees on checks, the
       user signs everything, refunds as the payment gate does them.
 - [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md)):
@@ -462,9 +470,11 @@ deploy the trade service, then `YIELD_AUTO_ENABLED=true`.
 
 **Automatic trading (trade desk, stage 2):**
 
-1. Deploy the Trade Router on Base from the owner's Safe, with the parameters
-   in [AUDIT_BRIEF.md](AUDIT_BRIEF.md) section 6, and verify its source on
-   Basescan (Claude guides; done together with the Yield Router once its audit passes).
+1. Deploy the Trade Router and Safe Module on Base from the owner's hardware
+   wallet, fees to the owners' Safe, and verify the source on Basescan:
+   [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md). The script checks every parameter
+   onchain first and prints the `AUTO_TRADING_NETWORKS` entry for step 3.
+   (The Yield Router follows once its own audit passes.)
 2. Create the KMS key and the `rektbull-trade` service account
    ([DEPLOY.md](DEPLOY.md)); sign one Base Sepolia transaction with it.
 3. Set `SESSION_KEY_ADDRESS` (the key's address) and `AUTO_TRADING_NETWORKS`

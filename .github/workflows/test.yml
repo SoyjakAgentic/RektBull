@@ -32,6 +32,8 @@ jobs:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the Base deployment test compares the router with the audited commit
       - uses: actions/setup-node@v4
         with:
           node-version: 22

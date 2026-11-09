@@ -110,7 +110,7 @@ async function scan(wallet) {
     proposals, not_proposed: notProposed, not_read: pos.not_read, rules: rules.RULES,
     fee: { bps: feeBps(), rate: `${feeBps() / 100}%` },
     sources: ['Balances read onchain (Multicall3)', 'Rates from each venue\'s own contracts', 'Prices and gas from each chain\'s Aave oracle and RPC'],
-    note: 'Proposals are the moves that pass RektBull\'s rules at today\'s rates and gas, not advice: rates change, and every venue carries smart-contract risk. You sign each move yourself.',
+    note: 'Proposals are the moves that pass RektBull\'s rules at today\'s rates and gas. They are not financial advice or a recommendation: rates change, and every venue carries smart-contract risk. You decide, and you sign each move yourself.',
   };
 }
 

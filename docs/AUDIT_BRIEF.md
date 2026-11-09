@@ -172,10 +172,12 @@ npm test        # 53 tests on a fork of Base Sepolia
 Live on Base Sepolia (test tokens, feeds and exchange): see
 `contracts/deployments/base-sepolia.json` and the contracts README.
 
-## 6. Planned mainnet deployment (Base), for review
+## 6. Mainnet deployment (Base)
 
-Every address below was checked onchain on Base mainnet on 2026-11-02.
-Re-check every one, and each feed's heartbeat, at deployment.
+Every value is in `contracts/config/base.json`, checked onchain on 2026-11-08.
+The deployment script checks every one again, including each feed's heartbeat
+measured from its round history, and refuses to send anything if one is off
+([BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md)).
 
 | Parameter | Value |
 |---|---|
@@ -184,15 +186,20 @@ Re-check every one, and each feed's heartbeat, at deployment.
 | `sequencerUptimeFeed` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` (L2 Sequencer Uptime Status Feed) |
 | `spendPermissionManager` | `0xf85210B21cC50302F477BA56686d2019dC9b67Ad` (Coinbase) |
 | venues | `0x0000000000001fF3684f28c67538d4D072C22734` (0x AllowanceHolder) |
-| USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | feed `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` (USDC / USD) |
-| WETH `0x4200000000000000000000000000000000000006` | feed `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` (ETH / USD) |
-| cbBTC | feed `0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D` (cbBTC / USD); token address to confirm |
-| `maxAges` | Each feed's published heartbeat plus a margin. USDC/USD had last updated 16 hours earlier when checked, which fits a 24-hour heartbeat; ETH/USD was minutes old. **Confirm on data.chain.link.** |
-| `feeWallet` | A Safe controlled by RektBull's owners; never a hot key |
+| USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | feed `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` (USDC / USD), heartbeat 24 h, `maxAge` 90000 (25 h) |
+| WETH `0x4200000000000000000000000000000000000006` | feed `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` (ETH / USD), heartbeat 20 min, `maxAge` 1800 (30 min) |
+| cbBTC `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` (Coinbase Wrapped BTC, 8 decimals) | feed `0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D` (cbBTC / USD), heartbeat 20 min, `maxAge` 1800 (30 min) |
+| `feeWallet` | A Safe controlled by RektBull's owners, given at deployment; the script refuses anything that isn't a Safe |
 
-The deployment is to be made from a hardware wallet with an audited script.
-After deploying, verify the source on Basescan and compare the bytecode with
-the audited commit.
+Heartbeats were measured from each feed's last 12 rounds (the longest gaps
+were 24 h, 20 min and 20 min).
+
+The Safe Module is deployed in the same run, pointing at the router. Both are
+deployed from a hardware wallet through Frame (no key on the computer); the
+deploying account has no power over either contract afterwards. After
+deploying, `npm run verify:base` compares the onchain code with the compiled
+audited source and reads back every setting; then the source is verified on
+Basescan.
 
 ## 7. Practicalities
 

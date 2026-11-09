@@ -6,6 +6,9 @@
     "build": "hardhat compile",
     "test": "hardhat test",
     "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
+    "deploy:base:rehearse": "hardhat run scripts/deployBase.js --network baseMainnetFork",
+    "deploy:base": "hardhat run scripts/deployBase.js --network base",
+    "verify:base": "hardhat run scripts/verifyBase.js --network baseRead",
     "export:signin-check": "hardhat compile && node scripts/exportSignInCheck.js"
   },
   "devDependencies": {
