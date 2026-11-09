@@ -176,7 +176,7 @@ const PAGES = {
     faq: [
       ['Is this a full smart contract audit?', 'No. It\'s a first pass: Slither\'s findings and the checklist patterns are flags for a person to confirm by reading the code at their lines, and some are false positives. It doesn\'t find business-logic flaws, price manipulation or economic attacks, and it never calls a contract safe.'],
       ['Which contracts can it review?', 'Contracts with verified source on Ethereum, Base, Arbitrum, Optimism, Polygon or BNB Chain. A proxy\'s verified implementation is reviewed with it. Unverified code can\'t be reviewed, and that alone is a reason for caution.'],
-      ['What does it cost, and what if it fails?', '$100 an audit, with a downloadable PDF report, from credits or by x402. If the analyzer can\'t run, the audit is refused and nothing is charged. The plain-English summary is written by AI from the findings only; it never adds or confirms one.'],
+      ['What does it cost, and what if it fails?', '$99 an audit, with a downloadable PDF report, from credits or by x402. If the analyzer can\'t run, the audit is refused and nothing is charged. The plain-English summary is written by AI from the findings only; it never adds or confirms one.'],
     ],
   },
   trading_agent: {
@@ -228,7 +228,7 @@ COMMUNITY.channel_poster = () => {
 };
 
 COMMUNITY.contract_audit = () => ({
-  id: 'contract_audit', name: 'Contract Audit', plan: 'paid', price: '$100 an audit, with a downloadable PDF report (credits or x402)', offer_usd: '100',
+  id: 'contract_audit', name: 'Contract Audit', plan: 'paid', price: '$99 an audit, with a downloadable PDF report (credits or x402)', offer_usd: '99',
   does: 'A first-pass security review of a verified contract, and a proxy\'s implementation with it: Slither\'s ~100 detectors on the contract compiled as it was verified, checks from an audit checklist, the compiler\'s known bugs and who holds power over it, explained in plain English.',
   alerts: 'The review, on the page, when it\'s done (usually under a few minutes).',
   schedules: [{ label: 'When you ask' }],

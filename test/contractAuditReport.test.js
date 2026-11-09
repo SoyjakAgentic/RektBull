@@ -1,6 +1,6 @@
 /**
  * The contract audit's PDF report, against a real Postgres: an audit paid
- * from credits ($100) is kept by its run id, and its PDF downloads from the
+ * from credits ($99) is kept by its run id, and its PDF downloads from the
  * link in the result; an audit refused (the analyzer down) is not charged and
  * has no report; an unknown or malformed id has none. With the explorer,
  * Claude and the analyzer as stand-ins. Runs only when TEST_DATABASE_URL is set.
@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 
 const DB = process.env.TEST_DATABASE_URL;
 
-test('contract audit: $100 from credits, the PDF report by its run id', { skip: !DB && 'set TEST_DATABASE_URL to run' }, async t => {
+test('contract audit: $99 from credits, the PDF report by its run id', { skip: !DB && 'set TEST_DATABASE_URL to run' }, async t => {
   Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test-secret', PUBLIC_URL: 'https://rektbull.test', NEW_WALLET_CHECK_CHAINS: '', ANALYZER_URL: 'http://analyzer.test' });
   for (const k of Object.keys(require.cache)) if (k.includes('/src/')) delete require.cache[k];
   const db = require('../src/config/db');
@@ -45,14 +45,14 @@ test('contract audit: $100 from credits, the PDF report by its run id', { skip: 
   const { rows: [failed] } = await db.query(`SELECT id FROM runs WHERE product = 'contract_audit' AND status = 'failed'`);
   assert.equal((await fetch(`${base}/v1/contracts/audit/${failed.id}/report.pdf`)).status, 404);
 
-  /* ── a paid audit: $100 from credits, its report by run id ── */
+  /* ── a paid audit: $99 from credits, its report by run id ── */
   analyzerUp = true;
   r = await post({ chain: 'base', address: CONTRACT });
   assert.equal(r.status, 200);
   const out = await r.json();
   assert.equal(out.run.paid_with, 'credits');
-  assert.equal(out.run.price_cents, 10000);
-  assert.equal(await require('../src/payments/credits').balance(acct.id), 5000);
+  assert.equal(out.run.price_cents, 9900);
+  assert.equal(await require('../src/payments/credits').balance(acct.id), 5100);
   assert.equal(out.report_pdf, `/v1/contracts/audit/${out.run.id}/report.pdf`);
 
   const pdf = await fetch(base + out.report_pdf);

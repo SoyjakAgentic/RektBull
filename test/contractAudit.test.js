@@ -146,7 +146,7 @@ test('a contract that won\'t compile is still reviewed (patterns and compiler), 
   analyzerMode = 'ok'; claude.available = () => true;
 });
 
-test('the paid route: validated before any charge; $100', async () => {
+test('the paid route: validated before any charge; $99', async () => {
   const server = require('../src/app').createApp().listen(0);
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -154,7 +154,7 @@ test('the paid route: validated before any charge; $100', async () => {
     assert.equal((await post({ chain: 'base', address: '0x1' })).status, 400);
     const r = await post({ chain: 'base', address: PLAIN });
     assert.equal(r.status, 402);
-    assert.match((await r.json()).message, /Contract audit costs \$100\.00/);
+    assert.match((await r.json()).message, /Contract audit costs \$99\.00/);
   } finally { server.close(); }
 });
 

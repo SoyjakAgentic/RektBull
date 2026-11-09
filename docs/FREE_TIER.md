@@ -77,7 +77,7 @@ Slither once per verified unit in `rektbull-analyzer` (Cloud Run, 2 CPU and
 cents at list prices; the first solc download for a version is about 10 MB),
 reads the Solidity team's bug list (cached a day), and writes the summary
 with Claude (about 3,000 output tokens at most, under $0.10 at Opus 5.5). It
-sells for $100, with a downloadable PDF report (pdfkit, built from the stored
+sells for $99, with a downloadable PDF report (pdfkit, built from the stored
 result), by credits or x402, and the result is cached a day per contract. Nothing is charged when the analyzer can't run.
 
 ## The risk monitor's cost
