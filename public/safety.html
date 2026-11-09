@@ -37,6 +37,20 @@
       <div id="result" hidden></div>
     </section>
 
+    <section class="card" id="audit-card">
+      <h2>Audit a contract <span class="tag">First pass</span></h2>
+      <p class="muted">A first-pass security review of a verified contract, and a proxy's implementation with it: Slither's detectors on the contract compiled as it was verified, checks from an audit checklist, the compiler's known bugs, and who holds power over it, explained in plain English, with a downloadable PDF report. These are flags for a person to confirm, not a full audit, and nothing in it is financial advice.</p>
+      <div class="grid">
+        <label>Chain<select id="audit-chain"></select></label>
+        <label class="wide">Contract address
+          <input id="audit-address" placeholder="0x…" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button id="audit" class="primary">Run the audit<span class="price" id="audit-price"></span></button></div>
+      <p id="audit-msg" class="msg"></p>
+      <div id="audit-result" hidden></div>
+    </section>
+
     <section class="card" id="approvals-card">
       <h2>Clean up your approvals</h2>
       <p class="muted">Every app you've traded with may still be allowed to take your tokens. Most approval scams use exactly that. See what's open on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain, which approvals are risky and why, and revoke them from your wallet.</p>

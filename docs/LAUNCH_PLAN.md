@@ -259,6 +259,7 @@ printf %s "$VALUE" | gcloud secrets create rektbull-jwt-secret --data-file=-
 | `PUBLIC_URL`, `SIWE_URI` | ✔ | ✔ | `https://rektbull.com` |
 | `SIWE_DOMAIN` | ✔ | | `rektbull.com` |
 | `OPERATOR_NAME`, `PRIVACY_CONTACT` | ✔ | | The person or company responsible; an address someone reads |
+| `ANALYZER_URL` | ✔ | | The contract analyzer's `run.app` address (DEPLOY.md, "The contract analyzer"). Unset, contract audits are refused and not charged |
 | `INDEXNOW_KEY` | ✔ | | Optional: a random 32-character hex string (`openssl rand -hex 16`). Tells Bing, which feeds ChatGPT's and Copilot's search, when a digest is published |
 | `SAME_AS` | ✔ | | Optional: RektBull's official profile URLs, comma-separated (e.g. the X account), once they exist. Ties the brand together for search and AI answers |
 | `OPERATOR_POSTAL_ADDRESS` | ✔ | ✔ | A postal address for the newsletter's footer (a PO box is fine); without it no newsletter is sent |

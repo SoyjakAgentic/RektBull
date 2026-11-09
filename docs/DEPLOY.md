@@ -87,6 +87,36 @@ The worker sends due alerts every 20 seconds, retrying a failed send after
 (bot blocked, browser unsubscribed, address rejected) is switched off and the
 user sees why.
 
+## The contract analyzer (Contract Audit)
+
+Slither runs in its own small service, `analyzer/` (ported from Soyjak): its
+own image and Cloud Run service, so the API's image stays Node-only and a
+large analysis gets its own memory. It compiles each contract with the solc
+version it was verified with (installed on first use and checked against its
+published hash) and runs Slither's detectors; nothing in a contract is run.
+
+1. Build and deploy it (once, and again only when Slither is upgraded):
+   ```bash
+   gcloud builds submit analyzer --config analyzer/cloudbuild.yaml --substitutions=_REGION=<region>
+   ```
+   It deploys `rektbull-analyzer`: private (`--no-allow-unauthenticated`),
+   2 CPU and 4 GiB, one analysis per instance, scaled to zero between audits
+   (the first audit after a quiet spell waits a few seconds to start).
+2. Let the API call it, and only the API:
+   ```bash
+   gcloud run services add-iam-policy-binding rektbull-analyzer --region=<region> \
+     --member=serviceAccount:rektbull-api@<project>.iam.gserviceaccount.com --role=roles/run.invoker
+   ```
+   On Cloud Run each call carries an ID token for that account
+   (`src/services/contractAudit.js`).
+3. Set `ANALYZER_URL` on `rektbull-api` to the service's `run.app` address.
+   Unset, or if it's down, audits are refused and nobody is charged.
+
+An audit can take a few minutes, so `rektbull-api` is deployed with a
+10-minute request timeout (`cloudbuild.yaml`). CI builds the image, checks
+it finds the bugs planted in `analyzer/test/vulnerable.json`, and runs
+`test/contractAudit.test.js` against it.
+
 ## Domain: rektbull.com
 
 - Map `rektbull.com` to `rektbull-api` (Cloud Run domain mapping, or a load

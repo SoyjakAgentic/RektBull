@@ -161,6 +161,24 @@ const PAGES = {
       ['What does it cost?', 'It\'s free. Each post ends with the source of its facts; the drafts carry no advice, no prices to buy at and no promised returns.'],
     ],
   },
+  contract_audit: {
+    title: 'Smart Contract Audit Tool: Slither, First Pass | RektBull',
+    description: 'A first-pass smart contract audit: Slither\'s detectors, checklist patterns, known compiler bugs and owner powers, in plain English, every flag sourced.',
+    lead: 'a first-pass review of any verified contract',
+    checks: [
+      ['Reentrancy, unchecked transfers, uninitialized storage, shadowing and ~100 more patterns in the compiled contract', 'Slither, run on the contract compiled with the solc version it was verified with'],
+      ['tx.origin checks, chain data used as randomness, delegatecall, unchecked calls, unprotected initializers', 'Pattern checks from an audit checklist, in the contract\'s own code'],
+      ['ERC-4626 share inflation, and accounting that breaks with fee-on-transfer tokens', 'Pattern checks in the contract\'s own code'],
+      ['Who can mint, pause, blacklist, set fees, upgrade or withdraw', 'Owner-only functions found in the code'],
+      ['Known bugs in the compiler version it was built with, and whether their conditions hold', 'The Solidity team\'s bug list'],
+      ['Comments written to steer an automated reviewer', 'Pattern check; reported, never followed'],
+    ],
+    faq: [
+      ['Is this a full smart contract audit?', 'No. It\'s a first pass: Slither\'s findings and the checklist patterns are flags for a person to confirm by reading the code at their lines, and some are false positives. It doesn\'t find business-logic flaws, price manipulation or economic attacks, and it never calls a contract safe.'],
+      ['Which contracts can it review?', 'Contracts with verified source on Ethereum, Base, Arbitrum, Optimism, Polygon or BNB Chain. A proxy\'s verified implementation is reviewed with it. Unverified code can\'t be reviewed, and that alone is a reason for caution.'],
+      ['What does it cost, and what if it fails?', '$99 an audit, with a downloadable PDF report, from credits or by x402. If the analyzer can\'t run, the audit is refused and nothing is charged. The plain-English summary is written by AI from the findings only; it never adds or confirms one.'],
+    ],
+  },
   trading_agent: {
     title: 'Crypto Trading Agent With Onchain Limits | RektBull',
     description: 'A crypto trading agent that buys and sells only within limits your wallet signs onchain, checks each token first, and exits at your stop-loss or take-profit.',
@@ -209,6 +227,16 @@ COMMUNITY.channel_poster = () => {
   };
 };
 
+COMMUNITY.contract_audit = () => ({
+  id: 'contract_audit', name: 'Contract Audit', plan: 'paid', price: '$99 an audit, with a downloadable PDF report (credits or x402)', offer_usd: '99',
+  does: 'A first-pass security review of a verified contract, and a proxy\'s implementation with it: Slither\'s ~100 detectors on the contract compiled as it was verified, checks from an audit checklist, the compiler\'s known bugs and who holds power over it, explained in plain English.',
+  alerts: 'The review, on the page, when it\'s done (usually under a few minutes).',
+  schedules: [{ label: 'When you ask' }],
+  desk: { name: 'Safety', href: '/safety#audit-card' },
+  action: { text: 'Audit a contract', href: '/safety#audit-card' },
+  where: 'On the Safety page; Slither runs in RektBull\'s own analyzer service',
+});
+
 const list = () => [
   ...AGENTS.filter(a => PAGES[a.id]).map(a => ({ id: a.id, slug: slugOf(a.id), name: a.name })),
   ...Object.keys(COMMUNITY).filter(id => PAGES[id]).map(id => ({ id, slug: slugOf(id), name: COMMUNITY[id]().name })),
@@ -229,7 +257,7 @@ function page(slug, base) {
     {
       '@type': 'WebPage', '@id': `${url}#page`, name: p.title.replace(/ \| RektBull$/, ''), description: p.description, url,
       isPartOf: { '@type': 'WebSite', name: 'RektBull', url: `${base}/` },
-      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: c.community ? 'SecurityApplication' : 'FinanceApplication', operatingSystem: c.community ? 'Telegram' : 'Web', description: c.does, offers: { '@type': 'Offer', price: c.plan === 'free' ? '0' : c.plan === 'pro' ? '9' : '0', priceCurrency: 'USD', description: c.price } },
+      about: { '@type': 'SoftwareApplication', name: `RektBull ${c.name}`, applicationCategory: c.action ? 'SecurityApplication' : 'FinanceApplication', operatingSystem: c.community ? 'Telegram' : 'Web', description: c.does, offers: { '@type': 'Offer', price: c.offer_usd || (c.plan === 'pro' ? '9' : '0'), priceCurrency: 'USD', description: c.price } },
     },
     seo.breadcrumbs(base, [['Home', `${base}/`], ['AI agents', `${base}/agents`], [c.name, url]]),
   ];
@@ -238,7 +266,7 @@ function page(slug, base) {
       <span class="eyebrow">AI agent · ${esc(c.price)}</span>
       <h1>${esc(c.name)}: <em>${esc(p.lead)}</em></h1>
       <p>${esc(c.does)}</p>
-      <p>${c.community ? `<a class="btn primary" href="${esc(c.action.href)}"${/^https:/.test(c.action.href) ? ' rel="noopener" target="_blank"' : ''}>${esc(c.action.text)}</a>` : `<a class="btn primary" href="/agents#agent-${esc(a.id)}">Switch it on</a> <a class="btn" href="${esc(c.desk.href)}">Open ${esc(c.desk.name)}</a>`}</p>
+      <p>${c.action ? `<a class="btn primary" href="${esc(c.action.href)}"${/^https:/.test(c.action.href) ? ' rel="noopener" target="_blank"' : ''}>${esc(c.action.text)}</a>` : `<a class="btn primary" href="/agents#agent-${esc(a.id)}">Switch it on</a> <a class="btn" href="${esc(c.desk.href)}">Open ${esc(c.desk.name)}</a>`}</p>
       <nav class="jump" aria-label="On this page"><a href="#checks">What it checks</a><a href="#how">How it runs</a><a href="#never">What it never does</a><a href="#questions">Questions</a></nav>
     </div>
   </section>
@@ -256,9 +284,9 @@ function page(slug, base) {
       <h2>How it runs</h2>
       <div class="tablewrap"><table class="rank"><tbody>
         <tr><th scope="row">Schedule</th><td>${esc(schedule.charAt(0).toUpperCase() + schedule.slice(1))}</td></tr>
-        <tr><th scope="row">Alerts</th><td>${esc(c.alerts)}${c.community ? '' : ' By Telegram, email or browser notification.'}</td></tr>
+        <tr><th scope="row">Alerts</th><td>${esc(c.alerts)}${c.action ? '' : ' By Telegram, email or browser notification.'}</td></tr>
         <tr><th scope="row">Price</th><td>${esc(c.price)}</td></tr>
-        <tr><th scope="row">Where it runs</th><td>${c.community ? esc(c.where) : `The same check as the <a href="${esc(c.desk.href)}">${esc(c.desk.name)}</a> page, on a schedule`}</td></tr>
+        <tr><th scope="row">Where it runs</th><td>${c.where ? esc(c.where) : `The same check as the <a href="${esc(c.desk.href)}">${esc(c.desk.name)}</a> page, on a schedule`}</td></tr>
       </tbody></table></div>
     </section>
 
@@ -266,7 +294,7 @@ function page(slug, base) {
       <h2>What it never does</h2>
       <ul class="rules">
         <li><strong>It never asks for your seed phrase or private key.</strong> Nobody legitimate ever does.</li>
-        <li><strong>It never signs or moves your money${c.community ? ', and never DMs anyone' : ''}.</strong> ${c.community ? 'It only reads what is posted in the group, and stores no message text.' : a.id === 'trading_agent' ? 'It trades only within the limits your wallet signed onchain, and only back to your wallet.' : 'Anything that needs a transaction is prepared for your own wallet to sign.'}</li>
+        <li><strong>It never signs or moves your money${c.community ? ', and never DMs anyone' : ''}.</strong> ${c.community ? 'It only reads what is posted in the group, and stores no message text.' : a.id === 'contract_audit' ? 'It reads published source code; nothing in the contract is run, and nothing is sent from your wallet.' : a.id === 'trading_agent' ? 'It trades only within the limits your wallet signed onchain, and only back to your wallet.' : 'Anything that needs a transaction is prepared for your own wallet to sign.'}</li>
         <li><strong>It never makes facts up.</strong> AI may write a summary, but only from facts that name their source; it never fills a gap with a guess.</li>
         <li><strong>It never calls anything safe.</strong> A clean result means nothing was found in the sources checked.</li>
       </ul>

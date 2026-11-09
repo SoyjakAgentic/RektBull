@@ -136,7 +136,7 @@ function paidRoute(productId, { validate, run, record = input => input }) {
 
     let result, aiUsd = 0;
     try {
-      ({ result, usd: aiUsd } = await aiAllowance.meter(() => run(input, req)));
+      ({ result, usd: aiUsd } = await aiAllowance.meter(() => run(input, req, { runId })));
     } catch (err) {
       await charge.rollback().catch(e => logger.error('could not give a failed run back', { run: runId, error: e.message }));
       await db.query(`UPDATE runs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [runId, err.message]);

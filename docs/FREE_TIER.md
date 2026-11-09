@@ -69,6 +69,17 @@ second, so a check takes 10 to 30 seconds. **Set `RPC_URLS_SOLANA`** (a free
 Helius or Alchemy plan): the public Solana endpoint rate-limits hard, and a
 check that reads too little is refused and not charged, rather than guessed.
 
+## A contract audit's cost
+
+One audit reads the verified source (1 explorer call, 2 for a proxy), runs
+Slither once per verified unit in `rektbull-analyzer` (Cloud Run, 2 CPU and
+4 GiB, scaled to zero: seconds to a few minutes of compute per audit, a few
+cents at list prices; the first solc download for a version is about 10 MB),
+reads the Solidity team's bug list (cached a day), and writes the summary
+with Claude (about 3,000 output tokens at most, under $0.10 at Opus 5.5). It
+sells for $99, with a downloadable PDF report (pdfkit, built from the stored
+result), by credits or x402, and the result is cached a day per contract. Nothing is charged when the analyzer can't run.
+
 ## The risk monitor's cost
 
 Each watched wallet gets one fresh approval scan a day (about 18 explorer

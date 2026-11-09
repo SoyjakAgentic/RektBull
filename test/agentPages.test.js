@@ -20,7 +20,7 @@ const graph = html => [...html.matchAll(/<script type="application\/ld\+json">([
 const plain = html => html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/&#39;/g, '\'').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 test('a page for each agent, written for a real search', async () => {
-  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'trading-agent', 'group-guard', 'channel-poster']);
+  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'trading-agent', 'group-guard', 'channel-poster', 'contract-audit']);
   const titles = new Set();
   for (const { id, slug } of agentPage.list()) {
     const p = agentPage.PAGES[id];
@@ -40,7 +40,7 @@ test('a page for each agent, written for a real search', async () => {
     assert.ok(text.includes('It never asks for your seed phrase or private key.'));
     assert.ok(!/\b(is|are) safe\b(?!\?)/i.test(text.replace(/never calls anything safe|that something is safe|a token is safe\?|mean a token is safe/gi, '')), `${slug}: never calls anything safe`);
     assert.ok(!/\bguarantee|earn \d|(?<!take-)profit(able)?\b/i.test(text), `${slug}: no promise of returns`);
-    if (c.community) assert.ok(body.includes(`href="${c.action.href}"`), 'add it to your group');
+    if (c.action) assert.ok(body.includes(`href="${c.action.href}"`), 'its own action: add it to a group or channel, or run it');
     else assert.match(body, new RegExp(`href="/agents#agent-${id}"`), 'switch it on, on the tab');
     for (const o of agentPage.list().filter(x => x.slug !== slug)) assert.ok(body.includes(`href="/agents/${o.slug}"`), `${slug} links ${o.slug}`);
 
@@ -49,7 +49,7 @@ test('a page for each agent, written for a real search', async () => {
     assert.deepEqual(g.find(x => x['@type'] === 'BreadcrumbList').itemListElement.map(i => i.name), ['Home', 'AI agents', c.name]);
     const app = g.find(x => x['@type'] === 'WebPage').about;
     assert.equal(app['@type'], 'SoftwareApplication');
-    assert.equal(app.offers.price, c.plan === 'pro' ? '9' : '0');
+    assert.equal(app.offers.price, c.offer_usd || (c.plan === 'pro' ? '9' : '0'));
   }
   assert.equal((await get('/agents/no-such-agent')).status, 404);
   assert.match((await get('/agents/trading-agent')).body, /No one can promise that, and RektBull doesn&#39;t\./, 'the trading agent is sold on its limits, not on returns');

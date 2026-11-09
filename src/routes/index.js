@@ -148,6 +148,26 @@ router.post('/v1/tokens/report', paidRoute('token_report', {
   run: input => dd.fullReport(input),
 }));
 
+// ── Contract Audit: a first-pass review of a verified contract, with Slither in the analyzer service ──
+const contractAudit = require('../services/contractAudit');
+router.post('/v1/contracts/audit', paidRoute('contract_audit', {
+  validate: req => contractAudit.parse(req.body),
+  // Kept by run id, so the PDF report can be downloaded later by whoever holds the run id (the buyer).
+  run: async (input, req, { runId }) => {
+    const result = await contractAudit.run(input);
+    await contractAudit.saveReport(runId, req.account?.id || null, input, result);
+    return { ...result, report_pdf: `/v1/contracts/audit/${runId}/report.pdf` };
+  },
+}));
+router.get('/v1/contracts/audit/:runId/report.pdf', async (req, res, next) => {
+  try {
+    const r = await contractAudit.report(req.params.runId);
+    if (!r) return res.status(404).json({ error: 'not_found', message: 'No completed audit with that report id.' });
+    const pdf = await require('../pages/auditPdf').render(r.result, { runId: req.params.runId, paidWith: r.paid_with });
+    res.set('content-type', 'application/pdf').set('content-disposition', `attachment; filename="rektbull-audit-${r.chain}-${r.address}-${String(r.created_at.toISOString()).slice(0, 10)}.pdf"`).set('cache-control', 'private, max-age=3600').send(pdf);
+  } catch (err) { next(err); }
+});
+
 // ── Launch Safety: was a new token's supply bundled at launch, and are the bundlers selling? ──
 const launchSafety = require('../services/launchSafety');
 router.post('/v1/launch/check', paidRoute('launch_check', { validate: req => launchSafety.parse(req.body), run: input => launchSafety.check(input) }));
