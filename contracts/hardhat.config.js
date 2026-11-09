@@ -4,6 +4,8 @@ import hardhatNodeTestRunner from '@nomicfoundation/hardhat-node-test-runner';
 
 const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
 const BASE_MAINNET_RPC = process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org';
+// Frame (frame.sh) signs with the hardware wallet connected to it; it never hands out a key.
+const FRAME_RPC = process.env.FRAME_RPC_URL || 'http://127.0.0.1:1248';
 
 export default defineConfig({
   plugins: [hardhatEthers, hardhatNodeTestRunner],
@@ -33,6 +35,21 @@ export default defineConfig({
       url: BASE_SEPOLIA_RPC,
       chainId: 84532,
       accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
+    },
+    // Base mainnet deployment: every signature is made on the hardware wallet behind Frame.
+    // There is deliberately no way to give this network a private key (scripts/deployBase.js).
+    base: {
+      type: 'http',
+      url: FRAME_RPC,
+      chainId: 8453,
+      accounts: 'remote',
+    },
+    // Base mainnet, read only: for scripts/verifyBase.js, which needs no wallet.
+    baseRead: {
+      type: 'http',
+      url: BASE_MAINNET_RPC,
+      chainId: 8453,
+      accounts: [],
     },
   },
 });

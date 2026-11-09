@@ -19,8 +19,8 @@ On every trade it enforces onchain:
 No owner, no admin, no upgrades: venues, tokens, price feeds, the fee and the
 fee wallet are fixed at deployment. Funds are only pulled from `msg.sender`.
 
-**Not audited yet.** Do not deploy to mainnet or send real funds until the
-external audit (milestone 0b) is done and every finding is fixed.
+**Audited** (the Trade Router and Safe Module, at commit `31c9c8c`; the owner
+reports it passed in November 2026). The Yield Router's audit is still to come.
 
 ## How a user grants a permission
 
@@ -83,8 +83,12 @@ have no real liquidity), runs one real delegated trade and one refused attack,
 and writes the addresses to `deployments/base-sepolia.json`. The script
 refuses to run on any chain but Base Sepolia.
 
-Mainnet deployment is a separate, audited step, run by you from a hardware
-wallet, with real Chainlink feeds and 0x as the venue.
+Mainnet deployment is a separate step, run by the owner from a hardware
+wallet through Frame, with real Chainlink feeds and 0x as the venue:
+`npm run deploy:base:rehearse`, then `npm run deploy:base`, then
+`npm run verify:base`. Parameters are in `config/base.json`; every one is
+checked onchain before anything is sent. See
+[docs/BASE_DEPLOYMENT.md](../docs/BASE_DEPLOYMENT.md).
 
 ## Live on Base Sepolia (testnet)
 

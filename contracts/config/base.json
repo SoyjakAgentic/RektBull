@@ -1,0 +1,33 @@
+{
+  "_about": "The Trade Router's Base mainnet parameters (docs/AUDIT_BRIEF.md section 6). scripts/deployBase.js checks every value here onchain before it deploys anything. feeWallet is not here: it is given at deployment (FEE_WALLET), and must be a Safe.",
+  "chain": "base",
+  "chainId": 8453,
+  "checkedOnchain": "2026-11-08",
+  "auditedCommit": "31c9c8c",
+  "auditedSources": ["contracts/RektBullTradeRouter.sol", "contracts/RektBullSafeModule.sol"],
+  "openzeppelin": "5.6.1",
+  "feeBps": 100,
+  "maxSlippageBps": 200,
+  "sequencerUptimeFeed": { "address": "0xBCF85224fc0756B9Fa45aA7892530B47e10b6433", "description": "L2 Sequencer Uptime Status Feed" },
+  "spendPermissionManager": "0xf85210B21cC50302F477BA56686d2019dC9b67Ad",
+  "venues": [
+    { "name": "0x AllowanceHolder", "address": "0x0000000000001fF3684f28c67538d4D072C22734" }
+  ],
+  "tokens": [
+    {
+      "symbol": "USDC", "name": "USD Coin", "decimals": 6, "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "feed": { "address": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B", "description": "USDC / USD", "decimals": 8, "heartbeat": 86400 },
+      "maxAge": 90000
+    },
+    {
+      "symbol": "WETH", "name": "Wrapped Ether", "decimals": 18, "address": "0x4200000000000000000000000000000000000006",
+      "feed": { "address": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", "description": "ETH / USD", "decimals": 8, "heartbeat": 1200 },
+      "maxAge": 1800
+    },
+    {
+      "symbol": "cbBTC", "name": "Coinbase Wrapped BTC", "decimals": 8, "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "feed": { "address": "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", "description": "cbBTC / USD", "decimals": 8, "heartbeat": 1200 },
+      "maxAge": 1800
+    }
+  ]
+}
