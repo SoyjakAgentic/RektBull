@@ -14,6 +14,8 @@ async function optionalAuth(req, _res, next) {
       const ext = require('../auth/extensionTokens');
       if (account.scope !== 'extension' || !ext.allowed(req.method, req.path) || !(await ext.isActive(account.jti))) account = null;
     }
+    // A wallet blocked in the admin panel is treated as signed out (admin/accounts.js).
+    if (account && require('../admin/accounts').isBlocked(account.wallet)) account = null;
     req.account = account;
     next();
   } catch (err) { next(err); }

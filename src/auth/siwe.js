@@ -106,6 +106,7 @@ async function verifyChallenge({ challengeId, signature }) {
     const ch = rows[0];
     if (!ch || ch.used_at || new Date(ch.expires_at) <= new Date()) throw Object.assign(new Error('This sign-in request has expired; start again'), { status: 401 });
     if (!signedBy(ch.message, signature, ch.wallet) && !(await signedByContract(ch.message, signature, ch.wallet))) throw bad();
+    if (await require('../admin/settings').read(`blocked:${ch.wallet}`)) throw Object.assign(new Error('This wallet can\'t sign in to RektBull.'), { status: 403 });
     await c.query('UPDATE siwe_challenges SET used_at = now() WHERE id = $1', [challengeId]);
     const acct = await c.query(
       `INSERT INTO accounts (wallet) VALUES ($1) ON CONFLICT (wallet) DO UPDATE SET wallet = EXCLUDED.wallet RETURNING id, wallet`,

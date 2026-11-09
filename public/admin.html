@@ -17,35 +17,98 @@
     </section>
 
     <div id="panel" hidden>
-      <section class="card" id="stops-card">
-        <h2>Emergency stops</h2>
-        <p class="muted small">A stop only halts what RektBull does by itself. Users can always act from their own wallet and revoke.</p>
-        <div id="stops"></div>
-        <p id="stops-msg" class="msg"></p>
-      </section>
+      <nav class="jump admin-tabs" aria-label="Admin sections">
+        <a href="#dash" data-tab="dash">Dashboard</a><a href="#controls" data-tab="controls">Stops, prices, agents</a><a href="#services" data-tab="services">Services</a><a href="#accounts" data-tab="accounts">Accounts</a><a href="#tools" data-tab="tools">Tools and banner</a><a href="#log" data-tab="log">Change log</a>
+      </nav>
 
-      <section class="card" id="prices-card">
-        <h2>Prices</h2>
-        <p class="muted small">New prices apply to new purchases only; passes already bought keep what they paid for. Pages, the API's 402 answers and search results show the new price within a minute. The 1% trade fee and the 0.1% yield fee are fixed in the audited contracts and can't be changed here.</p>
-        <div class="tablewrap"><table class="rank" id="prices"><thead><tr><th>Product</th><th>Now</th><th>Default</th><th>Change</th><th></th></tr></thead><tbody></tbody></table></div>
-        <h3>Free points</h3>
-        <div class="row" id="points"></div>
-        <h3>Safety Pro AI allowance</h3>
-        <div class="row" id="ai"></div>
-        <p id="prices-msg" class="msg"></p>
-      </section>
+      <div data-pane="dash">
+        <section class="card" id="health-card">
+          <div class="chart-head"><h2>Health</h2><button class="btn" type="button" id="health-reload">Refresh</button></div>
+          <div id="health"></div>
+        </section>
+        <section class="card" id="dash-card">
+          <div class="chart-head"><h2>Dashboard</h2><label class="inline">Last <select id="dash-days"><option value="1">day</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="365">year</option></select></label></div>
+          <div id="dash"></div>
+        </section>
+      </div>
 
-      <section class="card" id="agents-card">
-        <h2>AI agents</h2>
-        <p class="muted small"><strong>Active:</strong> listed and working. <strong>Hidden:</strong> keeps working for anyone using it and by its link, but isn't listed, offered or in the sitemap. <strong>Off:</strong> paused; new runs are refused, schedules stop, and its users get one alert. Nobody's settings are deleted.</p>
-        <div class="tablewrap"><table class="rank" id="agents"><thead><tr><th>Agent</th><th>State</th><th></th></tr></thead><tbody></tbody></table></div>
-        <p id="agents-msg" class="msg"></p>
-      </section>
+      <div data-pane="controls">
+        <section class="card" id="stops-card">
+          <h2>Emergency stops</h2>
+          <p class="muted small">A stop only halts what RektBull does by itself. Users can always act from their own wallet and revoke.</p>
+          <div id="stops"></div>
+          <p id="stops-msg" class="msg"></p>
+        </section>
 
-      <section class="card" id="log-card">
-        <h2>Change log</h2>
-        <div class="tablewrap"><table class="rank" id="log"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Before</th><th>After</th><th>Why</th></tr></thead><tbody></tbody></table></div>
-      </section>
+        <section class="card" id="prices-card">
+          <h2>Prices</h2>
+          <p class="muted small">New prices apply to new purchases only; passes already bought keep what they paid for. Pages, the API's 402 answers and search results show the new price within a minute. The 1% trade fee and the 0.1% yield fee are fixed in the audited contracts and can't be changed here.</p>
+          <div class="tablewrap"><table class="rank" id="prices"><thead><tr><th>Product</th><th>Now</th><th>Default</th><th>Change</th><th></th></tr></thead><tbody></tbody></table></div>
+          <h3>Free points</h3>
+          <div class="row" id="points"></div>
+          <h3>Safety Pro AI allowance</h3>
+          <div class="row" id="ai"></div>
+          <p id="prices-msg" class="msg"></p>
+        </section>
+
+        <section class="card" id="agents-card">
+          <h2>AI agents</h2>
+          <p class="muted small"><strong>Active:</strong> listed and working. <strong>Hidden:</strong> keeps working for anyone using it and by its link, but isn't listed, offered or in the sitemap. <strong>Off:</strong> paused; new runs are refused, schedules stop, and its users get one alert. Nobody's settings are deleted.</p>
+          <div class="tablewrap"><table class="rank" id="agents"><thead><tr><th>Agent</th><th>State</th><th></th></tr></thead><tbody></tbody></table></div>
+          <p id="agents-msg" class="msg"></p>
+        </section>
+      </div>
+
+      <div data-pane="services">
+        <section class="card" id="services-card">
+          <h2>External services</h2>
+          <p class="muted small">Calls and errors from RektBull's own records. Keys live in Google Secret Manager: this page only says whether each is set, and can never show or change one. Switching a service off makes RektBull treat it as unavailable, so its fallback (where there is one) takes over.</p>
+          <div class="tablewrap"><table class="rank" id="services"><thead><tr><th>Service</th><th class="num">Today</th><th class="num">7 days</th><th>Last error</th><th>Key</th><th>Limit a day</th><th></th></tr></thead><tbody></tbody></table></div>
+          <p id="services-msg" class="msg"></p>
+        </section>
+      </div>
+
+      <div data-pane="accounts">
+        <section class="card" id="accounts-card">
+          <h2>Accounts</h2>
+          <form class="row" id="acct-form"><label class="inline">Wallet or account number <input id="acct-q" maxlength="42" size="44" placeholder="0x…"></label><button class="btn" type="submit">Look up</button></form>
+          <p id="acct-msg" class="msg"></p>
+          <div id="acct"></div>
+        </section>
+      </div>
+
+      <div data-pane="tools">
+        <section class="card" id="banner-card">
+          <h2>Site banner</h2>
+          <p class="muted small">One short notice on every page, plain text. Its link can only point inside RektBull.</p>
+          <p id="banner-now" class="small"></p>
+          <form class="row" id="banner-form">
+            <label class="inline">Text <input id="banner-text" maxlength="200" size="60"></label>
+            <label class="inline">Kind <select id="banner-level"><option value="info">Notice</option><option value="warn">Warning</option></select></label>
+            <label class="inline">Link (optional) <input id="banner-link" placeholder="/about" size="16"></label>
+            <label class="inline">Until (optional) <input id="banner-until" type="datetime-local"></label>
+            <button class="btn" type="submit">Show it</button>
+            <button class="btn" type="button" id="banner-off">Remove</button>
+          </form>
+          <p id="banner-msg" class="msg"></p>
+        </section>
+        <section class="card" id="tools-card">
+          <h2>Other tools</h2>
+          <p>The weekly digest's drafts and sponsored posts are reviewed on <a href="/research#review">the Research page</a>.</p>
+          <h3>Airdrops RektBull added</h3>
+          <div class="tablewrap"><table class="rank" id="airdrops"><thead><tr><th>Airdrop</th><th>Chain</th><th class="num">Entries</th><th>Ends</th><th></th></tr></thead><tbody></tbody></table></div>
+          <h3>Hosted crypto checkouts (latest 50)</h3>
+          <div class="tablewrap"><table class="rank" id="invoices"><thead><tr><th>When</th><th>Wallet</th><th class="num">Amount</th><th>For</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+          <p id="tools-msg" class="msg"></p>
+        </section>
+      </div>
+
+      <div data-pane="log">
+        <section class="card" id="log-card">
+          <h2>Change log</h2>
+          <div class="tablewrap"><table class="rank" id="log"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Before</th><th>After</th><th>Why</th></tr></thead><tbody></tbody></table></div>
+        </section>
+      </div>
     </div>
   </main>
   <!--#footer:For RektBull's owners. Every change is logged.-->
