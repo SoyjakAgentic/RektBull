@@ -440,8 +440,16 @@ checks the record and the listing. About 30 minutes, free.*
 
 - [ ] A lawyer reviews `/privacy` and terms of use for where we serve
       (EU/UK GDPR at least), and the fee wording for paid checks and claims.
-- [ ] Before yield proposals or vote recommendations go live: whether they
-      count as investment advice where we serve.
+- [x] **Stated on the site (decided 8 November 2026):** nothing on RektBull
+      is financial, investment, legal or tax advice or a recommendation: in
+      every footer, in full on `/about#not-advice` (every desk named), as a
+      notice on Find money, Governance, Trade and Opportunities, in the
+      results of yield proposals and proposal summaries, and on every page of
+      the contract audit's PDF.
+- [ ] The lawyer still confirms that the yield proposals and governance tools
+      don't count as regulated investment advice where we serve: a
+      disclaimer states our position, but regulators look at what a feature
+      does, so the review stays on this list.
 - [ ] Terms of use page (not written yet): no guarantees on checks, the
       user signs everything, refunds as the payment gate does them.
 - [ ] Real-wallet testing ([REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md)):

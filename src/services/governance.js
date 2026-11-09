@@ -176,7 +176,7 @@ async function summarizeOnchain({ chain, governor, proposal_id }) {
     return {
       proposal: { ...rest, governor: { name: gov.name, chain, address: governor } }, summary_markdown: ai.text, written_by: ai.model,
       source: `The proposal's text and its actions, from the governor's ProposalCreated log on ${chain}`,
-      note: 'An AI summary of the proposal\'s own text and actions, not advice and not a recommendation. Check the actions yourself before you vote.',
+      note: 'An AI summary of the proposal\'s own text and actions. It is not financial advice and not a recommendation on how to vote. Check the actions yourself before you vote.',
     };
   });
 }
@@ -195,7 +195,7 @@ async function summarize(input) {
       proposal: shape(p), summary_markdown: ai.text, written_by: ai.model,
       ...(body.length > BODY_CHARS ? { cut: `Only the first ${BODY_CHARS.toLocaleString()} characters of the proposal were read.` } : {}),
       source: `The proposal's text on Snapshot (${link(p)})`,
-      note: 'An AI summary of the proposal\'s own text, not advice and not a recommendation. Read the full proposal before you vote.',
+      note: 'An AI summary of the proposal\'s own text. It is not financial advice and not a recommendation on how to vote. Read the full proposal before you vote.',
     };
   });
 }
