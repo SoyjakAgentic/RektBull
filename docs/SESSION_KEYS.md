@@ -178,8 +178,11 @@ Candidates:
 - **Swig:** a smart wallet with role-based session keys limited by amount
   and time; launched May 2025.
 
-**Rejected:** SPL token delegates. A delegate can transfer to any address,
-so it's a withdrawal power.
+**Rejected:** SPL token delegates held by a RektBull key. A delegate can
+transfer to any address, so it's a withdrawal power. (A delegate that is a
+program's own account, a PDA, moves tokens only under that program's rules:
+the route recommended in [MEME_ROUTER.md](MEME_ROUTER.md), after Turnkey was
+evaluated and found unable to check where a swap's output goes.)
 
 Before choosing, prove on devnet that the permission can be limited to
 swaps through a RektBull Trade Router program (the same rules as on EVM:
