@@ -220,7 +220,7 @@ Later (section 6): Chrome Web Store ($5 once), Microsoft Partner Center
 | `X402_PAY_TO` | Where x402 USDC on Base arrives | A Safe or hardware-wallet address. Receive-only |
 | `ADMIN_WALLETS` | Wallets that can use the admin panel (`/admin`, [ADMIN.md](ADMIN.md)) | Your own address(es) |
 | `CLAIM_FEE_WALLET_EVM` | Where claim fees arrive (many different tokens) | A Safe or hardware-wallet address, receive-only; on every EVM chain we cover (a Safe needs deploying on each). Unset = claims carry no fee |
-| `SWAP_FEE_WALLET_EVM` | Where the 1% trade fee arrives, on Base | A Safe or hardware-wallet address, receive-only. Needed for the trade desk at launch |
+| `SWAP_FEE_WALLET_EVM` | Where the 1% trade fee arrives, on Base, Ethereum and Arbitrum (one address for all three) | A hardware-wallet address, or a Safe deployed at the same address on all three chains (a Safe on Base alone doesn't exist on the others), receive-only. Needed for the trade desk at launch |
 | `SESSION_KEY_ADDRESS` | RektBull's trading key (the KMS key's address) | Automatic trading only (section 8). Leave unset at launch |
 
 Check before launch: an invoice made by the deployed site shows an address
@@ -472,9 +472,12 @@ deploy the trade service, then `YIELD_AUTO_ENABLED=true`.
 
 1. Deploy the Trade Router and Safe Module on Base from the owner's hardware
    wallet, fees to the owners' Safe, and verify the source on Basescan:
-   [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md). The script checks every parameter
+   [ROUTER_DEPLOYMENT.md](ROUTER_DEPLOYMENT.md). The script checks every parameter
    onchain first and prints the `AUTO_TRADING_NETWORKS` entry for step 3.
-   (The Yield Router follows once its own audit passes.)
+   Ethereum and Arbitrum follow the same way (`deploy:ethereum`,
+   `deploy:arbitrum`), each with a fees Safe on that chain; add each entry to
+   `AUTO_TRADING_NETWORKS` as it's deployed, and give the trade service's key
+   ETH for gas on each. (The Yield Router follows once its own audit passes.)
 2. Create the KMS key and the `rektbull-trade` service account
    ([DEPLOY.md](DEPLOY.md)); sign one Base Sepolia transaction with it.
 3. Set `SESSION_KEY_ADDRESS` (the key's address) and `AUTO_TRADING_NETWORKS`

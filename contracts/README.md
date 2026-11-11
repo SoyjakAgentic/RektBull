@@ -85,10 +85,11 @@ refuses to run on any chain but Base Sepolia.
 
 Mainnet deployment is a separate step, run by the owner from a hardware
 wallet through Frame, with real Chainlink feeds and 0x as the venue:
-`npm run deploy:base:rehearse`, then `npm run deploy:base`, then
-`npm run verify:base`. Parameters are in `config/base.json`; every one is
-checked onchain before anything is sent. See
-[docs/BASE_DEPLOYMENT.md](../docs/BASE_DEPLOYMENT.md).
+`npm run deploy:<chain>:rehearse`, then `npm run deploy:<chain>`, then
+`npm run verify:<chain>`, for `base`, `ethereum` and `arbitrum` (one router
+per chain). Parameters are in `config/<chain>.json`; every one is checked
+onchain before anything is sent. See
+[docs/ROUTER_DEPLOYMENT.md](../docs/ROUTER_DEPLOYMENT.md).
 
 ## Live on Base Sepolia (testnet)
 

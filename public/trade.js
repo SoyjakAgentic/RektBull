@@ -3,7 +3,6 @@
   'use strict';
   const { ethers } = window;
   const $ = id => document.getElementById(id);
-  const BASE = '0x2105';
   const DEFAULT_LIMITS = { trade: 500, day: 10000 };
   const ROUTER_ABI = [
     'function setLimits(uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil)',
@@ -23,9 +22,28 @@
     state.config = await api('GET', '/v1/trading/config');
     for (const id of ['trade-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
+    showChains();
     showAutoNetwork();
     await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
   }
+
+  /* The networks for trades the user signs, and each one's base assets (from the server's config). */
+  const chainHex = name => '0x' + Number(state.config.chains[name].chain_id).toString(16);
+  function showChains() {
+    const chains = state.config?.chains || {};
+    const keep = $('chain').value;
+    $('chain').replaceChildren(...Object.entries(chains).map(([k, c]) => el('option', { value: k }, c.label || k)));
+    if (chains[keep]) $('chain').value = keep;
+    showBases();
+  }
+  function showBases() {
+    const c = state.config?.chains?.[$('chain').value];
+    if (!c) return;
+    const keep = $('base').value;
+    $('base').replaceChildren(...c.bases.map(b => el('option', {}, b)));
+    $('base').value = c.bases.includes(keep) ? keep : c.default_base;
+  }
+  $('chain').addEventListener('change', showBases);
 
   /* ── 2. trade ── */
   $('side').addEventListener('change', () => {
@@ -41,7 +59,7 @@
     const sell = $('side').value === 'sell';
     try {
       const p = await api('POST', '/v1/trading/proposals', {
-        chain: 'base', side: $('side').value, base: $('base').value, token: $('token').value.trim(),
+        chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
         ...(sell ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
         ...(acknowledge ? { acknowledge_risks: true } : {}),
       });
@@ -84,7 +102,7 @@
     try {
       say('trade-msg', 'Re-checking on a fresh price…');
       const approved = await api('POST', `/v1/trading/proposals/${p.id}/approve`);
-      await switchChain(BASE);
+      await switchChain(chainHex(p.chain || $('chain').value));
       say('trade-msg', 'Confirm in your wallet…');
       const txHash = await sendCalls(approved.calls);
       await api('POST', `/v1/trading/proposals/${p.id}/submitted`, { tx_hash: txHash });
@@ -171,9 +189,20 @@
   const autoHex = () => '0x' + Number(AUTO_CHAIN).toString(16);
   const testnet = () => /test/i.test(net()?.label || '');
   function showAutoNetwork() {
-    const ids = Object.keys(state.config?.automatic_trading?.networks || {});
-    AUTO_CHAIN = ids.includes('8453') ? '8453' : ids[0] || null;
+    const nets = state.config?.automatic_trading?.networks || {};
+    const ids = Object.keys(nets);
+    if (!AUTO_CHAIN || !ids.includes(AUTO_CHAIN)) AUTO_CHAIN = ids.includes('8453') ? '8453' : ids[0] || null;
+    // One Trade Router per network: with more than one open, the user picks where to trade.
+    $('auto-chain').hidden = ids.length < 2;
+    $('auto-net').hidden = ids.length >= 2;
+    if (ids.length >= 2) {
+      $('auto-chain').replaceChildren(...ids.map(id => el('option', { value: id }, nets[id].label)));
+      $('auto-chain').value = AUTO_CHAIN;
+    }
     $('auto-net').textContent = net() ? net().label : 'not open yet';
+    $('auto-gas').textContent = net()?.private_send
+      ? `On ${net().label}, automatic trades are sent privately through Flashbots Protect, so nobody can trade ahead of them. RektBull pays the network fee, so an automatic buy has to be large enough for its 1% fee to cover it; you'll be told the minimum.`
+      : '';
     $('auto-where').textContent = !net()
       ? 'Automatic trading opens when the audited Trade Router is deployed. Trades you sign yourself work now.'
       : testnet() ? 'Until the audited router is deployed on Base, this runs on the test network with test tokens.' : '';
@@ -204,6 +233,7 @@
     await loadAuto();
   }
   $('smart-refresh').addEventListener('click', () => loadLimits());
+  $('auto-chain').addEventListener('change', () => { AUTO_CHAIN = $('auto-chain').value; showAutoNetwork(); loadLimits(); });
 
   async function sendTo(to, data, label) {
     await switchChain(autoHex());

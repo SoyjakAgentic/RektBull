@@ -1,32 +1,35 @@
 /**
- * Deploys the RektBull Trade Router and Safe Module to Base mainnet, signed on
- * a hardware wallet. No private key is ever read: the signer is Frame
- * (frame.sh), which holds no keys itself and asks the Ledger, Trezor or
- * other hardware wallet connected to it to sign.
+ * Deploys the RektBull Trade Router and Safe Module on one chain (Base,
+ * Ethereum or Arbitrum: one router per chain), signed on a hardware wallet.
+ * No private key is ever read: the signer is Frame (frame.sh), which holds no
+ * keys itself and asks the Ledger, Trezor or other hardware wallet connected
+ * to it to sign. Set Frame to the chain you're deploying on.
  *
- *   1. Rehearse on a local copy of Base mainnet (nothing is sent):
- *        npm run deploy:base:rehearse
+ *   1. Rehearse on a local copy of the chain (nothing is sent):
+ *        npm run deploy:<chain>:rehearse
  *   2. Pre-flight against the real chain; prints and saves the plan:
- *        FEE_WALLET=0x<the fees Safe> npm run deploy:base
+ *        FEE_WALLET=0x<the fees Safe on that chain> npm run deploy:<chain>
  *   3. Send. The hardware wallet shows two contract creations to approve:
- *        FEE_WALLET=0x<the fees Safe> DEPLOY=yes npm run deploy:base
- *   4. Check it any time after: npm run verify:base
+ *        FEE_WALLET=0x… DEPLOY=yes npm run deploy:<chain>
+ *   4. Check it any time after: npm run verify:<chain>
  *
- * Every parameter comes from config/base.json and is read back from the chain
- * first (scripts/lib/baseDeploy.js). Nothing is sent unless every check
- * passes, the audited sources are unchanged, and DEPLOY=yes is set.
- * Writes deployments/base-plan.json, then deployments/base.json.
+ * <chain> is base, ethereum or arbitrum. Every parameter comes from
+ * config/<chain>.json and is read back from the chain first
+ * (scripts/lib/routerDeploy.js). Nothing is sent unless every check passes,
+ * the audited sources are unchanged, and DEPLOY=yes is set. Writes
+ * deployments/<chain>-plan.json, then deployments/<chain>.json.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { network, artifacts } from 'hardhat';
-import { ROOT, loadParams, routerArgs, checkSources, preflight, verifyDeployment, autoTradingEntry, print } from './lib/baseDeploy.js';
+import { ROOT, CHAINS, chainOfNetwork, loadParams, routerArgs, checkSources, preflight, verifyDeployment, autoTradingEntry, print } from './lib/routerDeploy.js';
 
 const conn = await network.create();
 const { ethers } = conn;
-const live = conn.networkName === 'base';
-const rehearsal = conn.networkName === 'baseMainnetFork';
+const chain = chainOfNetwork(conn.networkName);
+const live = CHAINS.includes(conn.networkName); // the Frame networks: base, ethereum, arbitrum
+const rehearsal = conn.networkName === `${chain}MainnetFork`;
 
 function write(name, data) {
   const file = path.join(ROOT, 'deployments', name);
@@ -36,13 +39,13 @@ function write(name, data) {
 }
 
 async function main() {
-  if (!live && !rehearsal) throw new Error(`run with --network base (Frame) or --network baseMainnetFork (a rehearsal), not ${conn.networkName}`);
+  if (!chain || (!live && !rehearsal)) throw new Error(`run with --network <chain> (Frame) or --network <chain>MainnetFork (a rehearsal), for a chain in ${CHAINS.join(', ')}; not ${conn.networkName}`);
   if (live && (process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY)) {
     throw new Error('unset DEPLOYER_PRIVATE_KEY: the mainnet deployment is signed on a hardware wallet through Frame, never with a key in the environment');
   }
   // A fork can't run calls at the block it was copied from; one new block fixes that.
   if (rehearsal) await ethers.provider.send('evm_mine', []);
-  const p = loadParams();
+  const p = loadParams(chain);
   const routerArtifact = await artifacts.readArtifact('RektBullTradeRouter');
   const moduleArtifact = await artifacts.readArtifact('RektBullSafeModule');
   const [deployer] = await ethers.getSigners();
@@ -52,7 +55,7 @@ async function main() {
   const sources = checkSources(p, routerArtifact);
   const pre = await preflight(ethers, p, { feeWallet, rehearsal });
   const sourcesOk = print('Audited sources', sources);
-  const preOk = print(`Pre-flight on ${live ? 'Base mainnet' : 'a local copy of Base mainnet (rehearsal)'}`, pre);
+  const preOk = print(`Pre-flight on ${live ? p.label : `a local copy of ${p.label} (rehearsal)`}`, pre);
 
   // ── The plan: exactly what will be sent ──
   const Router = await ethers.getContractFactory('RektBullTradeRouter', deployer);
@@ -83,7 +86,7 @@ async function main() {
     safeModule: { predictedAddress: predictedModule, constructorArgsEncoded: Module.interface.encodeDeploy([predictedRouter]), initCodeHash: ethers.keccak256(moduleTx.data) },
     checks: [...sources, ...pre],
   };
-  console.log(`\nPlan (${write(rehearsal ? 'base-fork-plan.json' : 'base-plan.json', plan)}):`);
+  console.log(`\nPlan (${write(rehearsal ? `${chain}-fork-plan.json` : `${chain}-plan.json`, plan)}):`);
   console.log(`  1. create RektBullTradeRouter at ${predictedRouter} (nonce ${nonce}), init code hash ${plan.router.initCodeHash}`);
   console.log(`  2. create RektBullSafeModule at ${predictedModule} (nonce ${nonce + 1}), pointing at the router`);
   console.log(`  fee ${p.feeBps / 100}% to ${feeWallet}; tokens ${p.tokens.map(t => t.symbol).join(', ')}`);
@@ -113,14 +116,14 @@ async function main() {
     chainId: p.chainId, deployedAt: new Date().toISOString(), commit: plan.commit, deployer: deployer.address, feeWallet,
     router: router.target, routerTx: routerReceipt.hash, routerBlock: routerReceipt.blockNumber,
     safeModule: safeModule.target, safeModuleTx: moduleReceipt.hash,
-    constructorArgsEncoded: plan.router.constructorArgsEncoded, params: 'config/base.json',
+    constructorArgsEncoded: plan.router.constructorArgsEncoded, params: `config/${chain}.json`,
   };
-  const out = write(rehearsal ? 'base-fork.json' : 'base.json', dep);
+  const out = write(rehearsal ? `${chain}-fork.json` : `${chain}.json`, dep);
   const ok = print('Verification (read back from the chain)', await verifyDeployment(ethers, p, dep, { router: routerArtifact, module: moduleArtifact }));
   console.log(`\nwritten to ${out}`);
   if (!ok) { console.log('Verification FAILED: do not switch automatic trading on. Investigate first.'); process.exitCode = 1; return; }
   console.log(`\nAUTO_TRADING_NETWORKS entry:\n${JSON.stringify(autoTradingEntry(p, dep))}`);
-  if (live) console.log('\nNext: npm run verify:base, verify both contracts on Basescan, then docs/BASE_DEPLOYMENT.md step 5 onwards.');
+  if (live) console.log(`\nNext: npm run verify:${chain}, verify both contracts on ${p.explorer}, then docs/ROUTER_DEPLOYMENT.md step 5 onwards.`);
 }
 
 main().catch(err => { console.error(err.shortMessage || err.message || err); process.exit(1); });

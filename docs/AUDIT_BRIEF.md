@@ -172,12 +172,12 @@ npm test        # 53 tests on a fork of Base Sepolia
 Live on Base Sepolia (test tokens, feeds and exchange): see
 `contracts/deployments/base-sepolia.json` and the contracts README.
 
-## 6. Mainnet deployment (Base)
+## 6. Mainnet deployment (Base, then Ethereum and Arbitrum)
 
 Every value is in `contracts/config/base.json`, checked onchain on 2026-11-08.
 The deployment script checks every one again, including each feed's heartbeat
 measured from its round history, and refuses to send anything if one is off
-([BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md)).
+([ROUTER_DEPLOYMENT.md](ROUTER_DEPLOYMENT.md)).
 
 | Parameter | Value |
 |---|---|
@@ -200,6 +200,24 @@ deploying account has no power over either contract afterwards. After
 deploying, `npm run verify:base` compares the onchain code with the compiled
 audited source and reads back every setting; then the source is verified on
 Basescan.
+
+### Ethereum and Arbitrum
+
+The same contracts, deployed once per chain with that chain's settings
+(`contracts/config/ethereum.json`, `arbitrum.json`, checked onchain on
+2026-11-11; heartbeats as published in Chainlink's reference data directory
+and measured from the last 12 rounds). Fee 1%, price bound 2%, the same venue
+and Spend Permission Manager addresses, a fees Safe on each chain.
+
+| Chain | `sequencerUptimeFeed` | Tokens (feed heartbeat → `maxAge`) |
+|---|---|---|
+| Ethereum (1) | `address(0)`: no sequencer; `_checkSequencer` returns early | USDC (23 h → 25 h), USDT (24 h → 25 h), DAI (1 h → 90 min), WETH via ETH / USD (1 h → 90 min), cbBTC (24 h → 25 h) |
+| Arbitrum (42161) | `0xFdB631F5EE196F0ed6FAa767959853A9F217697D` | USDC (4 min → 8 min), USD₮0 via USDT / USD (4 min → 8 min), WETH via ETH / USD (29 min → 45 min), WBTC (24 h → 25 h), ARB (24 h → 25 h) |
+
+Two points for review: the zero sequencer address on Ethereum (the
+constructor allows it, and the Base Sepolia deployment already runs with it),
+and USDT's approval behaviour on Ethereum (the router uses SafeERC20's
+`forceApprove`, which handles a token that requires a zero allowance first).
 
 ## 7. Practicalities
 

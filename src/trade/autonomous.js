@@ -54,6 +54,8 @@ const SAFE_MODULE = new ethers.Interface([`function swap(address safe, ${SWAP_TU
 const DELEGATOR = new ethers.Interface(abis.EIP7702StatelessDeleGator);
 const SINGLE_DEFAULT_MODE = ethers.ZeroHash;
 const NOT_SEEN_MINUTES = 30;
+/** Gas a router trade typically uses, for the minimum-size check before a buy is queued (the real estimate comes before sending). */
+const TYPICAL_TRADE_GAS = 450000n;
 const LOCK_ID = 727001; // pg advisory lock: one sender at a time
 
 class IntentRefused extends Error { constructor(m) { super(m); this.status = 422; } }
@@ -111,6 +113,49 @@ function provider(net) {
   return providers.get(key);
 }
 
+/**
+ * Where a signed trade is broadcast. On Ethereum it's Flashbots Protect
+ * (net.sendRpc): the transaction goes privately to block builders, so nobody
+ * can see it in the public mempool and trade ahead of it, and a transaction
+ * that would revert is never included (no gas is spent on it). Everywhere
+ * else it's the chain's own RPC.
+ */
+function sendProvider(net) {
+  if (!net.sendRpc) return provider(net);
+  const key = `${net.chainId}|send|${net.sendRpc}`;
+  if (!providers.has(key)) providers.set(key, new ethers.JsonRpcProvider(net.sendRpc, net.chainId, { staticNetwork: true, cacheTimeout: -1 }));
+  return providers.get(key);
+}
+
+/**
+ * The network fee for a trade, in USD (8 decimals), priced by the router's own
+ * ETH feed: what RektBull pays to send it. null on a test network.
+ */
+async function gasUsd(net, gas, p = provider(net)) {
+  if (TESTNETS.has(net.chainId)) return null;
+  const weth = networks.routerToken(net, 'WETH');
+  if (!weth) return null;
+  const fee = await p.getFeeData();
+  const wei = gas * (fee.gasPrice ?? fee.maxFeePerGas ?? 0n); // what a trade costs now (eth_gasPrice), not the worst-case cap
+  return BigInt(await venues.view(net, 'valueUsd', [weth.address, wei]));
+}
+
+/**
+ * RektBull pays the gas for automatic trades. A buy must be large enough that
+ * its fee (1%) covers that gas, or every trade would cost more than it earns;
+ * on Ethereum that's often tens or hundreds of dollars, on Base and Arbitrum
+ * cents. Sells are never refused for this (getting out matters more).
+ * Returns { ok, minUsd, gasUsd } for amountUsd.
+ */
+async function coversGas(net, amountUsd, gas = TYPICAL_TRADE_GAS) {
+  const g = await gasUsd(net, gas);
+  if (g === null) return { ok: true, minUsd: 0, gasUsd: 0 };
+  const feeBps = BigInt(await venues.view(net, 'FEE_BPS', []));
+  const gasDollars = Number(g) / 1e8;
+  const minUsd = feeBps > 0n ? Math.ceil(gasDollars * 10000 / Number(feeBps)) : Infinity;
+  return { ok: amountUsd * Number(feeBps) / 10000 >= gasDollars, minUsd, gasUsd: Math.round(gasDollars * 100) / 100 };
+}
+
 /** Closes the network connections (tests and shutdown). */
 function close() {
   for (const p of providers.values()) p.destroy();
@@ -145,6 +190,8 @@ async function queue(account, input, { source = 'user', reason = null } = {}) {
     if (!(amountUsd > 0)) throw new IntentRefused('amount_usd must be a positive number for a buy.');
     const settings = await rules.settingsFor(account.id);
     if (amountUsd > settings.max_trade_usd) throw new IntentRefused(`$${amountUsd} is over your per-trade amount of $${settings.max_trade_usd}.`);
+    const cover = await coversGas(net, amountUsd).catch(() => null); // checked again with the real estimate before sending
+    if (cover && !cover.ok) throw new IntentRefused(`On ${net.label}, RektBull pays about $${cover.gasUsd} in network fees for each trade, so an automatic buy has to be at least $${cover.minUsd} for its 1% fee to cover them. Trade more at once, or buy on ${net.label} yourself from the Trade desk (you pay the network fee then).`);
   } else {
     sellAmount = input.sell_amount ? BigInt(input.sell_amount) : null;
     if (!sellAmount) {
@@ -258,6 +305,11 @@ async function execute(intent) {
   } catch (err) {
     return fail(intent, `refused before sending: ${revertReason(err)}`);
   }
+  if (intent.side === 'buy') {
+    // The real gas, priced now: a buy whose fee wouldn't cover what RektBull pays to send it isn't sent.
+    const cover = await coversGas(net, Number(intent.amount_usd), await p.estimateGas({ from, ...call }));
+    if (!cover.ok) return fail(intent, `not sent: the network fee (about $${cover.gasUsd}) is more than this trade's fee; an automatic buy on ${net.label} needs at least $${cover.minUsd} right now`);
+  }
   const tx = await signer.populateTransaction(call);
   tx.gasLimit = (BigInt(tx.gasLimit) * 13n) / 10n;
   const unsigned = ethers.Transaction.from({ ...tx, from: undefined });
@@ -266,8 +318,8 @@ async function execute(intent) {
   const hash = ethers.keccak256(raw);
   // Record the hash before broadcasting: a crash in between is then checked against the chain, never resent blindly.
   await db.query(`UPDATE trade_intents SET status = 'sent', tx_hash = $2, sent_at = now() WHERE id = $1`, [intent.id, hash]);
-  await p.broadcastTransaction(raw);
-  logger.info('autonomous trade sent', { intent: intent.id, tx: hash });
+  await sendProvider(net).broadcastTransaction(raw);
+  logger.info('autonomous trade sent', { intent: intent.id, tx: hash, private: !!net.sendRpc });
 }
 
 /** Confirms a sent trade from its receipt and the router's Swapped event. */
@@ -326,7 +378,15 @@ async function tick() {
         return;
       }
       const { rows: queued } = await db.query(`SELECT * FROM trade_intents WHERE status = 'queued' ORDER BY created_at LIMIT 10`);
+      // A trade sent privately (Flashbots Protect) isn't in the public mempool, so the public RPC can't count it in the
+      // key's next nonce: on those networks only one trade is in flight at a time, and the next waits for it to land.
+      const { rows: inFlight } = await db.query(`SELECT DISTINCT chain_id FROM trade_intents WHERE status = 'sent'`);
+      const busy = new Set(inFlight.map(r => Number(r.chain_id)));
       for (const i of queued) {
+        let net = null;
+        try { net = networks.network(i.chain_id); } catch { /* execute() fails it with the reason */ }
+        if (net?.sendRpc && busy.has(Number(i.chain_id))) continue;
+        if (net?.sendRpc) busy.add(Number(i.chain_id));
         try { await execute(i); } catch (err) {
           logger.error('autonomous trade failed', { intent: i.id, error: err.message });
           const { rows } = await db.query('SELECT status FROM trade_intents WHERE id = $1', [i.id]);
@@ -352,4 +412,4 @@ async function cancel(account, id) {
   return present(rows[0]);
 }
 
-module.exports = { queue, execute, confirm, tick, list, cancel, close, revertReason, IntentRefused, ROUTER };
+module.exports = { queue, execute, confirm, tick, list, cancel, close, revertReason, coversGas, sendProvider, IntentRefused, ROUTER, TYPICAL_TRADE_GAS };

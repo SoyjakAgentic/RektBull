@@ -1,0 +1,94 @@
+{
+  "_about": "The Trade Router's Ethereum mainnet parameters. No sequencer feed (Ethereum has no sequencer). Automatic trades are sent through Flashbots Protect (sendRpc), so they can't be front-run, and a buy must be large enough that its 1% fee covers the gas RektBull pays. scripts/deployRouter.js checks every value here onchain first. feeWallet is given at deployment (FEE_WALLET) and must be a Safe.",
+  "chain": "ethereum",
+  "chainId": 1,
+  "label": "Ethereum",
+  "explorer": "https://etherscan.io",
+  "defaultBase": "USDC",
+  "sendRpc": "https://rpc.flashbots.net/fast",
+  "checkedOnchain": "2026-11-11",
+  "heartbeatSource": "Chainlink reference data directory (feeds-mainnet.json) and the last 12 rounds onchain",
+  "auditedCommit": "31c9c8c",
+  "auditedSources": [
+    "contracts/RektBullTradeRouter.sol",
+    "contracts/RektBullSafeModule.sol"
+  ],
+  "openzeppelin": "5.6.1",
+  "feeBps": 100,
+  "maxSlippageBps": 200,
+  "spendPermissionManager": "0xf85210B21cC50302F477BA56686d2019dC9b67Ad",
+  "venues": [
+    {
+      "name": "0x AllowanceHolder",
+      "address": "0x0000000000001fF3684f28c67538d4D072C22734"
+    }
+  ],
+  "sequencerUptimeFeed": null,
+  "tokens": [
+    {
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "feed": {
+        "address": "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
+        "description": "USDC / USD",
+        "decimals": 8,
+        "heartbeat": 82800
+      },
+      "maxAge": 90000
+    },
+    {
+      "symbol": "USDT",
+      "name": "Tether USD",
+      "decimals": 6,
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "feed": {
+        "address": "0x3E7d1eAB13ad0104d2750B8863b489D65364e32D",
+        "description": "USDT / USD",
+        "decimals": 8,
+        "heartbeat": 86400
+      },
+      "maxAge": 90000
+    },
+    {
+      "symbol": "DAI",
+      "name": "Dai Stablecoin",
+      "decimals": 18,
+      "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "feed": {
+        "address": "0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9",
+        "description": "DAI / USD",
+        "decimals": 8,
+        "heartbeat": 3600
+      },
+      "maxAge": 5400
+    },
+    {
+      "symbol": "WETH",
+      "name": "Wrapped Ether",
+      "decimals": 18,
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "feed": {
+        "address": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+        "description": "ETH / USD",
+        "decimals": 8,
+        "heartbeat": 3600
+      },
+      "maxAge": 5400
+    },
+    {
+      "symbol": "cbBTC",
+      "name": "Coinbase Wrapped BTC",
+      "decimals": 8,
+      "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "feed": {
+        "address": "0x2665701293fCbEB223D11A08D826563EDcCE423A",
+        "description": "cbBTC / USD",
+        "decimals": 8,
+        "heartbeat": 86400
+      },
+      "maxAge": 90000
+    }
+  ]
+}
