@@ -153,6 +153,11 @@ describe('RektBull Meme Router: break-it tests', function () {
     await fails(router.connect(attacker).fill({ ...o, executor: attacker.address }, sig, f), /BadSignature/);
   });
 
+  it('an order with no minimum is refused: it could be filled at any price (found by the fuzz tests)', async () => {
+    const { o, sig } = await order(user, { minAmountOut: 0n });
+    await fails(router.connect(executor).fill(o, sig, viaVenue({ amountIn: o.amountIn, rate: 1n })), /NotAllowed/);
+  });
+
   it('outside its window, or cancelled, it can\'t be filled; only the account can cancel its orders', async () => {
     const rate = PER_1000(usdc(100));
     const later = await order(user, { validAfter: (await now()) + 3600 });

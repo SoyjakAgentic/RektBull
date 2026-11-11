@@ -185,7 +185,7 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
 
         // The fee, on the input unless the output is a base asset.
         bool feeOnOutput = isBase[o.tokenOut];
-        uint256 fee;
+        uint256 fee = 0;
         if (!feeOnOutput) {
             fee = received * FEE_BPS / 10_000;
             if (fee > 0) IERC20(o.tokenIn).safeTransfer(FEE_WALLET, fee);
@@ -227,7 +227,8 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         h = hashOrder(o);
         if (cancelled[h]) revert OrderCancelled();
         if (!SignatureChecker.isValidSignatureNow(o.account, h, signature)) revert BadSignature();
-        if (o.tokenIn == o.tokenOut || o.tokenIn == NATIVE || o.amountIn == 0 || f.amountIn == 0) revert NotAllowed();
+        // An order must name a price: with no minimum, it could be filled at any price at all.
+        if (o.tokenIn == o.tokenOut || o.tokenIn == NATIVE || o.amountIn == 0 || o.minAmountOut == 0 || f.amountIn == 0) revert NotAllowed();
         if (!isVenue[f.venue] || !isVenue[f.spender]) revert NotAllowed();
         if (f.unwrapIn && (address(WRAPPED_NATIVE) == address(0) || o.tokenIn != address(WRAPPED_NATIVE) || o.tokenOut == NATIVE)) {
             revert NotAllowed();
