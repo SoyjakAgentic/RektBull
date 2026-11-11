@@ -2,9 +2,10 @@
 
 - **Crypto payments only.** No card processors (no Stripe). Rails: x402 (USDC on
   Base), USDT/USDC credit top-ups, NOWPayments' hosted crypto checkout (no card
-  or fiat options), prepaid passes, and in-kind fees on claims
-  and yield moves (a share of what's claimed or moved, in a plain transfer the
-  user signs next to it; see docs/PAYMENTS.md). No recurring pulls and no
+  or fiat options), prepaid passes, and in-kind fees on claims,
+  yield moves and four.meme curve buys paid in BNB (a share of what's claimed,
+  moved or spent, in a plain transfer the user signs next to it; see
+  docs/PAYMENTS.md). No recurring pulls and no
   token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the

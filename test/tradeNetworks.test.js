@@ -75,15 +75,18 @@ test('a buy must be large enough that its fee covers the gas RektBull pays', asy
   }
 });
 
-test('trades the user signs are offered on Base, Ethereum and Arbitrum', () => {
-  const { TRADE_CHAINS, tradeChain } = require('../src/trade/chains');
-  assert.deepEqual(Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, c.chainId])), { base: 8453, ethereum: 1, arbitrum: 42161 });
+test('trades the user signs are offered on Base, Ethereum, Arbitrum and BNB Chain', () => {
+  const { TRADE_CHAINS, tradeChain, NATIVE } = require('../src/trade/chains');
+  assert.deepEqual(Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, c.chainId])), { base: 8453, ethereum: 1, arbitrum: 42161, bsc: 56 });
   for (const c of Object.values(TRADE_CHAINS)) {
     assert.equal(c.allowanceHolder, '0x0000000000001ff3684f28c67538d4d072c22734', `${c.label}: 0x's AllowanceHolder only`);
-    assert.deepEqual(Object.keys(c.bases), ['USDC', 'ETH', 'WETH']);
+    assert.deepEqual(Object.keys(c.bases), c.chainId === 56 ? ['USDT', 'USDC', 'BNB', 'WBNB'] : ['USDC', 'ETH', 'WETH']);
   }
   assert.equal(tradeChain('Arbitrum').bases.USDC.address, '0xaf88d065e77c8cc2239327c5edb3a432268e5831');
-  assert.throws(() => tradeChain('polygon'), /base, ethereum, arbitrum/);
+  // BNB Chain's stablecoins use 18 decimals, unlike USDC elsewhere (read onchain, 11 November 2026).
+  const bsc = tradeChain('bsc');
+  assert.deepEqual([bsc.label, bsc.defaultBase, bsc.bases.USDT.decimals, bsc.bases.USDC.decimals, bsc.bases.BNB.address, bsc.bases.BNB.priceId], ['BNB Chain', 'USDT', 18, 18, NATIVE, 'coingecko:binancecoin']);
+  assert.throws(() => tradeChain('polygon'), /base, ethereum, arbitrum, bsc/);
 });
 
 const DB = process.env.TEST_DATABASE_URL;

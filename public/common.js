@@ -115,9 +115,19 @@
 
   function notify() { for (const f of listeners) Promise.resolve(f()).catch(err => console.error(err)); }
 
+  // Chains a wallet may not have yet: offered to it to add (EIP-3085) when it can't switch to one.
+  const ADDABLE = {
+    '0x38': { chainId: '0x38', chainName: 'BNB Smart Chain', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, rpcUrls: ['https://bsc-dataseed.bnbchain.org'], blockExplorerUrls: ['https://bscscan.com'] },
+  };
   async function switchChain(chainId) {
+    chainId = String(chainId).toLowerCase();
     if ((await request('eth_chainId')).toLowerCase() === chainId) return;
-    await request('wallet_switchEthereumChain', [{ chainId }]);
+    try {
+      await request('wallet_switchEthereumChain', [{ chainId }]);
+    } catch (err) {
+      if (err.code !== 4902 || !ADDABLE[chainId]) throw err;
+      await request('wallet_addEthereumChain', [ADDABLE[chainId]]);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {

@@ -13,7 +13,7 @@
     <div class="wrap wide">
       <span class="eyebrow">Launches</span>
       <h1>New tokens, <em>checked before you trade them</em></h1>
-      <p>The newest tokens on Base, Ethereum and Arbitrum, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
+      <p>The newest tokens on Base, Ethereum, Arbitrum and BNB Chain, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
       <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
       <nav class="jump" aria-label="On this page"><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
     </div>
@@ -24,7 +24,7 @@
       <div class="chart-head">
         <h2>New tokens</h2>
         <div class="row filters">
-          <label class="inline">Network <select id="l-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option></select></label>
+          <label class="inline">Network <select id="l-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option><option value="bsc">BNB Chain</option></select></label>
           <button class="btn" type="button" id="l-reload">Refresh</button>
         </div>
       </div>
@@ -34,17 +34,24 @@
     </section>
 
     <section class="card" id="curve-card">
-      <div class="chart-head"><h2>On a bonding curve <span class="tag">Base</span></h2><button class="btn" type="button" id="c-reload">Refresh</button></div>
-      <p class="small muted">Tokens launched on Virtuals that haven't graduated to an exchange yet: they're bought and sold on Virtuals' own contract. RektBull swaps your USDC or ETH into VIRTUAL through 0x (its 1% fee is taken there), then buys on the curve; your wallet signs each step.</p>
+      <div class="chart-head">
+        <h2>On a bonding curve</h2>
+        <div class="row filters">
+          <label class="inline">Launchpad <select id="c-chain"><option value="base">Virtuals (Base)</option><option value="bsc">four.meme (BNB Chain)</option></select></label>
+          <button class="btn" type="button" id="c-reload">Refresh</button>
+        </div>
+      </div>
+      <p class="small muted" id="c-how" data-chain="base">Tokens launched on Virtuals that haven't graduated to an exchange yet: they're bought and sold on Virtuals' own contract. RektBull swaps your USDC or ETH into VIRTUAL through 0x (its 1% fee is taken there), then buys on the curve; your wallet signs each step.</p>
+      <p class="small muted" id="c-how-bsc" hidden>Tokens launched on four.meme that haven't graduated to PancakeSwap yet: they're bought and sold on four.meme's own contract, with its 1% fee each way. Pay with BNB (99% buys on the curve; RektBull's 1% is a separate transfer sent with the buy), or with USDT or USDC, swapped into BNB through 0x with the 1% taken there. A sale's 1% is paid by four.meme's contract from the sale itself, in the same transaction. Your wallet signs each step.</p>
       <p id="c-msg" class="msg"></p>
-      <div class="tablewrap"><table class="rank" id="c-table"><thead><tr><th>Token</th><th class="num">To graduating</th><th class="num">VIRTUAL in the curve</th><th>Launchpad's tax</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="tablewrap"><table class="rank" id="c-table"><thead><tr><th>Token</th><th class="num">To graduating</th><th class="num">In the curve</th><th>Launchpad's fee</th><th></th></tr></thead><tbody></tbody></table></div>
       <p id="c-src" class="source"></p>
     </section>
 
     <section class="card" id="token-card">
       <h2>A token</h2>
       <form class="row" id="t-form" autocomplete="off">
-        <label class="inline">Network <select id="t-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option></select></label>
+        <label class="inline">Network <select id="t-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option><option value="bsc">BNB Chain</option></select></label>
         <label class="inline wide-input">Token address <input id="t-token" placeholder="0x…" spellcheck="false"></label>
         <button class="btn" type="submit">Show</button>
       </form>

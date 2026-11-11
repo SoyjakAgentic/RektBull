@@ -39,6 +39,14 @@ export default defineConfig({
       chainId: 8453,
       forking: { url: BASE_MAINNET_RPC },
     },
+    // A copy of BNB Chain, for checking four.meme's bonding-curve calls (scripts/fourMemeCheck.js). No router is deployed there.
+    bscMainnetFork: {
+      type: 'edr-simulated',
+      chainType: 'l1',
+      hardfork: 'prague',
+      chainId: 56,
+      forking: { url: process.env.BSC_RPC_URL || 'https://bsc-rpc.publicnode.com' },
+    },
     ...routerChain('ethereum', 1, ETHEREUM_RPC),
     ...routerChain('arbitrum', 42161, ARBITRUM_RPC),
     baseSepolia: {

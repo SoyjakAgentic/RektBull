@@ -1,5 +1,5 @@
 /**
- * The Launches desk: new tokens on Base, Ethereum and Arbitrum, each with the
+ * The Launches desk: new tokens on Base, Ethereum, Arbitrum and BNB Chain, each with the
  * checks RektBull already has, and trading through the Trade desk (the
  * user's wallet signs; 0x routes the trade, 1% fee).
  *
@@ -11,10 +11,10 @@
  *   fee pays for it). A critical bundle finding stops the buy; a high one
  *   needs the buyer to confirm they've read it.
  *
- * - Base launchpads (services/launchpads.js): each token's launchpad
- *   (Clanker, Zora, Virtuals) read from the launchpad's own contract, and the
- *   newest tokens still on Virtuals' bonding curve, traded on that curve.
- *   four.meme and pump.fun come in later phases.
+ * - Launchpads (services/launchpads.js): each token's launchpad (Clanker,
+ *   Zora, Virtuals on Base; four.meme on BNB Chain) read from the launchpad's
+ *   own contract, and the newest tokens still on Virtuals' and four.meme's
+ *   bonding curves, traded on those curves. pump.fun comes in a later phase.
  */
 const { cached } = require('../lib/cache');
 const gt = require('../providers/geckoterminal');
@@ -26,8 +26,10 @@ class LaunchesRefused extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
 
-const CHAINS = ['base', 'ethereum', 'arbitrum'];
-const NAMES = { base: 'Base', ethereum: 'Ethereum', arbitrum: 'Arbitrum' };
+const CHAINS = ['base', 'ethereum', 'arbitrum', 'bsc'];
+const NAMES = { base: 'Base', ethereum: 'Ethereum', arbitrum: 'Arbitrum', bsc: 'BNB Chain' };
+/** Chains whose launchpads RektBull reads, and what it reads there. */
+const PAD_CHAINS = { base: 'Clanker\'s, Zora\'s and Virtuals\' contracts', bsc: 'four.meme\'s contract' };
 /** A token is "young" for the extra launch checks while its first pool is under this old. */
 const YOUNG_HOURS = 7 * 24;
 /** GoPlus's free plan answers one token a call: the feed checks the newest few, cached for 6 hours. */
@@ -36,7 +38,7 @@ const EXCHANGES = { 'uniswap-v4': 'Uniswap v4', 'uniswap-v3': 'Uniswap v3', 'uni
 const exchangeName = id => {
   const s = String(id || '');
   const hit = Object.keys(EXCHANGES).find(k => s.startsWith(k));
-  return hit ? EXCHANGES[hit] : s.replace(/[-_](base|ethereum|arbitrum|eth)$/i, '').replace(/[-_]/g, ' ');
+  return hit ? EXCHANGES[hit] : s.replace(/[-_](base|ethereum|arbitrum|eth|bsc)$/i, '').replace(/[-_]/g, ' ');
 };
 
 function parse(q = {}) {
@@ -72,7 +74,7 @@ async function feed({ chain = 'base' } = {}) {
     }));
   const [flags, pads] = await Promise.all([
     pool(rows.slice(0, FLAGGED_IN_FEED), 2, r => discover.flags({ chain, token: r.token })),
-    chain === 'base' ? pool(rows, 3, r => launchpads.identify(chain, r.token)) : [],
+    PAD_CHAINS[chain] ? pool(rows, 3, r => launchpads.identify(chain, r.token)) : [],
   ]);
   rows.forEach((r, i) => {
     r.flags = i < FLAGGED_IN_FEED ? flags[i] : null;
@@ -81,7 +83,7 @@ async function feed({ chain = 'base' } = {}) {
   });
   return {
     chain, chain_name: NAMES[chain], tokens: rows,
-    sources: [list.source, `GoPlus token security for the newest ${FLAGGED_IN_FEED} (cached 6 hours)`, ...(chain === 'base' ? ['each token\'s launchpad, read from Clanker\'s, Zora\'s and Virtuals\' contracts'] : [])],
+    sources: [list.source, `GoPlus token security for the newest ${FLAGGED_IN_FEED} (cached 6 hours)`, ...(PAD_CHAINS[chain] ? [`each token's launchpad, read from ${PAD_CHAINS[chain]}`] : [])],
     note: 'New tokens are where most scams start, and most new tokens go to zero. Nothing here is a recommendation or financial advice. Buying runs RektBull\'s full checks first, and stops the trade when one finds a critical risk.',
   };
 }
@@ -125,14 +127,21 @@ async function forTrade({ chain, token }) {
   return { young: true, risk, verdict: r.verdict, detail: r.summary, flags, groups: r.groups.length, sources: r.sources };
 }
 
-/** The newest tokens still on Virtuals' bonding curve (Base), each with how far it is to graduating. */
-async function curves() {
+const CURVES = {
+  base: { pad: 'Virtuals', list: () => launchpads.newestOnCurve(10), source: 'Virtuals\' Bonding contract on Base, read onchain (refreshed every 2 minutes)', dex: 'Uniswap' },
+  bsc: { pad: 'four.meme', list: () => launchpads.newestOnFourMeme(10), source: 'four.meme\'s TokenManager2 and helper contracts on BNB Chain, read onchain (refreshed every 2 minutes); tokens priced in BNB with at least 1% of the curve sold', dex: 'PancakeSwap' },
+};
+
+/** The newest tokens still on a launchpad's bonding curve: Virtuals (Base) or four.meme (BNB Chain), each with how far it is to graduating. */
+async function curves({ chain = 'base' } = {}) {
+  const c = CURVES[chain];
+  if (!c) throw new LaunchesRefused(`chain must be one of: ${Object.keys(CURVES).join(', ')}.`);
   let list;
-  try { list = await launchpads.newestOnCurve(10); } catch (err) { throw new LaunchesRefused(`Virtuals' contract couldn't be read just now (${err.message}). Try again in a minute.`, 503); }
+  try { list = await c.list(); } catch (err) { throw new LaunchesRefused(`${c.pad}'s contract couldn't be read just now (${err.message}). Try again in a minute.`, 503); }
   return {
-    chain: 'base', tokens: list.map(t => ({ token: t.token, ticker: t.ticker, launchpad: t.name, link: t.link, curve: t.curve })),
-    source: 'Virtuals\' Bonding contract on Base, read onchain (refreshed every 2 minutes)',
-    note: 'Tokens on a bonding curve are bought and sold on the launchpad\'s own contract until they graduate to Uniswap. Most never graduate. Nothing here is a recommendation or financial advice.',
+    chain, launchpad: c.pad, tokens: list.map(t => ({ token: t.token, ticker: t.ticker, launchpad: t.name, link: t.link, curve: t.curve })),
+    source: c.source,
+    note: `Tokens on a bonding curve are bought and sold on the launchpad's own contract until they graduate to ${c.dex}. Most never graduate. Nothing here is a recommendation or financial advice.`,
   };
 }
 

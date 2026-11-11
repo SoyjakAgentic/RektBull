@@ -308,13 +308,19 @@ const RUNNERS = {
             if (change <= -settings.stop_loss_pct && !p.stop_alerted) { alert('high', 'stop', `down ${-change}%, past your stop-loss of ${settings.stop_loss_pct}%`, facts); p.stop_alerted = true; }
           }
         }
-        // A token bought on Virtuals' bonding curve: told once when it graduates (a new token replaces it).
-        if (pos.chain === 'base' && p.launchpad !== 'none') {
-          const pad = await require('./launchpads').identify('base', pos.token).catch(() => null);
-          p.launchpad = pad?.launchpad || 'none';
+        // A token bought on a bonding curve (Virtuals on Base, four.meme on BNB Chain): told once when it graduates.
+        if (['base', 'bsc'].includes(pos.chain) && p.launchpad !== 'none') {
+          const pad = await require('./launchpads').identify(pos.chain, pos.token).catch(() => null);
+          p.launchpad = pad?.launchpad || (pad ? 'none' : p.launchpad);
           if (pad?.launchpad === 'virtuals' && pad.state === 'graduated' && !p.graduated_alerted) {
             alert('medium', 'graduated', 'it graduated from Virtuals\' bonding curve', [
               { text: `It now trades on Uniswap as ${pad.agent_token || 'a new agent token'}, and Virtuals swaps holders of the curve token for it. Until that happens, the curve token can't be sold on the curve.`, source: pad.source },
+            ]);
+            p.graduated_alerted = true;
+          }
+          if (pad?.launchpad === 'fourmeme' && pad.state === 'graduated' && !p.graduated_alerted) {
+            alert('medium', 'graduated', 'it graduated from four.meme\'s bonding curve', [
+              { text: 'It raised its target and now trades on PancakeSwap, the same token, so a sale now goes through 0x like any other token. Prices often swing hard right after graduating.', source: pad.source },
             ]);
             p.graduated_alerted = true;
           }

@@ -23,9 +23,14 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
   await require('../../src/config/migrate').migrate();
   require('../../src/services/dueDiligence').quickCheck = async () => ({ verdict: 'high', flags: [{ id: 'upgradeable', severity: 'high', title: 'Its code can be replaced (a proxy)', evidence: 'Implementation: 0xabc' }] });
   require('../../src/trade/zeroex').setTransport(async (path, params) => (params.sellToken.toLowerCase() === TOKEN
-    ? { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '97000000', minBuyAmount: '96000000' }
+    ? (params.buyToken.toLowerCase() === '0x55d398326f99059ff775485246999027b3197955' // BNB Chain's USDT has 18 decimals
+      ? { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(97n * 10n ** 18n), minBuyAmount: String(96n * 10n ** 18n) }
+      : { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '97000000', minBuyAmount: '96000000' })
     : { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '1000000', minBuyAmount: '990000', issues: { allowance: { spender: AH } }, transaction: { to: AH, data: '0xdeadbeef', value: '0', gas: '200000' } }));
 
+  // No launchpad and no young-token check here (both would read live chains).
+  require('../../src/services/launchpads').identify = async () => ({ launchpad: null });
+  require('../../src/services/launches').forTrade = async () => ({ young: false, risk: 'ok', detail: 'its first pool opened 30 days ago (test)' });
   const { createApp } = require('../../src/app');
   const server = createApp().listen(0);
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -40,11 +45,17 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
   await page.exposeFunction('__sent', tx => { sent.push(tx); return '0x' + String(sent.length).padStart(64, '0'); });
   await page.addInitScript(addr => {
     let chainId = '0x1';
+    const known = new Set(['0x1', '0x2105', '0xa4b1', '0x14a34']); // BNB Chain isn't, until it's added
+    window.__added = [];
     const provider = {
       request: async ({ method, params }) => {
         if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [addr];
         if (method === 'eth_chainId') return chainId;
-        if (method === 'wallet_switchEthereumChain') { chainId = params[0].chainId; return null; }
+        if (method === 'wallet_switchEthereumChain') {
+          if (!known.has(params[0].chainId)) throw Object.assign(new Error('Unrecognized chain ID'), { code: 4902 });
+          chainId = params[0].chainId; return null;
+        }
+        if (method === 'wallet_addEthereumChain') { window.__added.push(params[0]); known.add(params[0].chainId); chainId = params[0].chainId; return null; }
         if (method === 'personal_sign') return window.__sign(params[0]);
         if (method === 'eth_signTypedData_v4') return '0x' + '00'.repeat(65);
         if (method === 'wallet_sendCalls') throw Object.assign(new Error('Method not supported'), { code: 4200 });
@@ -88,6 +99,28 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     assert.equal(sent[1].data, '0xdeadbeef');
     await page.getByText('submitted').first().waitFor();
     console.log('✔ approve: the wallet is asked for the approval (USDC to AllowanceHolder) and the swap; the trade shows as submitted');
+
+    // BNB Chain: its own base assets; a wallet that doesn't have the chain is asked to add it.
+    await page.selectOption('#chain', 'bsc');
+    assert.deepEqual(await page.$$eval('#base option', o => o.map(x => x.textContent)), ['USDT', 'USDC', 'BNB', 'WBNB']);
+    assert.equal(await page.inputValue('#base'), 'USDC', 'the asset picked on Base is kept where BNB Chain has it too');
+    await page.selectOption('#base', 'USDT');
+    await page.getByRole('button', { name: 'Check this trade' }).click();
+    await page.getByText('high risk').first().waitFor();
+    await page.check('#ack');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByText('RektBull fee:').waitFor();
+    assert.match(await page.textContent('#plan'), /Buy \$100\.00 of 0x7a7a.* with USDT on BNB Chain/);
+    await page.getByRole('button', { name: 'Approve and sign in my wallet' }).click();
+    await page.waitForFunction(n => document.body.innerText.split('RektBull will confirm it onchain').length > n, 1);
+    const added = await page.evaluate(() => window.__added);
+    assert.deepEqual(added.map(a => [a.chainId, a.chainName, a.nativeCurrency.symbol]), [['0x38', 'BNB Smart Chain', 'BNB']]);
+    assert.equal(sent.length, 4, 'approve, then swap');
+    assert.equal(sent[2].to.toLowerCase(), '0x55d398326f99059ff775485246999027b3197955', 'USDT on BNB Chain approved');
+    assert.equal(sent[3].to.toLowerCase(), AH);
+    await page.selectOption('#chain', 'base');
+    sent.splice(2, 2); // the rest of this test counts from the first trade
+    console.log('✔ BNB Chain: USDT, USDC, BNB and WBNB; a wallet without the chain is asked to add it; approve then swap');
 
     await page.fill('#l-day', '25000');
     assert.equal(await page.isVisible('#confirm-wrap'), true, 'above the defaults asks for confirmation');
