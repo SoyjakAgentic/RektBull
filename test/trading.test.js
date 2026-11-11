@@ -34,7 +34,7 @@ test('trading', async t => {
   const port = await rpcReady;
   Object.assign(process.env, {
     TRADING_ENABLED: 'true', SWAP_FEE_WALLET_EVM: FEE_WALLET, ZEROEX_API_KEY: 'test',
-    RPC_URLS_BASE: `http://127.0.0.1:${port}`, TRADE_ROUTERS: JSON.stringify({ 84532: ROUTER_SEPOLIA }),
+    RPC_URLS_BASE: `http://127.0.0.1:${port}`, RPC_URLS_BSC: `http://127.0.0.1:${port}`, TRADE_ROUTERS: JSON.stringify({ 84532: ROUTER_SEPOLIA }),
     JWT_SECRET: 'test-secret', ...(process.env.TEST_DATABASE_URL ? { DATABASE_URL: process.env.TEST_DATABASE_URL } : {}),
   });
   t.after(() => rpc.close());
@@ -297,6 +297,78 @@ test('trading', async t => {
     await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /graduated.*0xa9a9/);
     const { walletCalls: wc } = require('../src/trade/calls');
     assert.throws(() => wc({ chain: 'base', side: 'buy', token: CURVE, route: { kind: 'virtuals_curve', bonding: '0x' + 'ee'.repeat(20), frouter: lp.ADDR.frouter, virtual: VIRTUAL } }), /doesn't use/);
+
+    // ── A four.meme token on its bonding curve (BNB Chain): USDT through 0x into BNB, then the curve ──
+    const NATIVE = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const USDT = '0x55d398326f99059ff775485246999027b3197955';
+    const FM = '0x' + 'f4'.repeat(20);
+    const TM2 = lp.FOURMEME.tokenManager;
+    const E18 = 10n ** 18n;
+    await require('../src/lib/cache').set('price:coingecko:binancecoin', 600, 300); // BNB at $600, no network
+    let fm = { launchpad: 'fourmeme', name: 'four.meme', version: 2, token_manager: TM2, quote: 'bnb', quote_symbol: 'BNB', state: 'curve', source: 'four.meme\'s TokenManagerHelper3 contract onchain (getTokenInfo)', curve: { progress_pct: 3.8, graduates_at: 14.6, buy_tax_pct: 1, sell_tax_pct: 1, min_fee_wei: '0' } };
+    lp.identify = async (c, t) => (c === 'bsc' && t === FM ? fm : { launchpad: null });
+    lp.fourMemeBuyQuote = async (_t, funds) => ({ amount: funds * 100_000_000n / E18, msgValue: funds, manager: TM2 }); // 1 BNB buys 100M tokens
+    lp.fourMemeSellQuote = async (_t, n) => { const gross = n * E18 / 100_000_000n * 98n / 99n; return { funds: gross * 99n / 100n, fee: gross / 100n }; };
+    zeroex.setTransport(async (path, params) => {
+      seen.push({ path, params });
+      if (params.buyToken === NATIVE) return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(17n * E18 / 100n), minBuyAmount: String(16n * E18 / 100n), issues: { allowance: { spender: AH } }, transaction: { to: AH, data: '0xc0ffee', value: '0' } };
+      // Selling BNB the curve sale delivers in the same batch: 0x sees no balance yet.
+      return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '90000000000000000000', minBuyAmount: '89000000000000000000', issues: { balance: { actual: '0', expected: params.sellAmount } }, transaction: { to: AH, data: '0xbeef', value: params.sellAmount } };
+    });
+    const fmBuy = await proposals.approve(account, (await proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'USDT', amount_usd: 100 })).id);
+    assert.deepEqual(fmBuy.plan.checks.map(c => c.check), ['launchpad', 'per_trade_amount', 'bundle', 'sell_back']);
+    assert.match(fmBuy.plan.checks[0].detail, /four\.meme token on its bonding curve \(3\.8% sold; it graduates to PancakeSwap at 14\.6 BNB/);
+    assert.deepEqual([seen.at(-1).params.sellToken, seen.at(-1).params.buyToken, seen.at(-1).params.swapFeeBps, seen.at(-1).params.swapFeeToken], [USDT, NATIVE, 100, USDT], 'the 1% fee is inside the 0x swap into BNB, in USDT');
+    assert.deepEqual(fmBuy.calls.calls.map(c => c.step), ['approve', 'to_bnb', 'swap']);
+    assert.equal(fmBuy.calls.confirm_step, 'swap');
+    const fmCurveBuy = fmBuy.calls.calls[2];
+    assert.deepEqual([fmCurveBuy.to, BigInt(fmCurveBuy.value)], [TM2, 16n * E18 / 100n], 'four.meme\'s TokenManager2, sent exactly the least BNB the swap delivers');
+    const fb = lp.TOKEN_MANAGER.decodeFunctionData('buyTokenAMAP', fmCurveBuy.data);
+    assert.deepEqual([fb[0].toLowerCase(), fb[1], fb[2]], [FM, 16n * E18 / 100n, 16_000_000n * 99n / 100n], 'its token, that BNB, and the curve\'s minimum after 1% slippage');
+    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'BNB', amount_usd: 100 }), /pay with USDT or USDC/);
+
+    // Selling for BNB: four.meme's own contract pays RektBull's 1% from the sale, in the same call.
+    chain.balances[FM] = 32_000_000n * E18;
+    let n = seen.length;
+    const fmSell = await proposals.approve(account, (await proposals.propose(account, { chain: 'bsc', side: 'sell', token: FM, base: 'BNB', sell_fraction: 0.5 })).id);
+    assert.equal(seen.length, n, 'no 0x swap for a sale into BNB');
+    assert.deepEqual(fmSell.calls.calls.map(c => c.step), ['approve', 'swap']);
+    const [fmApprove, fmCurveSell] = fmSell.calls.calls;
+    assert.deepEqual([fmApprove.to, ERC20.decodeFunctionData('approve', fmApprove.data)[0].toLowerCase(), ERC20.decodeFunctionData('approve', fmApprove.data)[1]], [FM, TM2, 16_000_000n * E18], 'half the holding, approved to TokenManager2 only');
+    const fs = lp.TOKEN_MANAGER.decodeFunctionData('sellToken(uint256,address,uint256,uint256,uint256,address)', fmCurveSell.data);
+    const est = await lp.fourMemeSellQuote(FM, 16_000_000n * E18);
+    assert.deepEqual([fs[0], fs[1].toLowerCase(), fs[2], fs[3], fs[4], fs[5].toLowerCase()], [0n, FM, 16_000_000n * E18, est.funds * 99n / 100n, 100n, FEE_WALLET], 'the BNB minimum after 1% slippage, and a 1% fee to RektBull\'s fee wallet');
+    assert.deepEqual([fmSell.plan.summary.fee.asset, fmSell.plan.summary.fee.pct], ['BNB', 1]);
+    const sure = BigInt(fmSell.plan.summary.min_buy_amount);
+    assert.ok(sure < est.funds * 99n / 100n - est.funds * 99n / 100n / 100n, 'what the wallet is sure to get is the minimum less the most the fee can be');
+
+    // Selling for USDT: the same sale, then the BNB swapped through 0x with no second fee.
+    n = seen.length;
+    const fmSellUsdt = await proposals.approve(account, (await proposals.propose(account, { chain: 'bsc', side: 'sell', token: FM, base: 'USDT', sell_fraction: 0.5 })).id);
+    assert.deepEqual(fmSellUsdt.calls.calls.map(c => c.step), ['approve', 'swap', 'from_bnb']);
+    const toUsdt = seen.at(-1).params;
+    assert.deepEqual([toUsdt.sellToken, toUsdt.buyToken, toUsdt.swapFeeBps, BigInt(toUsdt.sellAmount)], [NATIVE, USDT, undefined, sure], 'no fee on the 0x leg; it sells only the BNB the sale is sure to deliver');
+    assert.equal(seen.length - n, 2, 'one quote on proposing, one on approving');
+    assert.equal(BigInt(fmSellUsdt.calls.calls[2].value), sure);
+
+    // Not traded: priced in another token, an older four.meme contract, or a tampered route.
+    fm = { ...fm, quote: '0x' + '20'.repeat(20), quote_symbol: 'QQQB' };
+    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'USDT', amount_usd: 100 }), /priced in QQQB, not BNB/);
+    fm = { ...fm, quote: 'bnb', quote_symbol: 'BNB', version: 1, token_manager: '0xec4549cadce5da21df6e6422d448034b5233bfbc' };
+    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'sell', token: FM, base: 'BNB' }), /older four\.meme contract/);
+    const fmPlan = { chain: 'bsc', side: 'sell', token: FM, wallet, quote: {}, route: { kind: 'fourmeme_curve', token_manager: TM2, amount: '1', min_funds: '1', fee_bps: 100, fee_recipient: FEE_WALLET } };
+    assert.equal(wc(fmPlan).calls.length, 2);
+    assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, token_manager: '0x' + 'ee'.repeat(20) } }), /doesn't use/);
+    assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, fee_recipient: '0x' + 'ba'.repeat(20) } }), /fee RektBull doesn't charge/);
+    assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, fee_bps: 500 } }), /fee RektBull doesn't charge/);
+
+    // A four.meme token that graduated trades on PancakeSwap through 0x, with the full token check.
+    risk = { verdict: 'low', flags: [], disagreements: [] };
+    fm = { ...fm, version: 2, token_manager: TM2, state: 'graduated', curve: undefined };
+    zeroex.setTransport(async (path, params) => { seen.push({ path, params }); const out = String(BigInt(params.sellAmount) * 99n / 100n); return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: out, minBuyAmount: out, transaction: { to: AH, data: '0xd00d', value: '0' } }; });
+    const grad = await proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'USDT', amount_usd: 50 });
+    assert.deepEqual(grad.plan.checks.map(c => c.check), ['launchpad', 'per_trade_amount', 'token_risk', 'tax', 'sell_back']);
+    assert.match(grad.plan.checks[0].detail, /graduated .* PancakeSwap, through 0x/);
     await db.getPool().end();
   });
 });

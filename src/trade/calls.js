@@ -52,9 +52,40 @@ function curveCalls(plan, chain) {
   return { chainId: ethers.toQuantity(chain.chainId), from: plan.wallet, calls, confirm_step: 'swap' };
 }
 
+/**
+ * A four.meme curve trade (BNB Chain): only ever calls to four.meme's TokenManager2 and an approval to
+ * it for this trade's amount, around the checked 0x leg. A buy sends exactly the BNB it names; a sale's
+ * fee goes only to RektBull's own fee wallet, at most 1%. The curve call is the step named 'swap'.
+ */
+function fourMemeCalls(plan, chain) {
+  const lp = require('../services/launchpads');
+  const env = require('../config/env');
+  const r = plan.route;
+  if (r.token_manager !== lp.FOURMEME.tokenManager) throw new TradeBlocked('The curve route names a contract RektBull doesn\'t use: not using it.');
+  const tm = r.token_manager;
+  const ah = chain.allowanceHolder;
+  const calls = [];
+  if (plan.side === 'buy') {
+    if (BigInt(r.funds) !== plan.quote.minBuyAmount) throw new TradeBlocked('The curve buy doesn\'t match the BNB its swap delivers: not using it.');
+    calls.push(...zeroexCalls(plan, ah, plan.baseToken.address, { step: 'to_bnb' }));
+    calls.push({ step: 'swap', to: tm, value: ethers.toQuantity(BigInt(r.funds)), data: lp.TOKEN_MANAGER.encodeFunctionData('buyTokenAMAP', [plan.token, r.funds, r.min_out]) });
+  } else {
+    const fee = Number(r.fee_bps || 0);
+    if (fee > 100 || (fee > 0 && String(r.fee_recipient || '') !== String(env.swapFeeWalletEvm || '').toLowerCase())) throw new TradeBlocked('The curve sale names a fee RektBull doesn\'t charge: not using it.');
+    calls.push({ step: 'approve', to: plan.token, value: '0x0', data: ERC20.encodeFunctionData('approve', [tm, r.amount]) });
+    const data = fee > 0
+      ? lp.TOKEN_MANAGER.encodeFunctionData('sellToken(uint256,address,uint256,uint256,uint256,address)', [0, plan.token, r.amount, r.min_funds, fee, r.fee_recipient])
+      : lp.TOKEN_MANAGER.encodeFunctionData('sellToken(uint256,address,uint256,uint256)', [0, plan.token, r.amount, r.min_funds]);
+    calls.push({ step: 'swap', to: tm, value: '0x0', data });
+    if (r.bnb_to_base) calls.push(...zeroexCalls(plan, ah, NATIVE, { step: 'from_bnb' }));
+  }
+  return { chainId: ethers.toQuantity(chain.chainId), from: plan.wallet, calls, confirm_step: 'swap' };
+}
+
 function walletCalls(plan) {
   const chain = tradeChain(plan.chain);
   if (plan.route?.kind === 'virtuals_curve') return curveCalls(plan, chain);
+  if (plan.route?.kind === 'fourmeme_curve') return fourMemeCalls(plan, chain);
   const ah = chain.allowanceHolder;
   const tx = plan.quote.transaction;
   if (!tx || String(tx.to || '').toLowerCase() !== ah) {

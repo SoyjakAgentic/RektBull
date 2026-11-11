@@ -1,6 +1,6 @@
 /**
  * Chains RektBull trades on when the user signs each trade: Base, Ethereum and
- * Arbitrum (milestone 4); Solana comes in milestone 5. Automatic trading has
+ * Arbitrum (milestone 4), and BNB Chain (Launches phase 3); Solana comes later. Automatic trading has
  * its own list (trade/networks.js), one Trade Router per chain.
  *
  * Every 0x trade goes through 0x's AllowanceHolder: a quote naming any other
@@ -44,6 +44,21 @@ const TRADE_CHAINS = {
       WETH: { address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1', decimals: 18, priceId: 'coingecko:ethereum' },
     },
     defaultBase: 'USDC',
+  },
+  // BNB Chain (Launches phase 3): 0x's AllowanceHolder is at the same address (its code checked onchain,
+  // 11 November 2026). Both stablecoins here use 18 decimals. Approve-each trading only: no Trade Router.
+  bsc: {
+    chainId: 56,
+    label: 'BNB Chain',
+    allowanceHolder: '0x0000000000001ff3684f28c67538d4d072c22734',
+    explorerTx: hash => `https://bscscan.com/tx/${hash}`,
+    bases: {
+      USDT: { address: '0x55d398326f99059ff775485246999027b3197955', decimals: 18, usd: 1 },
+      USDC: { address: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', decimals: 18, usd: 1 },
+      BNB: { address: NATIVE, decimals: 18, priceId: 'coingecko:binancecoin' },
+      WBNB: { address: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', decimals: 18, priceId: 'coingecko:binancecoin' },
+    },
+    defaultBase: 'USDT',
   },
 };
 

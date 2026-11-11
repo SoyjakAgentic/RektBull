@@ -1,5 +1,5 @@
 /**
- * A Virtuals bonding-curve buy and sell, on a local copy of Base, with the
+ * A Virtuals bonding-curve buy and sell, on a local copy of Base (fourMemeCheck.js does four.meme's on BNB Chain), with the
  * calls src/trade/calls.js builds (an approval to Virtuals' FRouter, then
  * Bonding.buy / Bonding.sell). Checks the tokens arrive, the minimum holds,
  * and a sale gives VIRTUAL back. Nothing is sent to the real chain.

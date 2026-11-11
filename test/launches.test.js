@@ -34,7 +34,7 @@ test('the feed: newest first, warning signs, GoPlus for the newest few', async (
     assert.equal(f.tokens[7].flags.flags[0].text, 'Flagged as a honeypot');
     assert.equal(f.tokens[8].flags, null);
     assert.match(f.note, /Nothing here is a recommendation or financial advice/);
-    assert.deepEqual(launches.parse({ chain: 'solana' }), { error: 'chain must be one of: base, ethereum, arbitrum.' });
+    assert.deepEqual(launches.parse({ chain: 'solana' }), { error: 'chain must be one of: base, ethereum, arbitrum, bsc.' });
   } finally { discover.tokens = realTokens; discover.flags = realFlags; }
 });
 
@@ -170,6 +170,79 @@ test('Meme Watch: liquidity pulled, a new flag, the stop-loss and insiders selli
   assert.equal(got.length, 5, 'told once');
   assert.match(got[4].title, /graduated from Virtuals' bonding curve/);
   assert.match(got[4].detail.reasons[0].text, new RegExp(`now trades on Uniswap as ${T(9)}`));
+
+  // A token bought on four.meme's curve (BNB Chain): one alert when it graduates to PancakeSwap.
+  const FMT = T(6);
+  await db.query(`INSERT INTO positions (account_id, chain, token, amount_raw, cost_usd) VALUES ($1, 'bsc', $2, $3, 70)`, [a.id, FMT, (1000n * 10n ** 18n).toString()]);
+  let fmState = 'curve', fmReads = 0;
+  lp.identify = async (c, t) => {
+    if (c === 'bsc' && t === FMT) { fmReads += 1; return { launchpad: 'fourmeme', name: 'four.meme', state: fmState, source: 'four.meme\'s TokenManagerHelper3 contract onchain (getTokenInfo)' }; }
+    return { launchpad: null };
+  };
+  const fmAlerts = async () => (await alerts()).filter(x => /four\.meme/.test(x.title));
+  await run();
+  assert.ok(fmReads > 0, 'a BNB Chain token\'s launchpad is read');
+  assert.equal((await fmAlerts()).length, 0, 'still on the curve: nothing to say');
+  fmState = 'graduated';
+  await run();
+  await run();
+  const fmGot = await fmAlerts();
+  assert.equal(fmGot.length, 1, 'told once');
+  assert.match(fmGot[0].title, new RegExp(`on bsc: it graduated from four\\.meme's bonding curve`));
+  assert.match(fmGot[0].detail.reasons[0].text, /now trades on PancakeSwap, the same token/);
+  assert.equal(fmGot[0].detail.sell, `/trade?chain=bsc&token=${FMT}&side=sell&fraction=100#trade-card`);
+});
+
+test('four.meme (BNB Chain): recognised from its helper contract; its curve; the newest tokens on it', async () => {
+  const { ethers } = require('ethers');
+  for (const k of Object.keys(require.cache)) if (/src\/(services\/launchpads|services\/launches|providers\/rpc|lib\/cache)\.js$/.test(k)) delete require.cache[k]; // fresh, unstubbed copies
+  const rpc = require('../src/providers/rpc');
+  const lp = require('../src/services/launchpads');
+  const launches = require('../src/services/launches');
+  const realRpc = rpc.evmRpc;
+  const FM = T('1'), FG = T('2'), FQ = T('3'), DEAD = T('4'), NOTFM = T('5'), QQQB = '0x' + '20'.repeat(20);
+  const Z = ethers.ZeroAddress, e18 = n => ethers.parseEther(String(n));
+  const SYM = new ethers.Interface(['function symbol() view returns (string)']);
+  // getTokenInfo: version, manager, quote, lastPrice, fee rate, min fee, launch time, offers left, max offers, funds, max funds, graduated
+  const infos = {
+    [FM]: [2, lp.FOURMEME.tokenManager, Z, 0, 100, 0, 0, e18(600_000_000), e18(800_000_000), e18('3.65'), e18('14.6'), false],
+    [FG]: [2, lp.FOURMEME.tokenManager, Z, 0, 100, 0, 0, 0, e18(800_000_000), e18('14.6'), e18('14.6'), true],
+    [FQ]: [2, lp.FOURMEME.tokenManager, QQQB, 0, 100, 0, 0, e18(400_000_000), e18(800_000_000), e18(1), e18(10), false],
+    [DEAD]: [2, lp.FOURMEME.tokenManager, Z, 0, 100, 0, 0, e18(799_999_000), e18(800_000_000), e18('0.0001'), e18('14.6'), false],
+  };
+  const list = [FG, FQ, DEAD, FM]; // TokenManager2's list, oldest first
+  const chains = new Set();
+  rpc.evmRpc = async (chain, _m, [{ to, data }]) => {
+    chains.add(chain);
+    to = to.toLowerCase();
+    const sel = data.slice(0, 10);
+    const arg = '0x' + data.slice(34, 74);
+    if (to === lp.FOURMEME.helper) return lp.HELPER.encodeFunctionResult('getTokenInfo', infos[arg] || [0, Z, Z, 0, 0, 0, 0, 0, 0, 0, 0, false]);
+    if (to === lp.FOURMEME.tokenManager && sel === lp.TOKEN_MANAGER.getFunction('_tokenCount').selector) return lp.TOKEN_MANAGER.encodeFunctionResult('_tokenCount', [list.length]);
+    if (to === lp.FOURMEME.tokenManager) return lp.TOKEN_MANAGER.encodeFunctionResult('_tokens', [list[Number(BigInt('0x' + data.slice(10)))]]);
+    if (sel === SYM.getFunction('symbol').selector) return SYM.encodeFunctionResult('symbol', [to === QQQB ? 'QQQB' : 'FOUR']);
+    throw new Error(`unexpected call to ${to}`);
+  };
+  try {
+    const fm = await lp.identify('bsc', FM);
+    assert.deepEqual([fm.launchpad, fm.name, fm.state, fm.quote, fm.link], ['fourmeme', 'four.meme', 'curve', 'bnb', `https://four.meme/token/${FM}`]);
+    // 800M on the curve, 600M left: 25% sold; 3.65 of 14.6 BNB raised.
+    assert.deepEqual(fm.curve, { in_curve: 3.65, in_curve_symbol: 'BNB', graduates_at: 14.6, tokens_left: 600_000_000, progress_pct: 25, buy_tax_pct: 1, sell_tax_pct: 1, min_fee: 0, min_fee_wei: '0' });
+    const fg = await lp.identify('bsc', FG);
+    assert.deepEqual([fg.state, fg.curve], ['graduated', undefined]);
+    assert.match(fg.facts[0], /now trades on PancakeSwap, the same token/);
+    const fq = await lp.identify('bsc', FQ);
+    assert.deepEqual([fq.quote, fq.quote_symbol], [QQQB, 'QQQB']);
+    assert.deepEqual(await lp.identify('bsc', NOTFM), { launchpad: null });
+    assert.deepEqual([...chains], ['bsc'], 'read on BNB Chain');
+
+    // The newest on the curve: priced in BNB and with at least 1% sold (graduated, other-quoted and untouched ones left out).
+    const c = await launches.curves({ chain: 'bsc' });
+    assert.deepEqual(c.tokens.map(t => [t.token, t.ticker, t.launchpad, t.curve.progress_pct]), [[FM, 'FOUR', 'four.meme', 25]]);
+    assert.match(c.source, /four\.meme's TokenManager2/);
+    assert.match(c.note, /graduate to PancakeSwap/);
+    await assert.rejects(launches.curves({ chain: 'ethereum' }), /chain must be one of: base, bsc/);
+  } finally { rpc.evmRpc = realRpc; }
 });
 
 test('launchpads: Clanker, Zora and Virtuals recognised from their own contracts; a curve\'s progress', async () => {
@@ -217,12 +290,12 @@ test('launchpads: Clanker, Zora and Virtuals recognised from their own contracts
     const vc = await lp.identify('base', VC);
     assert.deepEqual([vc.launchpad, vc.state, vc.ticker], ['virtuals', 'curve', 'TICK']);
     // 1,000M supply, 500M left on the curve, graduating at 125M: 500M of 875M sold.
-    assert.deepEqual(vc.curve, { pair: PAIR, virtual_in_curve: 9000, tokens_left: 500_000_000, graduates_at: 125_000_000, progress_pct: 57.14, buy_tax_pct: 1, sell_tax_pct: 1 });
+    assert.deepEqual(vc.curve, { pair: PAIR, virtual_in_curve: 9000, in_curve: 9000, in_curve_symbol: 'VIRTUAL', tokens_left: 500_000_000, graduates_at: 125_000_000, progress_pct: 57.14, buy_tax_pct: 1, sell_tax_pct: 1 });
     const vg = await lp.identify('base', VG);
     assert.deepEqual([vg.state, vg.agent_token, vg.curve], ['graduated', T(4), undefined]);
     assert.deepEqual(await lp.identify('base', NONE), { launchpad: null });
     const before = calls.length;
-    assert.deepEqual(await lp.identify('ethereum', CL), { launchpad: null }, 'Base only');
+    assert.deepEqual(await lp.identify('ethereum', CL), { launchpad: null }, 'Base and BNB Chain only');
     assert.equal(calls.length, before, 'and nothing is read for another chain');
   } finally { rpc.evmRpc = realRpc; }
 });

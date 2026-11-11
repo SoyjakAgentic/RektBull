@@ -8,7 +8,7 @@ advice.
 ## Phase 1: built
 
 - **The feed** (`/launches`, `GET /v1/launches?chain=`): the newest pools on
-  Base, Ethereum and Arbitrum (GeckoTerminal), newest first, with the warning
+  Base, Ethereum, Arbitrum and (from phase 3) BNB Chain (GeckoTerminal), newest first, with the warning
   signs their own trading shows and GoPlus's flags for the newest 8 (cached 6
   hours). Free.
 - **A token's card** (`GET /v1/launches/:chain/:token`): its market
@@ -63,13 +63,65 @@ verified source on Sourcify and its code onchain on 11 November 2026:
   refused by Virtuals' contract, and selling it all back returned 49.005
   VIRTUAL (the two 1% taxes).
 
+## Phase 3: built (BNB Chain and four.meme)
+
+- **BNB Chain on the Trade desk** (`src/trade/chains.js`, chain `bsc`, 56):
+  approve-each trades through 0x, paying with USDT (the default), USDC, BNB
+  or WBNB. 0x's AllowanceHolder is at the same address as on Base (its code
+  checked onchain). BNB Chain's USDT and USDC use 18 decimals (read onchain).
+  There's no Trade Router on BNB Chain: no automatic trading there. A wallet
+  that doesn't have BNB Chain yet is asked to add it.
+- **The feed** covers BNB Chain and names four.meme tokens, read from
+  four.meme's own contract. Most four.meme tokens only get a pool once they
+  graduate, so the curve section lists the newest ones still on the curve
+  (priced in BNB, at least 1% sold), with how much BNB they've raised against
+  their target, read from TokenManager2.
+- **four.meme's contracts** (BNB Chain, 11 November 2026):
+
+  | Contract | Address | How it was checked |
+  |---|---|---|
+  | TokenManager2 | `0x5c952063c7fc8610FFDB798152D69F0B9550762b` | The ERC1967 proxy is verified on Sourcify; its implementation (`0xa38D9d48…2E72`) isn't, so each function RektBull calls (`buyTokenAMAP`, both `sellToken`s, `_tokenCount`, `_tokens`) was matched against the implementation's code onchain and run on a copy of BNB Chain |
+  | TokenManagerHelper3 | `0xF251F83e40a78868FcfA3FA4599Dad6494E46034` | Also a proxy, verified on Sourcify; `getTokenInfo`, `tryBuy` and `trySell` matched against its implementation's code and read live |
+
+  `getTokenInfo(token)` returns zeros for a token four.meme didn't make, so
+  that's how a token is recognised. Tokens four.meme prices in something other
+  than BNB (10 of the newest 40 when checked, priced in tokens such as QQQB), and
+  tokens on its older TokenManager, are refused, naming why.
+- **Buying on four.meme's curve:** the wallet signs, in one batch where it
+  can: USDT or USDC swapped into BNB through 0x (RektBull's 1% fee inside that
+  swap, as on every trade), then `buyTokenAMAP` with exactly the least BNB that
+  swap delivers and a minimum out. four.meme's own fee is 1% each way, read
+  from its helper. Checks before it: the bundle check, four.meme's fees
+  against the buyer's tax limit, and selling straight back on the curve
+  against their round-trip limit. **Paying with BNB itself is refused:** there
+  is no swap to carry RektBull's fee.
+- **Selling:** an approval of the token to TokenManager2, then `sellToken`
+  with a minimum in BNB and RektBull's 1% as four.meme's integrator fee to the
+  fee wallet. four.meme's contract pays it from the sale in the same call, so
+  it's paid only if the sale goes through, and it refuses any fee above 5%.
+  `sellToken` checks its minimum before that fee comes off, so the plan
+  promises the minimum less the most the fee can be. For USDT or USDC, that
+  promised BNB is then swapped through 0x with no second fee. Before the fee
+  wallet is set, the plain `sellToken` is used and no fee is taken. A sale
+  never applies the buy checks.
+- **Graduated tokens** trade on PancakeSwap, the same token, so they go
+  through 0x with the full token check. Meme Watch tells holders once.
+- Verified on a copy of BNB Chain (`contracts/scripts/fourMemeCheck.js`):
+  0.1 BNB bought exactly the quoted amount, a minimum the curve can't meet was
+  refused by four.meme's contract, a sale with the fee paid the fee wallet
+  exactly 1% of the sale and the wallet more than the plan promised, and a
+  sale without it paid the wallet the whole quote.
+- **Limits:** the bundle check reads BNB Chain through Etherscan's API, whose
+  free plan may not cover it; when it can't run, the buyer is told why and
+  must confirm. BNB Chain has heavy sandwich trading: the slippage limit (1% by
+  default) bounds what a sandwich can take.
+
 ## Phases to come
 
-3. **BNB Chain and four.meme:** BNB Chain added to trading (0x covers it),
-   then four.meme's bonding curve.
 4. **Solana and pump.fun:** trades the user signs with Phantom, through
    Jupiter. Needs a reliable Solana data source first: the free public RPC
-   rate-limits the bundle check (a paid plan such as Helius, about $50 a month).
+   rate-limits the bundle check. A paid RPC such as QuickNode (a month's free
+   trial) or Helius (about $50 a month) goes in `RPC_URLS_SOLANA`.
 5. **The Meme Router:** automatic meme trading. The audited Trade Router
    trades only tokens with a Chainlink price, which meme coins don't have, and
    that price bound is what stops a hacked RektBull from selling a user's

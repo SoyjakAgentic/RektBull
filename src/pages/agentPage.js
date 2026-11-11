@@ -93,7 +93,7 @@ const PAGES = {
     ],
     faq: [
       ['Does it sell for me?', 'No. Each alert links a sell of the whole position on the Trade desk, already checked, for your wallet to review and sign. RektBull never moves your money.'],
-      ['Which tokens does it watch?', 'Up to 10 tokens you bought through RektBull\'s Trade or Launches desk on Base, Ethereum or Arbitrum, newest first. Stablecoins and ETH aren\'t watched.'],
+      ['Which tokens does it watch?', 'Up to 10 tokens you bought through RektBull\'s Trade or Launches desk on Base, Ethereum, Arbitrum or BNB Chain, newest first. Stablecoins, ETH and BNB aren\'t watched. A token bought on Virtuals\' or four.meme\'s bonding curve gets one alert when it graduates.'],
       ['What does it cost?', 'Nothing: it\'s free for any signed-in wallet. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
     ],
   },

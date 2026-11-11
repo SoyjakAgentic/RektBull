@@ -11,18 +11,27 @@
   };
   const sign = s => el('li', { class: s.level === 'bad' ? 'bad' : s.level === 'warn' ? 'warn' : 'muted' }, s.text, ' ', el('span', { class: 'source' }, `(${s.source})`));
   const tradeLink = (chain, token, side) => `/trade?chain=${chain}&token=${token}&side=${side}#trade-card`;
+  const CHAINS = ['base', 'ethereum', 'arbitrum', 'bsc'];
+  const PAD_CHAINS = ['base', 'bsc']; // chains whose launchpads RektBull reads
+  const NAMES = { base: 'Base', ethereum: 'Ethereum', arbitrum: 'Arbitrum', bsc: 'BNB Chain' };
+  const owns = name => (/s$/.test(name) ? `${name}'` : `${name}'s`); // Virtuals' contract, four.meme's contract
+  // Only the latest request for a list draws it: switching network quickly never shows an older answer.
+  const latest = {};
+  const fresh = key => { const n = (latest[key] || 0) + 1; latest[key] = n; return () => latest[key] === n; };
 
   async function loadFeed() {
     const chain = $('l-chain').value;
+    const current = fresh('feed');
     say('l-msg', 'Reading the newest pools…');
     try {
       const f = await api('GET', `/v1/launches?chain=${chain}`);
+      if (!current()) return;
       say('l-msg', f.tokens.length ? '' : 'No new pools on this network just now.');
       $('l-table').querySelector('tbody').replaceChildren(...f.tokens.map(t => {
         const signs = [...(t.signals || []), ...((t.flags && t.flags.flags) || []).filter(x => x.level !== 'ok')];
         return el('tr', {},
           el('td', {}, el('strong', {}, t.symbol || '?'), ' ', el('span', { class: 'small muted' }, t.name || ''), el('div', { class: 'sub' }, `${t.exchange || ''}${t.quote ? ` · against ${t.quote}` : ''} · `, el('code', {}, `${t.token.slice(0, 6)}…${t.token.slice(-4)}`))),
-          el('td', {}, t.launchpad ? el('a', { href: t.launchpad.link, rel: 'noopener', target: '_blank' }, t.launchpad.name) : el('span', { class: 'small muted' }, chain === 'base' ? 'none found' : '–')),
+          el('td', {}, t.launchpad ? el('a', { href: t.launchpad.link, rel: 'noopener', target: '_blank' }, t.launchpad.name) : el('span', { class: 'small muted' }, PAD_CHAINS.includes(chain) ? 'none found' : '–')),
           el('td', { class: 'num' }, age(t.created_at)),
           el('td', { class: 'num' }, money(t.liquidity_usd)),
           el('td', { class: 'num' }, money(t.volume_24h_usd)),
@@ -30,7 +39,7 @@
           el('td', {}, el('button', { class: 'btn', type: 'button', onclick: () => show(chain, t.token) }, 'Look closer')));
       }));
       $('l-src').textContent = `Sources: ${f.sources.join('; ')}. ${f.note}`;
-    } catch (err) { say('l-msg', err.message, 'bad'); }
+    } catch (err) { if (current()) say('l-msg', err.message, 'bad'); }
   }
 
   async function show(chain, token) {
@@ -43,14 +52,15 @@
       const flags = (c.flags && c.flags.flags) || [];
       say('t-msg', '');
       $('t-card').replaceChildren(
-        el('p', {}, el('strong', {}, m.token_symbol || c.launchpad?.ticker || 'This token'), m.token_name ? ` (${m.token_name})` : '', ` on ${chain}`, c.age_hours !== null ? `, first pool opened ${c.age_hours < 48 ? `${Math.round(c.age_hours)} hours` : `${Math.round(c.age_hours / 24)} days`} ago` : ''),
+        el('p', {}, el('strong', {}, m.token_symbol || c.launchpad?.ticker || 'This token'), m.token_name ? ` (${m.token_name})` : '', ` on ${NAMES[chain] || chain}`, c.age_hours !== null ? `, first pool opened ${c.age_hours < 48 ? `${Math.round(c.age_hours)} hours` : `${Math.round(c.age_hours / 24)} days`} ago` : ''),
         m.not_checked ? el('p', { class: 'msg bad' }, m.not_checked) : el('div', { class: 'tiles' },
           el('div', { class: 'tile' }, el('span', { class: 'small muted' }, 'Price'), el('h3', {}, m.price_usd ? `$${Number(m.price_usd).toPrecision(4)}` : '–')),
           el('div', { class: 'tile' }, el('span', { class: 'small muted' }, 'Liquidity'), el('h3', {}, money(m.liquidity_usd_total))),
           el('div', { class: 'tile' }, el('span', { class: 'small muted' }, 'Volume, 24 h'), el('h3', {}, money(m.volume_24h_usd))),
           el('div', { class: 'tile' }, el('span', { class: 'small muted' }, 'Market cap'), el('h3', {}, money(m.market_cap_usd ?? m.fdv_usd)))),
         c.launchpad ? el('p', {}, el('strong', {}, `Launchpad: ${c.launchpad.name}. `),
-          c.launchpad.curve ? `Still on its bonding curve, ${c.launchpad.curve.progress_pct}% of the way to graduating; bought and sold on Virtuals' contract with its ${c.launchpad.curve.buy_tax_pct}% buy and ${c.launchpad.curve.sell_tax_pct}% sell tax. ` : '',
+          c.launchpad.curve ? `Still on its bonding curve, ${c.launchpad.curve.progress_pct}% of the way to graduating; bought and sold on ${owns(c.launchpad.name)} contract with its ${c.launchpad.curve.buy_tax_pct}% buy and ${c.launchpad.curve.sell_tax_pct}% sell ${c.launchpad.launchpad === 'fourmeme' ? 'fee' : 'tax'}. ` : '',
+          c.launchpad.curve && c.launchpad.quote && c.launchpad.quote !== 'bnb' ? `It's priced in ${c.launchpad.quote_symbol}, not BNB: RektBull doesn't trade it yet. ` : '',
           c.launchpad.state === 'graduated' && c.launchpad.agent_token ? `Graduated: it now trades as ${c.launchpad.agent_token}. ` : '',
           ...(c.launchpad.facts || []).map(f => `${f} `),
           el('a', { href: c.launchpad.link, rel: 'noopener', target: '_blank' }, `Its page on ${c.launchpad.name}`), el('span', { class: 'source' }, ` (${c.launchpad.source})`)) : '',
@@ -68,28 +78,35 @@
     } catch (err) { $('t-card').replaceChildren(); say('t-msg', err.message, 'bad'); }
   }
 
+  const inCurve = v => (v >= 100 ? Math.round(v).toLocaleString() : Number(v).toPrecision(3));
   async function loadCurves() {
-    say('c-msg', 'Reading Virtuals\' contract…');
+    const chain = $('c-chain').value;
+    $('c-how').hidden = chain !== 'base';
+    $('c-how-bsc').hidden = chain !== 'bsc';
+    const current = fresh('curves');
+    say('c-msg', `Reading ${chain === 'bsc' ? 'four.meme\'s' : 'Virtuals\''} contract…`);
     try {
-      const c = await api('GET', '/v1/launches/curves');
+      const c = await api('GET', `/v1/launches/curves?chain=${chain}`);
+      if (!current()) return;
       say('c-msg', c.tokens.length ? '' : 'No tokens on the curve just now.');
       $('c-table').querySelector('tbody').replaceChildren(...c.tokens.map(t => el('tr', {},
-        el('td', {}, el('strong', {}, t.ticker), el('div', { class: 'sub' }, el('a', { href: t.link, rel: 'noopener', target: '_blank' }, 'Virtuals'), ' · ', el('code', {}, `${t.token.slice(0, 6)}…${t.token.slice(-4)}`))),
+        el('td', {}, el('strong', {}, t.ticker), el('div', { class: 'sub' }, el('a', { href: t.link, rel: 'noopener', target: '_blank' }, t.launchpad), ' · ', el('code', {}, `${t.token.slice(0, 6)}…${t.token.slice(-4)}`))),
         el('td', { class: 'num' }, `${t.curve.progress_pct}%`),
-        el('td', { class: 'num' }, Math.round(t.curve.virtual_in_curve).toLocaleString()),
+        el('td', { class: 'num' }, `${inCurve(t.curve.in_curve)} ${t.curve.in_curve_symbol}`),
         el('td', {}, `${t.curve.buy_tax_pct}% buy, ${t.curve.sell_tax_pct}% sell`),
-        el('td', {}, el('button', { class: 'btn', type: 'button', onclick: () => show('base', t.token) }, 'Look closer')))));
+        el('td', {}, el('button', { class: 'btn', type: 'button', onclick: () => show(chain, t.token) }, 'Look closer')))));
       $('c-src').textContent = `Source: ${c.source}. ${c.note}`;
-    } catch (err) { say('c-msg', err.message, 'bad'); }
+    } catch (err) { if (current()) say('c-msg', err.message, 'bad'); }
   }
   $('c-reload').addEventListener('click', loadCurves);
+  $('c-chain').addEventListener('change', loadCurves);
   loadCurves();
 
   $('l-chain').addEventListener('change', loadFeed);
   $('l-reload').addEventListener('click', loadFeed);
   $('t-form').addEventListener('submit', e => { e.preventDefault(); show($('t-chain').value, $('t-token').value.trim()); });
   const q = new URLSearchParams(location.search);
-  if (['base', 'ethereum', 'arbitrum'].includes(q.get('chain'))) $('l-chain').value = q.get('chain');
+  if (CHAINS.includes(q.get('chain'))) $('l-chain').value = q.get('chain');
   loadFeed();
   if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '')) show($('l-chain').value, q.get('token'));
 })();
