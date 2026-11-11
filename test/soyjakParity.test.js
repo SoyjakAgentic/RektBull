@@ -62,6 +62,7 @@ test('Soyjak swap checks, on RektBull', { skip: !DB && 'set TEST_DATABASE_URL' }
     backOut = p => ({ liquidityAvailable: true, sellAmount: p.sellAmount, buyAmount: String(BigInt(100e6) * 97n / 100n) });
   };
   dd.quickCheck = async () => risk;
+  require('../src/services/launches').forTrade = async () => ({ young: false, risk: 'ok', detail: 'an established token (stand-in)' });
   zeroex.setTransport(async (path, params) => {
     seen.push({ path, params });
     const sellingToken = params.sellToken.toLowerCase() === TOKEN;

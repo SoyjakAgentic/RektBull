@@ -23,6 +23,7 @@
     for (const id of ['trade-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
     showChains();
+    prefill();
     showAutoNetwork();
     await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
   }
@@ -44,6 +45,17 @@
     $('base').value = c.bases.includes(keep) ? keep : c.default_base;
   }
   $('chain').addEventListener('change', showBases);
+
+  /** ?chain=&token=&side=&fraction= (a Meme Watch alert's ready-made sell, or a buy from the Launches desk). */
+  function prefill() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('chain') && state.config?.chains?.[q.get('chain')]) { $('chain').value = q.get('chain'); showBases(); }
+    if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '')) $('token').value = q.get('token');
+    if (['buy', 'sell'].includes(q.get('side'))) { $('side').value = q.get('side'); $('side').dispatchEvent(new Event('change')); }
+    const f = Number(q.get('fraction'));
+    if (f > 0 && f <= 100) $('fraction').value = String(f);
+    if (q.get('token')) $('trade-card').scrollIntoView({ block: 'start' });
+  }
 
   /* ── 2. trade ── */
   $('side').addEventListener('change', () => {

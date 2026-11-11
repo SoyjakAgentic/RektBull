@@ -534,3 +534,10 @@ footer.site .not-advice { margin: 18px 0 0; font-size: 13px; color: var(--muted)
 .tag.ok { color: var(--ok); }
 #panel label.inline { max-width: 100%; }
 #panel input:not([type="number"]) { max-width: 100%; min-width: 0; box-sizing: border-box; }
+
+/* The Launches desk: the address box takes the room it has, down to a phone. */
+.wide-input { flex: 1 1 18rem; max-width: 100%; }
+.wide-input input { width: 100%; min-width: 0; box-sizing: border-box; }
+ul.signals { margin: 0; padding-left: 1.1em; font-size: 13px; }
+ul.signals li.bad { color: var(--bad); }
+ul.signals li.warn { color: var(--warn); }

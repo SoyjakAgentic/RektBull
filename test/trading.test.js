@@ -165,6 +165,10 @@ test('trading', async t => {
     // 0x and the token check, faked: a clean token that sells back with ~3% loss.
     let risk = { verdict: 'low', flags: [], disagreements: [] };
     dd.quickCheck = async () => risk;
+    // The bundle check for young tokens (services/launches.js): an established token unless a case says otherwise.
+    const launches = require('../src/services/launches');
+    let launch = { young: false, risk: 'ok', detail: 'its first pool opened 90 days ago (DexScreener)' };
+    launches.forTrade = async () => launch;
     const seen = [];
     zeroex.setTransport(async (path, params) => {
       seen.push({ path, params });
@@ -194,6 +198,19 @@ test('trading', async t => {
     risk = { verdict: 'critical', flags: [{ severity: 'critical', title: 'It could not be sold back after a buy' }] };
     await assert.rejects(proposals.approve(account, p.id), /critical risk/);
     assert.equal((await proposals.get(account, p.id)).status, 'failed');
+
+    // A young token: a critical bundle finding stops the buy; a high one needs confirming; a check that couldn't run does too.
+    risk = { verdict: 'low', flags: [], disagreements: [] };
+    launch = { young: true, risk: 'block', detail: 'A bundle bought 40% at launch and has sold 80% of it.', flags: [{ severity: 'critical', title: 'A bundle bought 40% at launch and has sold 80% of it', evidence: '6 early buyers funded from 0xabc…', source: 'Block explorer and RPC' }] };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 }), /bundle check found a critical risk: A bundle bought 40%/);
+    launch = { young: true, risk: 'confirm', detail: 'A bundle bought 15% of the supply at launch.', flags: [{ severity: 'high', title: 'A bundle bought 15% of the supply at launch', evidence: '5 early buyers…', source: 'Block explorer and RPC' }] };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 }), e => e.needsAcknowledgement && e.risks[0].title === 'A bundle bought 15% of the supply at launch');
+    const young = await proposals.propose(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100, acknowledge_risks: true });
+    assert.deepEqual(young.plan.checks.map(c => c.check), ['per_trade_amount', 'token_risk', 'bundle', 'tax', 'sell_back']);
+    assert.match(young.plan.checks.find(c => c.check === 'bundle').detail, /launch check: A bundle bought 15%/);
+    launch = { young: true, risk: 'unknown', detail: 'the bundle check couldn\'t run: the explorer didn\'t answer', flags: [] };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 }), e => e.needsAcknowledgement && /couldn't check it for a bundled launch/.test(e.message));
+    launch = { young: false, risk: 'ok', detail: 'its first pool opened 90 days ago (DexScreener)' };
 
     // High risks need acknowledgement.
     risk = { verdict: 'high', flags: [{ id: 'upgradeable', severity: 'high', title: 'Its code can be replaced (a proxy)' }] };

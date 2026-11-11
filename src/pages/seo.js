@@ -26,6 +26,7 @@ const PAGES = {
   '/research': ['Crypto Hack Tracker and Weekly Digest | RektBull', 'Every recorded crypto hack: what was lost, how, and what came back. Plus a weekly digest written only from sourced facts, free by email.'],
   '/find': ['Find Unclaimed Airdrops and Better Yield | RektBull', 'Find rewards and airdrops your wallet can claim, verified onchain, and where your stablecoins could earn more. Your wallet signs every move.'],
   '/governance': ['DAO Votes Decoded: Snapshot and Onchain | RektBull', 'See the DAO votes open for your wallet, with each proposal\'s actions decoded and flagged, and vote from your own wallet. Never a recommendation.'],
+  '/launches': ['New Meme Coins, Checked for Rugs and Bundles | RektBull', 'The newest tokens on Base, Ethereum and Arbitrum with their warning signs. Buying runs a honeypot, tax and bundled-launch check first; your wallet signs.'],
   '/trade': ['Trade Crypto With Limits You Set | RektBull', 'Every token checked before you buy, within limits you set. Your wallet signs each trade, or gives a limited permission you can revoke any time.'],
   '/developers': ['Crypto Safety API and MCP Server for Agents | RektBull', 'Give your app or AI agent RektBull\'s checks: a remote MCP server, a REST API with every fact sourced, and pay-per-call with x402 in USDC.'],
   '/about': ['About RektBull: How the Checks Work and Our Sources', 'Who runs RektBull, how each check works, every data source it uses, how the weekly digest is written and reviewed, and what RektBull never does.'],
@@ -36,7 +37,7 @@ const PAGES = {
 const NAMES = {
   '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'AI agents', '/markets': 'Markets',
   '/opportunities': 'Opportunities', '/portfolio': 'Portfolio', '/research': 'Research', '/find': 'Find money', '/governance': 'Governance',
-  '/trade': 'Trade', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
+  '/trade': 'Trade', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
 };
 /** Pages that sit under another in the menu, for breadcrumbs. */
 const PARENT = { '/find': '/opportunities', '/governance': '/opportunities' };
@@ -107,6 +108,13 @@ const FAQ = {
     ['Which DAOs does it cover?', 'Snapshot spaces you follow, and onchain governors: Uniswap, Compound, ENS, Gitcoin, Hop and Arbitrum, plus any OpenZeppelin or Compound-style governor you add.'],
     ['What does the proposal summary do?', 'It explains a proposal in plain English from its own text: what would change, what money and powers it moves, what each choice does, and what the text doesn\'t say. It costs {{points:governance_summary}} point or {{price:governance_summary}} and never recommends a vote.'],
     ['Who sends my vote?', 'Your wallet. RektBull prepares the vote; Snapshot votes are signed messages, and onchain votes are transactions your wallet sends.'],
+  ],
+  '/launches': [
+    ['What is checked before I buy a new token?', 'RektBull\'s full token check (can it be sold, its taxes, its owner\'s powers, its holders, GoPlus\'s flags) and, for a token under a week old, the bundle check: whether its largest early buyers were funded from the same wallet or trace back to the deployer, and whether they\'re selling. A critical finding stops the trade; a high one needs you to confirm you\'ve read it.'],
+    ['Who sends the trade?', 'Your wallet. RektBull prepares the trade through 0x, which finds the best route across exchanges, and your wallet shows the exact transaction to sign. RektBull never holds your funds or keys.'],
+    ['What does it cost?', 'The feed and the checks before a trade are free. A trade carries RektBull\'s 1% fee, taken inside the swap, plus the network\'s own fee.'],
+    ['Can I buy a token still on a launchpad\'s bonding curve?', 'Not yet: the Launches desk trades tokens once they have a pool on an exchange. Launchpad curves (Virtuals, Zora, four.meme, pump.fun) are coming.'],
+    ['Is this a recommendation?', 'No. Most new tokens go to zero and many are scams. The desk shows facts with their sources; nothing on it is financial advice.'],
   ],
   '/trade': [
     ['Can RektBull move my money?', 'No. Your wallet signs each trade, or gives a limited permission written onchain: a most-per-trade and most-per-day, for up to 30 days, that only lets trades go back into your own wallet. RektBull can never withdraw, and you can revoke the permission at any time.'],
@@ -242,11 +250,11 @@ function llms(base, digests = []) {
     'Key facts:',
     '- Free wallet checkup on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain: risky token approvals, unclaimed rewards, idle stablecoins and open DAO votes.',
     '- Paid runs (token quick check {{price:token_quick_check}}, full token report {{price:token_report}}, approval cleanup {{price:approval_cleanup}}, pre-sign check {{price:presign_check}}, proposal summary {{price:governance_summary}}, launch check {{price:launch_check}}, contract audit {{price:contract_audit}}) take x402 (USDC on Base, no account), points, credits or Safety Pro ({{price:pro_30d}} for 30 days). Charged only when the run succeeds.',
-    '- AI agents (sign in with a wallet, switch one on, alerts by Telegram, email or browser): Wallet Checkup and Claim Assistant are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro. They never sign or move money, and AI never decides a fact.',
+    '- AI agents (sign in with a wallet, switch one on, alerts by Telegram, email or browser): Wallet Checkup, Claim Assistant and Meme Watch are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro. They never sign or move money, and AI never decides a fact.',
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/launches'].map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),

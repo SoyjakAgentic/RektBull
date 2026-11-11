@@ -59,7 +59,7 @@ test('AI agents: switches, schedules, scheduled runs and their alerts', { skip: 
 
   /* ── the catalog, and an account's agents ── */
   const cat = (await (await fetch(base + '/v1/my-agents/catalog')).json()).agents;
-  assert.deepEqual(cat.map(a => a.id), ['wallet_checkup', 'wallet_guardian', 'claim_assistant', 'token_watch', 'launch_safety', 'dao_votes', 'yield_watch', 'trading_agent']);
+  assert.deepEqual(cat.map(a => a.id), ['wallet_checkup', 'wallet_guardian', 'claim_assistant', 'token_watch', 'launch_safety', 'dao_votes', 'yield_watch', 'meme_watch', 'trading_agent']);
   assert.ok(cat.every(a => a.does && a.alerts && a.desk.href.startsWith('/')), 'each says what it does, what it alerts and where its desk is');
   assert.equal((await fetch(base + '/v1/my-agents')).status, 401, 'an account\'s agents need sign-in');
 

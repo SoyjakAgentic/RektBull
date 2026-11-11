@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow">Launches</span>
+      <h1>New tokens, <em>checked before you trade them</em></h1>
+      <p>The newest tokens on Base, Ethereum and Arbitrum, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
+      <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
+      <nav class="jump" aria-label="On this page"><a href="#feed-card">New tokens</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="feed-card">
+      <div class="chart-head">
+        <h2>New tokens</h2>
+        <div class="row filters">
+          <label class="inline">Network <select id="l-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option></select></label>
+          <button class="btn" type="button" id="l-reload">Refresh</button>
+        </div>
+      </div>
+      <p id="l-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="l-table"><thead><tr><th>Token</th><th class="num">Age</th><th class="num">Liquidity</th><th class="num">Volume, 24 h</th><th>Warning signs</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="l-src" class="source"></p>
+    </section>
+
+    <section class="card" id="token-card">
+      <h2>A token</h2>
+      <form class="row" id="t-form" autocomplete="off">
+        <label class="inline">Network <select id="t-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option></select></label>
+        <label class="inline wide-input">Token address <input id="t-token" placeholder="0x…" spellcheck="false"></label>
+        <button class="btn" type="submit">Show</button>
+      </form>
+      <p id="t-msg" class="msg"></p>
+      <div id="t-card"></div>
+    </section>
+
+    <section class="card" id="watch-card">
+      <h2>Meme Watch</h2>
+      <p>After you buy, the free <a href="/agents/meme-watch">Meme Watch agent</a> keeps an eye on each token: launch-bundle and insider wallets selling, a new honeypot or tax flag, liquidity pulled from its pools, and your take-profit or stop-loss. Each alert, by Telegram, email or browser notification, comes with a sell ready for your wallet to sign. It never sells for you.</p>
+      <p><a class="btn" href="/agents#agent-meme_watch">Switch on Meme Watch</a></p>
+    </section>
+  </main>
+  <!--#footer:New tokens from GeckoTerminal and DexScreener, flags from GoPlus, bundle checks from the chain itself, each with its source. Most new tokens go to zero. Not financial advice.-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/launches.js"></script>
+</body>
+</html>

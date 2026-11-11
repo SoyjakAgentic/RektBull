@@ -78,7 +78,7 @@ Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', DA
     // Your agents, signed out: what each does, its schedule and price; switches off until sign-in.
     const cards = page.locator('#ma-list .agent');
     await cards.nth(7).waitFor();
-    assert.deepEqual(await cards.locator('h3').allTextContents(), ['Wallet Checkup', 'Wallet Guardian', 'Claim Assistant', 'Token Watch', 'Launch Safety', 'DAO Votes', 'Yield Watch', 'Trading Agent']);
+    assert.deepEqual(await cards.locator('h3').allTextContents(), ['Wallet Checkup', 'Wallet Guardian', 'Claim Assistant', 'Token Watch', 'Launch Safety', 'DAO Votes', 'Yield Watch', 'Meme Watch', 'Trading Agent']);
     assert.equal(await page.locator('#ma-list input[role="switch"]:not([disabled])').count(), 0, 'nothing to switch before sign-in');
     assert.match(await cards.nth(0).textContent(), /RunsEvery week.*PriceFree.*Open Home/s);
     assert.match(await page.textContent('#ma-alerts'), /Sign in to switch agents on/);

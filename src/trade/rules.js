@@ -105,14 +105,24 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
     const risk = await dd.quickCheck({ chain: chainName, token });
     if (risk.incomplete) throw new TradeBlocked(`RektBull couldn't check whether this token can be sold (${risk.incomplete}) Not buying.`);
     if (risk.verdict === 'critical') throw new TradeBlocked(`RektBull's token check found a critical risk: ${risk.flags.find(f => f.severity === 'critical')?.title}. Not buying.`);
-    const high = risk.flags.filter(f => f.severity === 'high');
+    // A token under a week old also gets the bundle and insider check (services/launches.js).
+    const launch = await require('../services/launches').forTrade({ chain: chainName, token });
+    if (launch.risk === 'block') {
+      throw new TradeBlocked(`RektBull's bundle check found a critical risk: ${launch.flags.find(f => f.severity === 'critical').title}. Not buying.`);
+    }
+    const high = [
+      ...risk.flags.filter(f => f.severity === 'high'),
+      ...(launch.risk === 'confirm' ? launch.flags.filter(f => f.severity === 'high').map(f => ({ id: 'bundle', ...f })) : []),
+      ...(launch.risk === 'unknown' ? [{ id: 'bundle_unchecked', severity: 'high', title: 'This token is under a week old and RektBull couldn\'t check it for a bundled launch', evidence: launch.detail, source: 'Launch Safety' }] : []),
+    ];
     if (high.length && !acknowledgeRisks) {
-      const err = new TradeBlocked(`RektBull's token check found ${high.length} high risk${high.length > 1 ? 's' : ''}: ${high.map(f => f.title).join('; ')}. Read them, then confirm to go ahead.`);
+      const err = new TradeBlocked(`RektBull's checks found ${high.length} high risk${high.length > 1 ? 's' : ''}: ${high.map(f => f.title).join('; ')}. Read them, then confirm to go ahead.`);
       err.needsAcknowledgement = true;
       err.risks = high;
       throw err;
     }
     checks.push({ check: 'token_risk', ok: true, detail: `verdict ${risk.verdict}`, flags: risk.flags, acknowledged: high.length ? high.map(f => f.id) : [] });
+    if (launch.young) checks.push({ check: 'bundle', ok: launch.risk !== 'block', detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
 
     const sellAmount = base.usd ? ethers.parseUnits(usd.toFixed(base.decimals), base.decimals) : usdToUnits(usd, price, base.decimals);
     const q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: token, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee });
