@@ -153,6 +153,23 @@ describe('RektBull Meme Router: break-it tests', function () {
     await fails(router.connect(attacker).fill({ ...o, executor: attacker.address }, sig, f), /BadSignature/);
   });
 
+  it('a token that taxes transfers: the user\'s price is checked on what reaches their wallet (found by the security review)', async () => {
+    const TAX = await ethers.deployContract('MockTaxToken');
+    const taxRouter = await ethers.deployContract('RektBullMemeRouter', [feeWallet.address, 100, WNAT.target, [venue.target], [USDC.target]]);
+    const taxDomain = { ...domain, verifyingContract: taxRouter.target };
+    await (await USDC.connect(user).approve(taxRouter.target, ethers.MaxUint256)).wait();
+    const t = await now();
+    // Buy with 100 USDC: 99 traded at 10 TAX each = 990 TAX to the router, 940.5 after the 5% tax reach the user.
+    const base = { account: user.address, executor: executor.address, tokenIn: USDC.target, tokenOut: TAX.target, amountIn: usdc(100), validAfter: 0, validUntil: t + 3600, epoch: 0 };
+    const fillFor = () => ({ amountIn: usdc(100), venue: venue.target, spender: venue.target, unwrapIn: false, venueCalldata: venue.interface.encodeFunctionData('swap', [USDC.target, TAX.target, usdc(99), 10n * E18 * E18 / usdc(1), taxRouter.target]) });
+    const tooHigh = { ...base, minAmountOut: 950n * E18, salt: 1n };
+    await fails(taxRouter.connect(executor).fill(tooHigh, await user.signTypedData(taxDomain, types, tooHigh), fillFor()), /BelowLimit/);
+    const fair = { ...base, minAmountOut: 940n * E18, salt: 2n };
+    const before = await TAX.balanceOf(user.address);
+    await (await taxRouter.connect(executor).fill(fair, await user.signTypedData(taxDomain, types, fair), fillFor())).wait();
+    assert.equal((await TAX.balanceOf(user.address)) - before, 9405n * E18 / 10n);
+  });
+
   it('an order with no minimum is refused: it could be filled at any price (found by the fuzz tests)', async () => {
     const { o, sig } = await order(user, { minAmountOut: 0n });
     await fails(router.connect(executor).fill(o, sig, viaVenue({ amountIn: o.amountIn, rate: 1n })), /NotAllowed/);

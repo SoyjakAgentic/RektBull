@@ -203,12 +203,16 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
             amountOut -= fee;
         }
 
+        // Everything goes back to the account: the output, and any input the venue didn't use.
+        // The user's price is checked on what reaches the account, so a token that taxes transfers
+        // can't leave the user below the minimum they signed.
+        uint256 accountBefore = _balanceOf(o.tokenOut, account);
+        _send(o.tokenOut, account, amountOut);
+        amountOut = _balanceOf(o.tokenOut, account) - accountBefore;
+
         // At least the user's own limit price, pro rata for a part of the order.
         uint256 minimum = Math.mulDiv(o.minAmountOut, f.amountIn, o.amountIn, Math.Rounding.Ceil);
         if (amountOut < minimum) revert BelowLimit(amountOut, minimum);
-
-        // Everything goes back to the account: the output, and any input the venue didn't use.
-        _send(o.tokenOut, account, amountOut);
         if (f.unwrapIn && address(this).balance > nativeBefore) {
             WRAPPED_NATIVE.deposit{value: address(this).balance - nativeBefore}(); // unused native, wrapped back
         }
@@ -253,7 +257,11 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
     }
 
     function _balance(address token) internal view returns (uint256) {
-        return token == NATIVE ? address(this).balance : IERC20(token).balanceOf(address(this));
+        return _balanceOf(token, address(this));
+    }
+
+    function _balanceOf(address token, address who) internal view returns (uint256) {
+        return token == NATIVE ? who.balance : IERC20(token).balanceOf(who);
     }
 
     function _send(address token, address to, uint256 amount) internal {

@@ -1,8 +1,8 @@
 # The Meme Router: automatic meme trades without holding keys
 
 *Status: the contract and its break-it tests are built
-(`contracts/contracts/RektBullMemeRouter.sol`, 15 tests in
-`contracts/test/memeRouter.test.js`), and checked against four.meme's real
+(`contracts/contracts/RektBullMemeRouter.sol`, 17 tests in
+`contracts/test/memeRouter.test.js`, plus the fuzz tests and Slither below), and checked against four.meme's real
 contracts on a copy of BNB Chain. **Not audited, not deployed, and the trade
 service doesn't use it yet.** Nothing may hold real funds through it until an
 external audit is done and every finding is fixed or explicitly accepted.*
@@ -45,7 +45,7 @@ be used to fill that account's own signed orders.
 | Only the executor the user named can fill them | The contract | A leaked order is useless to anyone else |
 | Input comes only from the order's account, at most the order's size over all fills | The contract (`filled` per order) | Can't touch other tokens or other accounts |
 | Output (and unused input) goes only to the order's account | The contract (balance checks; it holds nothing between transactions) | Can't send it elsewhere: an exchange paying someone else fails the price check |
-| At least the user's limit price, pro rata for a partial fill | The contract | **Worst case: the order filled at the user's own price**, at a time of its choosing within the window |
+| At least the user's limit price, pro rata for a partial fill, measured on what reaches the account (so a token that taxes transfers can't leave the user short) | The contract | **Worst case: the order filled at the user's own price**, at a time of its choosing within the window |
 | Fee at most 1% (`MAX_FEE_BPS`), only to the fixed fee wallet, on the base-asset side | The contract (immutable) | Can't raise the fee or redirect it |
 | Only exchanges fixed at deployment are called or approved, and only for this fill's input | The contract (immutable list; approval reset after each call) | Can't call anything else |
 | Cancel one order, or all at once | The user's own transaction (`cancel`, `cancelAll`) | Works however RektBull behaves |
@@ -74,13 +74,15 @@ small caps, and only if you decide it should.
    signature, the size left, and that the venue and spender are allowed.
 2. Pulls `amountIn` of `tokenIn` from the account.
 3. Takes the fee: from the output when it's a base asset (USDC, USDT, WETH,
-   WBNB, the native coin), otherwise from the input. The fee wallet never
-   fills up with meme coins.
+   WBNB, the native coin), otherwise from the input. So buys and sells pay in
+   the base asset; only an order from one meme coin straight into another
+   (which the trade service doesn't offer) would pay in a meme coin.
 4. Calls the venue: approves exactly this fill's input to `spender` (reset
    afterwards), or with `unwrapIn`, unwraps WBNB/WETH and sends it as native
    (four.meme's curve is bought with BNB). Unused native comes back wrapped.
-5. Checks the output against the user's price, pro rata, after the fee.
-6. Sends the output, and any unused input, to the account.
+5. Sends the output, and any unused input, to the account.
+6. Checks what reached the account against the user's price, pro rata,
+   after the fee.
 
 **Exchanges, per chain** (fixed at deployment): 0x's AllowanceHolder
 everywhere (any token with a pool, graduated curve tokens included), four.meme's
@@ -119,6 +121,34 @@ trader):
 - a signed stop-loss sale for BNB, filled by the executor key, with 1.00% to
   the fee wallet and the user paying no gas;
 - the router left holding nothing.
+
+## Checks before the audit
+
+- **Slither in CI** (`contracts/scripts/slither.mjs`): every pull request runs
+  Slither on all four contracts and fails on any Medium or High finding that
+  isn't in `contracts/slither.triage.json` with a reviewed reason. Today: 15,
+  all reviewed (none was a real flaw), 0 open.
+- **Stateful fuzz tests** (`contracts/test/*.invariant.t.sol`, Hardhat 3's
+  Solidity tests): 256 runs of random sequences each for this router and the
+  Trade Router. The invariants:
+    - the router holds nothing;
+    - users get their signed (or oracle) price;
+    - nothing is filled past its size or sold past what was signed;
+    - the fee is at most 1%;
+    - no unauthorised fill succeeds;
+    - an approved bystander loses nothing.
+
+  A fixed test in each proves the honest path really trades. **Found:** an
+  order whose minimum rounds to zero could be filled at any price; orders with
+  no minimum are now refused.
+- **AI security review** of this contract, including simulations against
+  four.meme's live contracts: no exploitable finding. Its function that sells
+  for another holder (`from`) needs that holder to be the sender of the
+  transaction, so it can't reach users who approved this router. **Found
+  below the bar:** for a token that taxes transfers, the price was checked
+  before the tax. The check now uses what reaches the account.
+- These are not an audit. They catch the common and mechanical bugs so the
+  auditor's time goes to the design.
 
 ## What's next
 
