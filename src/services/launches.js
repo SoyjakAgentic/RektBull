@@ -11,13 +11,16 @@
  *   fee pays for it). A critical bundle finding stops the buy; a high one
  *   needs the buyer to confirm they've read it.
  *
- * Launchpad bonding curves (Virtuals, Zora, four.meme, pump.fun) come in
- * later phases; tokens still on a curve can't be traded here yet.
+ * - Base launchpads (services/launchpads.js): each token's launchpad
+ *   (Clanker, Zora, Virtuals) read from the launchpad's own contract, and the
+ *   newest tokens still on Virtuals' bonding curve, traded on that curve.
+ *   four.meme and pump.fun come in later phases.
  */
 const { cached } = require('../lib/cache');
 const gt = require('../providers/geckoterminal');
 const dexscreener = require('../providers/dexscreener');
 const discover = require('./discover');
+const launchpads = require('./launchpads');
 
 class LaunchesRefused extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -67,11 +70,18 @@ async function feed({ chain = 'base' } = {}) {
       market_cap_usd: t.market_cap_usd ?? t.fdv_usd, change_1h_pct: t.change_1h_pct, buys_24h: t.buys_24h, sells_24h: t.sells_24h,
       signals: t.signals,
     }));
-  const flags = await pool(rows.slice(0, FLAGGED_IN_FEED), 2, r => discover.flags({ chain, token: r.token }));
-  rows.forEach((r, i) => { r.flags = i < FLAGGED_IN_FEED ? flags[i] : null; });
+  const [flags, pads] = await Promise.all([
+    pool(rows.slice(0, FLAGGED_IN_FEED), 2, r => discover.flags({ chain, token: r.token })),
+    chain === 'base' ? pool(rows, 3, r => launchpads.identify(chain, r.token)) : [],
+  ]);
+  rows.forEach((r, i) => {
+    r.flags = i < FLAGGED_IN_FEED ? flags[i] : null;
+    const pad = pads[i];
+    r.launchpad = pad?.launchpad ? { id: pad.launchpad, name: pad.name, link: pad.link } : null;
+  });
   return {
     chain, chain_name: NAMES[chain], tokens: rows,
-    sources: [list.source, `GoPlus token security for the newest ${FLAGGED_IN_FEED} (cached 6 hours)`],
+    sources: [list.source, `GoPlus token security for the newest ${FLAGGED_IN_FEED} (cached 6 hours)`, ...(chain === 'base' ? ['each token\'s launchpad, read from Clanker\'s, Zora\'s and Virtuals\' contracts'] : [])],
     note: 'New tokens are where most scams start, and most new tokens go to zero. Nothing here is a recommendation or financial advice. Buying runs RektBull\'s full checks first, and stops the trade when one finds a critical risk.',
   };
 }
@@ -81,13 +91,14 @@ async function card({ chain, token }) {
   if (!CHAINS.includes(chain)) throw new LaunchesRefused(`chain must be one of: ${CHAINS.join(', ')}.`);
   if (!/^0x[0-9a-fA-F]{40}$/.test(String(token || ''))) throw new LaunchesRefused('token must be a contract address.');
   token = token.toLowerCase();
-  const [market, flags] = await Promise.all([
+  const [market, flags, pad] = await Promise.all([
     cached(`launches:market:${chain}:${token}`, 120, () => dexscreener.market(chain, token)),
     discover.flags({ chain, token }),
+    launchpads.identify(chain, token).catch(err => ({ launchpad: null, not_checked: err.message })),
   ]);
   const ageHours = market.first_pair_created_at ? Math.round((Date.now() - Date.parse(market.first_pair_created_at)) / 360000) / 10 : null;
   return {
-    chain, token, market, flags, age_hours: ageHours, young: ageHours === null || ageHours < YOUNG_HOURS,
+    chain, token, market, flags, launchpad: pad.launchpad ? pad : null, age_hours: ageHours, young: ageHours === null || ageHours < YOUNG_HOURS,
     launch_check: `/safety?chain=${chain}&token=${token}#check-card`,
     note: 'Information with its sources, not financial advice. A buy runs the full token check and, for a token under a week old, the bundle check, before your wallet is asked to sign.',
   };
@@ -114,4 +125,15 @@ async function forTrade({ chain, token }) {
   return { young: true, risk, verdict: r.verdict, detail: r.summary, flags, groups: r.groups.length, sources: r.sources };
 }
 
-module.exports = { feed, card, forTrade, parse, exchangeName, LaunchesRefused, CHAINS, YOUNG_HOURS, FLAGGED_IN_FEED };
+/** The newest tokens still on Virtuals' bonding curve (Base), each with how far it is to graduating. */
+async function curves() {
+  let list;
+  try { list = await launchpads.newestOnCurve(10); } catch (err) { throw new LaunchesRefused(`Virtuals' contract couldn't be read just now (${err.message}). Try again in a minute.`, 503); }
+  return {
+    chain: 'base', tokens: list.map(t => ({ token: t.token, ticker: t.ticker, launchpad: t.name, link: t.link, curve: t.curve })),
+    source: 'Virtuals\' Bonding contract on Base, read onchain (refreshed every 2 minutes)',
+    note: 'Tokens on a bonding curve are bought and sold on the launchpad\'s own contract until they graduate to Uniswap. Most never graduate. Nothing here is a recommendation or financial advice.',
+  };
+}
+
+module.exports = { curves, feed, card, forTrade, parse, exchangeName, LaunchesRefused, CHAINS, YOUNG_HOURS, FLAGGED_IN_FEED };

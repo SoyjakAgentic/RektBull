@@ -154,4 +154,75 @@ test('Meme Watch: liquidity pulled, a new flag, the stop-loss and insiders selli
   got = await alerts();
   assert.equal(got.length, 4);
   assert.deepEqual([got[3].severity, got[3].title], ['critical', 'MEME on base: launch-bundle wallets are selling (60% of what they bought is gone)']);
+
+  // A token bought on Virtuals' curve: one alert when it graduates (a new token replaces it).
+  const CURVE = T(8);
+  await db.query(`INSERT INTO positions (account_id, chain, token, amount_raw, cost_usd) VALUES ($1, 'base', $2, $3, 70)`, [a.id, CURVE, (1000n * 10n ** 18n).toString()]); // worth $70 at $0.07: no stop or target
+  const lp = require('../src/services/launchpads');
+  let state = 'curve';
+  lp.identify = async (_c, t) => (t === CURVE ? { launchpad: 'virtuals', name: 'Virtuals', state, agent_token: state === 'graduated' ? T(9) : null, source: 'Virtuals\' Bonding contract onchain (tokenInfo)' } : { launchpad: null });
+  await run();
+  assert.equal((await alerts()).length, 4, 'still on the curve: nothing to say');
+  state = 'graduated';
+  await run();
+  await run();
+  got = await alerts();
+  assert.equal(got.length, 5, 'told once');
+  assert.match(got[4].title, /graduated from Virtuals' bonding curve/);
+  assert.match(got[4].detail.reasons[0].text, new RegExp(`now trades on Uniswap as ${T(9)}`));
+});
+
+test('launchpads: Clanker, Zora and Virtuals recognised from their own contracts; a curve\'s progress', async () => {
+  const { ethers } = require('ethers');
+  for (const k of Object.keys(require.cache)) if (/src\/(services\/launchpads|providers\/rpc)\.js$/.test(k)) delete require.cache[k]; // fresh, unstubbed copies
+  const rpc = require('../src/providers/rpc');
+  const lp = require('../src/services/launchpads');
+  const realRpc = rpc.evmRpc;
+  const CL = T('c'), ZO = T('d'), VC = T('e'), VG = T('f'), NONE = T('a'), PAIR = '0x' + '9a'.repeat(20), FFAC = '0x' + '9f'.repeat(20);
+  const iface = {
+    clanker: new ethers.Interface(['function deploymentInfoForToken(address) view returns (address token, address hook, address locker)']),
+    zora: new ethers.Interface(['function getVersionForDeployedCoin(address) view returns (uint8)']),
+    pair: new ethers.Interface(['function getReserves() view returns (uint256, uint256)']),
+    frouter: new ethers.Interface(['function factory() view returns (address)']),
+    ffac: new ethers.Interface(['function buyTax() view returns (uint256)', 'function sellTax() view returns (uint256)']),
+  };
+  const Z = ethers.ZeroAddress, e18 = n => BigInt(n) * 10n ** 18n;
+  const info = (token, trading, onUniswap, agent = Z) => lp.BONDING.encodeFunctionResult('tokenInfo', [T(1), token, PAIR, agent,
+    [token, 'n', 'n', 'TICK', e18(1_000_000_000), 0, 0, 0, 0, 0, 0, 0], '', '', '', '', '', '', trading, onUniswap]);
+  const calls = [];
+  rpc.evmRpc = async (_chain, _m, [{ to, data }]) => {
+    to = to.toLowerCase();
+    calls.push(to);
+    const sel = data.slice(0, 10);
+    const arg = '0x' + data.slice(34, 74);
+    if (to === lp.ADDR.clanker) return iface.clanker.encodeFunctionResult('deploymentInfoForToken', arg === CL ? [CL, T(2), T(3)] : [Z, Z, Z]);
+    if (to === lp.ADDR.zora) return iface.zora.encodeFunctionResult('getVersionForDeployedCoin', [arg === ZO ? 4 : 0]);
+    if (to === lp.ADDR.bonding && sel === lp.BONDING.getFunction('tokenInfo').selector) {
+      if (arg === VC) return info(VC, true, false);
+      if (arg === VG) return info(VG, false, true, T(4));
+      return info(Z, false, false);
+    }
+    if (to === lp.ADDR.bonding) return lp.BONDING.encodeFunctionResult('gradThreshold', [e18(125_000_000)]);
+    if (to === PAIR) return iface.pair.encodeFunctionResult('getReserves', [e18(500_000_000), e18(9000)]);
+    if (to === lp.ADDR.frouter) return iface.frouter.encodeFunctionResult('factory', [FFAC]);
+    if (to === FFAC) return iface.ffac.encodeFunctionResult(data.startsWith(iface.ffac.getFunction('buyTax').selector) ? 'buyTax' : 'sellTax', [1]);
+    throw new Error(`unexpected call to ${to}`);
+  };
+  try {
+    const cl = await lp.identify('base', CL);
+    assert.deepEqual([cl.launchpad, cl.state, cl.link, cl.locker], ['clanker', 'pool', `https://clanker.world/clanker/${CL}`, T(3)]);
+    assert.match(cl.facts[0], /Clanker's locker/);
+    const zo = await lp.identify('base', ZO);
+    assert.deepEqual([zo.launchpad, zo.version, zo.link], ['zora', 4, `https://zora.co/coin/base:${ZO}`]);
+    const vc = await lp.identify('base', VC);
+    assert.deepEqual([vc.launchpad, vc.state, vc.ticker], ['virtuals', 'curve', 'TICK']);
+    // 1,000M supply, 500M left on the curve, graduating at 125M: 500M of 875M sold.
+    assert.deepEqual(vc.curve, { pair: PAIR, virtual_in_curve: 9000, tokens_left: 500_000_000, graduates_at: 125_000_000, progress_pct: 57.14, buy_tax_pct: 1, sell_tax_pct: 1 });
+    const vg = await lp.identify('base', VG);
+    assert.deepEqual([vg.state, vg.agent_token, vg.curve], ['graduated', T(4), undefined]);
+    assert.deepEqual(await lp.identify('base', NONE), { launchpad: null });
+    const before = calls.length;
+    assert.deepEqual(await lp.identify('ethereum', CL), { launchpad: null }, 'Base only');
+    assert.equal(calls.length, before, 'and nothing is read for another chain');
+  } finally { rpc.evmRpc = realRpc; }
 });

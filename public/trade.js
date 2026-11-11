@@ -142,21 +142,23 @@
     } catch (err) {
       if (!/method|support|4200|-32601|unsupported/i.test(String(err.code) + ' ' + err.message)) throw err;
     }
-    let last = null;
-    for (const c of bundle.calls) {
+    // One at a time: each step waits for the one before it (a curve buy spends what the swap before it delivered).
+    let last = null, confirm = null;
+    for (const [i, c] of bundle.calls.entries()) {
       last = await req('eth_sendTransaction', [{ from: state.address, to: c.to, data: c.data, value: c.value, ...(c.gas ? { gas: c.gas } : {}) }]);
-      if (c.step === 'approve') await waitFor(last);
+      if (c.step === (bundle.confirm_step || 'swap')) confirm = last;
+      if (i < bundle.calls.length - 1) await waitFor(last);
     }
-    return last;
+    return confirm || last;
   }
 
   async function waitFor(hash) {
     for (let i = 0; i < 120; i++) {
       const r = await req('eth_getTransactionReceipt', [hash]);
-      if (r) { if (r.status !== '0x1') throw new Error('the approval failed onchain'); return r; }
+      if (r) { if (r.status !== '0x1') throw new Error('a step of this trade failed onchain; nothing after it was sent'); return r; }
       await new Promise(res => setTimeout(res, 1500));
     }
-    throw new Error('the approval is taking too long; check your wallet');
+    throw new Error('a step of this trade is taking too long; check your wallet');
   }
 
   async function pollUntilDone(id) {

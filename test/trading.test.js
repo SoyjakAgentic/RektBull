@@ -245,6 +245,58 @@ test('trading', async t => {
     const sell = await proposals.propose(account, { chain: 'base', side: 'sell', token: TOKEN, sell_fraction: 0.5 });
     assert.equal(sell.status, 'proposed');
     assert.equal(sell.plan.checks[0].check, 'sell');
+
+    // ── A Virtuals token on its bonding curve: through 0x into VIRTUAL, then the curve (and back) ──
+    const lp = require('../src/services/launchpads');
+    const CURVE = '0x' + 'c0'.repeat(20);
+    const VIRTUAL = lp.VIRTUAL;
+    let pad = { launchpad: 'virtuals', name: 'Virtuals', state: 'curve', source: 'Virtuals\' Bonding contract onchain (tokenInfo)', curve: { buy_tax_pct: 1, sell_tax_pct: 1, progress_pct: 12.5 } };
+    lp.identify = async (_c, t) => (t === CURVE ? pad : { launchpad: null });
+    lp.curveBuyQuote = async (_t, v) => v * 1000n; // 1 VIRTUAL buys 1,000 tokens
+    lp.curveSellQuote = async (_t, n) => n * 98n / 100n / 1000n; // and selling back loses the 2% taxes
+    zeroex.setTransport(async (path, params) => {
+      seen.push({ path, params });
+      if (params.buyToken.toLowerCase() === VIRTUAL) {
+        return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(50n * 10n ** 18n), minBuyAmount: String(49n * 10n ** 18n), issues: { allowance: { spender: AH } }, transaction: { to: AH, data: '0xc0ffee', value: '0' } };
+      }
+      // Selling VIRTUAL the curve sale delivers in the same batch: 0x sees no balance yet.
+      return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '9000000', minBuyAmount: '8900000', issues: { balance: { actual: '0', expected: params.sellAmount }, simulationIncomplete: true }, transaction: { to: AH, data: '0xbeef', value: '0' } };
+    });
+    const buy = await proposals.approve(account, (await proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 })).id);
+    assert.deepEqual(buy.plan.checks.map(c => c.check), ['launchpad', 'per_trade_amount', 'bundle', 'sell_back']);
+    assert.match(buy.plan.checks[0].detail, /bonding curve \(12.5% of the way to graduating/);
+    assert.equal(seen.at(-1).params.swapFeeBps, 100, 'the 1% fee is inside the 0x swap into VIRTUAL');
+    assert.deepEqual(buy.calls.calls.map(c => c.step), ['approve', 'to_virtual', 'approve', 'swap']);
+    assert.equal(buy.calls.confirm_step, 'swap');
+    const ERC20 = new ethers.Interface(['function approve(address spender, uint256 amount)']);
+    const [, , approveCurve, curveBuy] = buy.calls.calls;
+    assert.equal(approveCurve.to, VIRTUAL);
+    const [spender, allowance] = ERC20.decodeFunctionData('approve', approveCurve.data);
+    assert.deepEqual([spender.toLowerCase(), allowance], [lp.ADDR.frouter, 49n * 10n ** 18n], 'VIRTUAL approved to Virtuals\' FRouter, for exactly what the curve buy spends');
+    assert.equal(curveBuy.to, lp.ADDR.bonding);
+    const b = lp.BONDING.decodeFunctionData('buy', curveBuy.data);
+    assert.equal(b[0], 49n * 10n ** 18n, 'it spends the least the 0x swap delivers');
+    assert.equal(b[1].toLowerCase(), CURVE);
+    assert.equal(b[2], 49000n * 10n ** 18n * 99n / 100n, 'the curve\'s minimum, after your 1% slippage');
+
+    chain.balances[CURVE] = 2000n * 10n ** 18n;
+    const out = await proposals.approve(account, (await proposals.propose(account, { chain: 'base', side: 'sell', token: CURVE, sell_fraction: 1 })).id);
+    assert.deepEqual(out.calls.calls.map(c => c.step), ['approve', 'swap', 'approve', 'from_virtual']);
+    const [approveToken, curveSell, approveVirtual] = out.calls.calls;
+    assert.equal(approveToken.to, CURVE);
+    assert.equal(ERC20.decodeFunctionData('approve', approveToken.data)[0].toLowerCase(), lp.ADDR.frouter, 'the token is approved to Virtuals\' FRouter only');
+    const sl = lp.BONDING.decodeFunctionData('sell', curveSell.data);
+    assert.equal(sl[0], 2000n * 10n ** 18n);
+    assert.equal(sl[2], 2000n * 10n ** 18n * 98n / 100n / 1000n * 99n / 100n, 'the VIRTUAL minimum, after your 1% slippage');
+    assert.equal(approveVirtual.to, VIRTUAL);
+    assert.deepEqual([ERC20.decodeFunctionData('approve', approveVirtual.data)[0].toLowerCase(), ERC20.decodeFunctionData('approve', approveVirtual.data)[1]], [AH, sl[2]], 'only the VIRTUAL minimum, to 0x\'s AllowanceHolder');
+    assert.equal(seen.at(-1).params.swapFeeBps, 100, 'the 1% fee is inside the 0x swap out of VIRTUAL');
+
+    // A graduated token is refused, naming the token that replaced it; a tampered route is never used.
+    pad = { ...pad, state: 'graduated', agent_token: '0x' + 'a9'.repeat(20) };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /graduated.*0xa9a9/);
+    const { walletCalls: wc } = require('../src/trade/calls');
+    assert.throws(() => wc({ chain: 'base', side: 'buy', token: CURVE, route: { kind: 'virtuals_curve', bonding: '0x' + 'ee'.repeat(20), frouter: lp.ADDR.frouter, virtual: VIRTUAL } }), /doesn't use/);
     await db.getPool().end();
   });
 });

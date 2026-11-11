@@ -15,7 +15,7 @@
       <h1>New tokens, <em>checked before you trade them</em></h1>
       <p>The newest tokens on Base, Ethereum and Arbitrum, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
       <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
-      <nav class="jump" aria-label="On this page"><a href="#feed-card">New tokens</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
+      <nav class="jump" aria-label="On this page"><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
     </div>
   </section>
 
@@ -29,8 +29,16 @@
         </div>
       </div>
       <p id="l-msg" class="msg"></p>
-      <div class="tablewrap"><table class="rank" id="l-table"><thead><tr><th>Token</th><th class="num">Age</th><th class="num">Liquidity</th><th class="num">Volume, 24 h</th><th>Warning signs</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="tablewrap"><table class="rank" id="l-table"><thead><tr><th>Token</th><th>Launchpad</th><th class="num">Age</th><th class="num">Liquidity</th><th class="num">Volume, 24 h</th><th>Warning signs</th><th></th></tr></thead><tbody></tbody></table></div>
       <p id="l-src" class="source"></p>
+    </section>
+
+    <section class="card" id="curve-card">
+      <div class="chart-head"><h2>On a bonding curve <span class="tag">Base</span></h2><button class="btn" type="button" id="c-reload">Refresh</button></div>
+      <p class="small muted">Tokens launched on Virtuals that haven't graduated to an exchange yet: they're bought and sold on Virtuals' own contract. RektBull swaps your USDC or ETH into VIRTUAL through 0x (its 1% fee is taken there), then buys on the curve; your wallet signs each step.</p>
+      <p id="c-msg" class="msg"></p>
+      <div class="tablewrap"><table class="rank" id="c-table"><thead><tr><th>Token</th><th class="num">To graduating</th><th class="num">VIRTUAL in the curve</th><th>Launchpad's tax</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="c-src" class="source"></p>
     </section>
 
     <section class="card" id="token-card">
