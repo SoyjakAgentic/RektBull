@@ -77,7 +77,7 @@ function createApp() {
   const send = html => (html.includes('<!--#facts-->')
     ? async (req, res, next) => { try { res.type('html').send(html.replace('<!--#facts-->', await glance(req.path))); } catch (err) { next(err); } }
     : (_req, res) => res.type('html').send(html));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
   // Find money and Governance sit under Opportunities in the menu.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
   for (const [route, file] of Object.entries(PAGES)) {

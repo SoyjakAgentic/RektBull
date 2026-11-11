@@ -147,7 +147,8 @@ function poolSignals(p, now = Date.now()) {
   const src = 'GeckoTerminal';
   if (p.created_at) {
     const h = (now - Date.parse(p.created_at)) / 3600000;
-    if (h < 24) out.push({ level: 'warn', text: `Pool opened ${Math.max(1, Math.round(h))} hour${Math.round(h) === 1 ? '' : 's'} ago`, source: src });
+    if (h < 1) out.push({ level: 'warn', text: `Pool opened ${Math.max(1, Math.round(h * 60))} minutes ago`, source: src });
+    else if (h < 24) out.push({ level: 'warn', text: `Pool opened ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'} ago`, source: src });
     else if (h < 24 * 7) out.push({ level: 'warn', text: `Pool opened ${Math.round(h / 24)} days ago`, source: src });
   }
   if (p.liquidity_usd !== null && p.liquidity_usd < 50000) out.push({ level: 'warn', text: `Liquidity ${usd(p.liquidity_usd)}: a large sale moves the price a lot`, source: src });

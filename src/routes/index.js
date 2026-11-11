@@ -331,6 +331,24 @@ const discoverCall = (parse, fn) => async (req, res) => {
   }
 };
 const FLAGS_PER_DAY = FREE_LIMITS.discover_flags;
+
+// ── Launches: new tokens with their checks (free, cached); buying and selling goes through the Trade desk ──
+const launches = require('../services/launches');
+const launchCall = fn => async (req, res) => {
+  try {
+    res.set('cache-control', 'public, max-age=60');
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof launches.LaunchesRefused || err instanceof discover.DiscoverRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/launches', launchCall(req => {
+  const input = launches.parse(req.query);
+  if (input.error) throw new launches.LaunchesRefused(input.error);
+  return launches.feed(input);
+}));
+router.get('/v1/launches/:chain/:token', launchCall(req => launches.card({ chain: String(req.params.chain).toLowerCase(), token: req.params.token })));
 router.get('/v1/discover/dapps', discoverCall(discover.parseDapps, input => discover.dapps(input)));
 router.get('/v1/discover/categories', discoverCall(q => (q.chain && !discover.CHAIN_NAMES[q.chain] ? { error: 'unknown chain' } : { chain: q.chain || null }), input => discover.categories(input)));
 router.get('/v1/discover/chains', discoverCall(null, () => discover.chainList()));

@@ -81,6 +81,22 @@ const PAGES = {
       ['What does it cost?', 'It\'s part of Safety Pro ({{price:pro_30d}} for 30 days). A single check without it is {{points:token_quick_check}} free point or {{price:token_quick_check}} on the Safety page.'],
     ],
   },
+  meme_watch: {
+    title: 'Meme Coin Alerts: Insider Sells and Rugs | RektBull',
+    description: 'An AI agent that watches the meme coins you bought for insiders selling, honeypot flags, pulled liquidity and your stop-loss, with a sell ready to sign.',
+    lead: 'the alerts that come before a meme coin goes to zero',
+    checks: [
+      ['Launch-bundle and insider wallets: did they sell what they bought at launch?', 'The bundle check (block explorer transfers), then their balances read onchain every 6 hours'],
+      ['Was liquidity pulled from its pools?', 'DexScreener, compared with the last check'],
+      ['Did it become a honeypot, add a tax, or gain owner powers?', 'GoPlus token security'],
+      ['Is it past your take-profit or stop-loss?', 'DexScreener\'s price against what it cost you, with your Trade desk settings'],
+    ],
+    faq: [
+      ['Does it sell for me?', 'No. Each alert links a sell of the whole position on the Trade desk, already checked, for your wallet to review and sign. RektBull never moves your money.'],
+      ['Which tokens does it watch?', 'Up to 10 tokens you bought through RektBull\'s Trade or Launches desk on Base, Ethereum or Arbitrum, newest first. Stablecoins and ETH aren\'t watched.'],
+      ['What does it cost?', 'Nothing: it\'s free for any signed-in wallet. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
+    ],
+  },
   launch_safety: {
     title: 'Rug Pull Detector: Bundled Launch Checks | RektBull',
     description: 'An AI agent that checks new tokens for a bundled launch: early buyers sharing a funder, links to the deployer, and alerts when those wallets start selling.',

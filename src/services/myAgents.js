@@ -23,6 +23,8 @@ class AgentsRefused extends Error {
 }
 
 const TOKEN_WATCH_MAX = 10;
+const MEME_WATCH_MAX = 10;
+const INSIDER_EVERY_HOURS = 6; // re-reading insider wallets' balances costs an RPC call per wallet
 const LAUNCH_SAFETY_MAX = 5;
 /** The agents that take a token list, and how many tokens each holds. */
 const TOKEN_LISTS = { token_watch: TOKEN_WATCH_MAX, launch_safety: LAUNCH_SAFETY_MAX };
@@ -79,6 +81,12 @@ const AGENTS = [
     does: 'Watches the lending venues your watched wallets use (Aave v3, Compound v3, Spark) for exploits, runs, frozen markets and broken oracles. Proposals to move are prepared on the desk for your wallet to sign.',
     alerts: 'When a venue you hold turns risky, with "withdraw now" when it\'s critical.',
     plan: 'pro', every: [], default_every: 1 / 12, default_on: true, runs_here: false, wallets: 'watched',
+  },
+  {
+    id: 'meme_watch', name: 'Meme Watch', was: 'Meme Coin Trader (alerts and a ready-made sell)', desk: { name: 'Launches', href: '/launches' },
+    does: `Watches up to ${MEME_WATCH_MAX} tokens you bought on the Trade or Launches desk, on Base, Ethereum and Arbitrum: launch-bundle and insider wallets selling, a new GoPlus flag (a honeypot, a tax, owner powers), liquidity pulled from its pools, and your take-profit or stop-loss price. Each alert comes with a sell ready for your wallet to sign.`,
+    alerts: 'When one of those happens, with the reasons, their sources, and a sell to review and sign.',
+    plan: 'free', every: [1, 6], default_every: 1, default_on: false, runs_here: true, wallets: 'signed_in',
   },
   {
     id: 'trading_agent', name: 'Trading Agent', was: 'Meme Coin Trader', desk: { name: 'Trade', href: '/trade' },
@@ -240,7 +248,110 @@ async function raise(accountId, alerts) {
 
 /* ── the agents that run here ── */
 
+/** A sell of everything, ready on the Trade desk for the wallet to review and sign. */
+const sellLink = (chain, token) => `/trade?chain=${chain}&token=${token}&side=sell&fraction=100#trade-card`;
+
 const RUNNERS = {
+  /**
+   * Meme Watch: the tokens this account bought through RektBull (positions),
+   * checked for the things that come before a token goes to zero. Never sells:
+   * each alert links a sell for the wallet to sign.
+   */
+  async meme_watch({ account, row }) {
+    const ls = require('./launchSafety');
+    const dexscreener = require('../providers/dexscreener');
+    const discover = require('./discover');
+    const { CHAINS } = require('./launches');
+    const { TRADE_CHAINS } = require('../trade/chains');
+    const settings = await require('../trade/rules').settingsFor(account.id);
+    const bases = new Set(Object.values(TRADE_CHAINS).flatMap(c => Object.values(c.bases).map(b => b.address.toLowerCase())));
+    const { rows } = await db.query(
+      `SELECT chain, token, amount_raw::text AS amount_raw, cost_usd FROM positions
+        WHERE account_id = $1 AND amount_raw > 0 AND chain = ANY($2::text[]) ORDER BY updated_at DESC`,
+      [account.id, CHAINS],
+    );
+    const held = rows.filter(r => !bases.has(r.token.toLowerCase())).slice(0, MEME_WATCH_MAX);
+    const prev = row?.snapshot?.positions || {};
+    const now = {};
+    const alerts = [];
+    const notChecked = [];
+    for (const pos of held) {
+      const key = `${pos.chain}:${pos.token}`;
+      const p = { ...(prev[key] || {}) };
+      now[key] = p;
+      const token = { chain: pos.chain, token: pos.token };
+      const name = () => p.symbol || `${pos.token.slice(0, 6)}…${pos.token.slice(-4)}`;
+      const alert = (severity, id, title, reasons) => alerts.push({
+        kind: 'meme_watch', severity, wallet: account.wallet, dedupe: `meme:${key}:${id}`,
+        title: `${name()} on ${pos.chain}: ${title}`, detail: { reasons, token, sell: sellLink(pos.chain, pos.token) },
+      });
+      try {
+        // Its market: price and liquidity (DexScreener).
+        const m = await dexscreener.market(pos.chain, pos.token);
+        if (m.not_checked) notChecked.push(`${name()}: ${m.not_checked}`);
+        else {
+          p.symbol = m.token_symbol || p.symbol;
+          if (p.liquidity_usd && m.liquidity_usd_total < p.liquidity_usd * 0.5) {
+            alert('critical', `liquidity:${Math.floor(Date.now() / 86400000)}`, `liquidity fell ${Math.round((1 - m.liquidity_usd_total / p.liquidity_usd) * 100)}% since the last check`, [
+              { text: `Its pools held $${Math.round(p.liquidity_usd).toLocaleString('en-US')} and now hold $${Math.round(m.liquidity_usd_total).toLocaleString('en-US')}. Liquidity pulled from a new token's pool often comes just before it can no longer be sold for much.`, source: 'DexScreener' },
+            ]);
+          }
+          p.liquidity_usd = m.liquidity_usd_total;
+          // Take-profit and stop-loss, against what it cost (the Trade desk's settings).
+          if (m.price_usd && Number(pos.cost_usd) > 0) {
+            if (p.decimals === undefined) p.decimals = Number(BigInt(await require('../providers/rpc').evmRpc(pos.chain, 'eth_call', [{ to: pos.token, data: '0x313ce567' }, 'latest'])));
+            const value = Number(pos.amount_raw) / 10 ** p.decimals * m.price_usd;
+            const change = Math.round((value / Number(pos.cost_usd) - 1) * 1000) / 10;
+            p.change_pct = change;
+            const facts = [{ text: `Bought for $${Number(pos.cost_usd).toFixed(2)}; worth about $${value.toFixed(2)} at DexScreener's price (${change >= 0 ? '+' : ''}${change}%). Your settings: take profit at +${settings.take_profit_pct}%, stop loss at -${settings.stop_loss_pct}%.`, source: 'DexScreener; your Trade desk settings' }];
+            if (change >= settings.take_profit_pct && !p.target_alerted) { alert('medium', 'target', `up ${change}%, past your take-profit of ${settings.take_profit_pct}%`, facts); p.target_alerted = true; }
+            if (change <= -settings.stop_loss_pct && !p.stop_alerted) { alert('high', 'stop', `down ${-change}%, past your stop-loss of ${settings.stop_loss_pct}%`, facts); p.stop_alerted = true; }
+          }
+        }
+        // New GoPlus flags (a honeypot, a tax, owner powers) since the last check.
+        const f = await discover.flags(token);
+        if (f.not_checked) notChecked.push(`${name()}: GoPlus ${f.not_checked}`);
+        else {
+          const bad = f.flags.filter(x => x.level === 'bad').map(x => x.text);
+          const fresh = p.flags ? bad.filter(x => !p.flags.includes(x)) : [];
+          if (fresh.length) alert('high', `flags:${fresh.join('|')}`, fresh[0], fresh.map(text => ({ text, source: 'GoPlus' })));
+          p.flags = bad;
+        }
+        // Launch-bundle and insider wallets: found once, then their balances re-read every few hours.
+        if (!p.groups) {
+          const r = await ls.check(token).catch(err => ({ error: err.message }));
+          if (r.error) notChecked.push(`${name()}: the bundle check couldn't run (${r.error})`);
+          else {
+            p.groups = r.groups.filter(g => g.funder_kind !== 'busy' && g.bought_pct >= 3)
+              .map(g => ({ funder: g.funder, wallets: g.wallets.map(w => ({ address: w.address })), bought_pct: g.bought_pct, reported_pct: g.holds_pct }));
+            p.insiders_at = Date.now();
+          }
+        } else if (p.groups.length && Date.now() - (p.insiders_at || 0) >= INSIDER_EVERY_HOURS * 3600000) {
+          const holds = await ls.holdingsNow(pos.chain, pos.token, p.groups);
+          for (const g of p.groups) {
+            const h = holds[g.funder];
+            if (h === null || h === undefined || !g.bought_pct) continue;
+            const soldBefore = g.reported_pct === null || g.reported_pct === undefined ? 0 : Math.max(0, Math.round((1 - g.reported_pct / g.bought_pct) * 100));
+            const soldNow = Math.max(0, Math.round((1 - h / g.bought_pct) * 100));
+            if (soldNow - soldBefore >= 20) {
+              alert('critical', `insiders:${g.funder}:${Math.floor(soldNow / 20)}`, `launch-bundle wallets are selling (${soldNow}% of what they bought is gone)`, [
+                { text: `${g.wallets.length} wallets funded from ${g.funder.slice(0, 6)}…${g.funder.slice(-4)} bought ${g.bought_pct}% of the supply at launch and hold ${h}% now (${g.reported_pct ?? 'unknown'}% when last reported).`, source: `${pos.chain} RPC (balanceOf)` },
+              ]);
+              g.reported_pct = h;
+            }
+          }
+          p.insiders_at = Date.now();
+        }
+      } catch (err) {
+        notChecked.push(`${name()}: ${err.message}`);
+      }
+    }
+    return {
+      alerts, snapshot: { positions: now },
+      result: { text: held.length ? `${held.length} token${held.length === 1 ? '' : 's'} watched` : 'No tokens bought through RektBull to watch yet', not_checked: notChecked.slice(0, 10) },
+    };
+  },
+
   /** The free checkup on the signed-in wallet. Weekly: a summary every run. Daily: only when the headlines changed. */
   async wallet_checkup({ account, row, every }) {
     const r = await require('./home').checkup(account.wallet, { accountId: account.id });
@@ -446,4 +557,4 @@ async function tick({ limit = PER_TICK } = {}) {
   return rows.length;
 }
 
-module.exports = { AGENTS, catalog, list, update, isOn, everyHours, tick, runOne, raise, parseTokens, scheduleText, AgentsRefused, TOKEN_WATCH_MAX, LAUNCH_SAFETY_MAX, TOKEN_LISTS, RUNNERS };
+module.exports = { MEME_WATCH_MAX, sellLink, AGENTS, catalog, list, update, isOn, everyHours, tick, runOne, raise, parseTokens, scheduleText, AgentsRefused, TOKEN_WATCH_MAX, LAUNCH_SAFETY_MAX, TOKEN_LISTS, RUNNERS };
