@@ -267,6 +267,7 @@ async function confirmSent() {
 async function tick(deps = {}) {
   if (!env.yieldAutoEnabled) return { off: true };
   await confirmSent();
+  if (await require('../admin/stops').isStopped('auto_yield')) return { stopped: true }; // the emergency stop (admin panel)
   await db.query(`UPDATE yield_permissions SET status = 'expired' WHERE status = 'active' AND expires_at <= now()`);
   const { rows } = await db.query(`SELECT * FROM yield_permissions WHERE status = 'active'`);
   const done = [];

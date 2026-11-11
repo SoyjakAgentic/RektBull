@@ -17,6 +17,7 @@ const rpc = require('../providers/rpc');
 const explorer = require('../providers/explorer');
 const { cached } = require('../lib/cache');
 const approvals = require('./approvals');
+const { product, short } = require('../payments/catalog');
 
 const CHAIN_NAMES = { ethereum: 'Ethereum', base: 'Base', arbitrum: 'Arbitrum', optimism: 'Optimism', polygon: 'Polygon', bsc: 'BNB Chain', solana: 'Solana' };
 const nameOf = c => CHAIN_NAMES[c] || c;
@@ -182,7 +183,7 @@ const PARTS = [
           { label: 'Worth revoking', value: String(s.to_revoke) },
           { label: 'They could take', value: money(s.value_at_risk_usd) + (s.not_priced ? ` + ${s.not_priced} not priced` : '') },
         ],
-        action: s.to_revoke ? 'See which, and revoke them from your wallet (approval cleanup: 5 points or $1)' : 'See every approval',
+        action: s.to_revoke ? `See which, and revoke them from your wallet (approval cleanup: ${product('approval_cleanup').points} points or ${short(product('approval_cleanup').price_cents)})` : 'See every approval',
         not_checked: s.chains_not_read.map(c => ({ check: `approvals on ${nameOf(c.chain)}`, reason: c.reason })),
         source: 'Approval logs from the chain explorers (GoPlus when they can\'t give the whole history); each approval\'s current state read onchain; values at DefiLlama prices',
       };

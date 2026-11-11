@@ -59,7 +59,7 @@
 
     <section class="card">
       <h2>For bots and AI agents</h2>
-      <p class="muted small"><code>POST /v1/governance/check</code> with <code>{"wallet"}</code> (free); <code>POST /v1/governance/summary</code> with <code>{"proposal_id"}</code> (1 point, $0.10 by x402, or Safety Pro); <code>POST /v1/governance/votes/prepare</code> with <code>{"wallet", "proposal_id", "choice", "reason"}</code> returns EIP-712 typed data to sign; <code>POST /v1/governance/votes</code> with <code>{"message", "sig"}</code> sends it to Snapshot.</p>
+      <p class="muted small"><code>POST /v1/governance/check</code> with <code>{"wallet"}</code> (free); <code>POST /v1/governance/summary</code> with <code>{"proposal_id"}</code> ({{points:governance_summary}} point, {{price:governance_summary}} by x402, or Safety Pro); <code>POST /v1/governance/votes/prepare</code> with <code>{"wallet", "proposal_id", "choice", "reason"}</code> returns EIP-712 typed data to sign; <code>POST /v1/governance/votes</code> with <code>{"message", "sig"}</code> sends it to Snapshot.</p>
     </section>
   </main>
 

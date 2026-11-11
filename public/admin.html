@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+  <main class="tool wide">
+    <section class="card" id="gate">
+      <h1>Admin</h1>
+      <p class="muted">For RektBull's owners: wallets listed in <code>ADMIN_WALLETS</code>. Sign in with one of them. Every change needs a sign-in from the last 15 minutes and a reason, and is logged. Nothing here can move money, show or change a key, or change a contract.</p>
+      <p><button class="btn" id="signin" type="button">Sign in again</button></p>
+      <p id="gate-msg" class="msg"></p>
+    </section>
+
+    <div id="panel" hidden>
+      <section class="card" id="stops-card">
+        <h2>Emergency stops</h2>
+        <p class="muted small">A stop only halts what RektBull does by itself. Users can always act from their own wallet and revoke.</p>
+        <div id="stops"></div>
+        <p id="stops-msg" class="msg"></p>
+      </section>
+
+      <section class="card" id="prices-card">
+        <h2>Prices</h2>
+        <p class="muted small">New prices apply to new purchases only; passes already bought keep what they paid for. Pages, the API's 402 answers and search results show the new price within a minute. The 1% trade fee and the 0.1% yield fee are fixed in the audited contracts and can't be changed here.</p>
+        <div class="tablewrap"><table class="rank" id="prices"><thead><tr><th>Product</th><th>Now</th><th>Default</th><th>Change</th><th></th></tr></thead><tbody></tbody></table></div>
+        <h3>Free points</h3>
+        <div class="row" id="points"></div>
+        <h3>Safety Pro AI allowance</h3>
+        <div class="row" id="ai"></div>
+        <p id="prices-msg" class="msg"></p>
+      </section>
+
+      <section class="card" id="agents-card">
+        <h2>AI agents</h2>
+        <p class="muted small"><strong>Active:</strong> listed and working. <strong>Hidden:</strong> keeps working for anyone using it and by its link, but isn't listed, offered or in the sitemap. <strong>Off:</strong> paused; new runs are refused, schedules stop, and its users get one alert. Nobody's settings are deleted.</p>
+        <div class="tablewrap"><table class="rank" id="agents"><thead><tr><th>Agent</th><th>State</th><th></th></tr></thead><tbody></tbody></table></div>
+        <p id="agents-msg" class="msg"></p>
+      </section>
+
+      <section class="card" id="log-card">
+        <h2>Change log</h2>
+        <div class="tablewrap"><table class="rank" id="log"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Before</th><th>After</th><th>Why</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </div>
+  </main>
+  <!--#footer:For RektBull's owners. Every change is logged.-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

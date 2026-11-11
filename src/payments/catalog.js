@@ -9,6 +9,19 @@
  * payers who raised it, but the main way to buy them is credits.
  */
 const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
+const settings = require('../admin/settings');
+
+/** What an admin may change in the admin panel (/admin), within these limits. Anything else is fixed here. */
+const DEFAULT_FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
+const DEFAULT_AI_ALLOWANCE_CENTS = 200;
+const LIMITS = {
+  price_cents: { run: [1, 100000], pass: [100, 100000] }, // $0.01 to $1,000 a run; $1 to $1,000 a pass
+  points: [1, 100],
+  fee_bps: [0, 1000], // a claim fee of at most 10%
+  free_points: [0, 1000],
+};
+/** Fees that aren't the panel's to change, and why. */
+const FIXED = { yield_move: 'Fixed at 0.1%: the audited Yield Router charges exactly this, so the prepared moves must too.' };
 
 /**
  * Free points: every signed-in wallet gets this many a month (UTC), spent on
@@ -16,14 +29,18 @@ const X402_DEFAULT_CLIENT_CAP_CENTS = 100;
  * fewer, so new wallets can't farm them. Reports aren't payable with points
  * (each one costs real AI money).
  */
-const FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
+const FREE_POINTS = Object.defineProperties({}, Object.fromEntries(Object.keys(DEFAULT_FREE_POINTS).map(k => [k, {
+  enumerable: true, get: () => settings.get('free_points')?.[k] ?? DEFAULT_FREE_POINTS[k],
+}])));
 
 const SAFETY_PRO = {
   covers: ['token_quick_check', 'approval_cleanup', 'token_report', 'risk_monitor', 'presign_check', 'airdrop_claim', 'yield_proposals', 'governance_summary', 'launch_check'],
   fair_use_per_day: { token_quick_check: 200, approval_cleanup: 20, presign_check: 500, launch_check: 30 },
   // AI runs are counted at what they cost RektBull in Claude usage, up to $2 in each 30 days of the
   // pass (src/payments/aiAllowance.js); then they're paid like any other run.
-  ai_allowance: { cents_per_30_days: 200, uses: ['token_report', 'governance_summary'] },
+  ai_allowance: Object.defineProperties({ uses: ['token_report', 'governance_summary'] }, {
+    cents_per_30_days: { enumerable: true, get: () => settings.get('ai_allowance')?.cents_per_30_days ?? DEFAULT_AI_ALLOWANCE_CENTS },
+  }),
   monitor: { wallets: 3, every_hours: 24 },
 };
 const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for full token reports and proposal summaries (about 20 reports; an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), and DAO votes: alerts when a vote opens or is about to close for a wallet you watch.';
@@ -130,10 +147,105 @@ const PRODUCTS = {
   },
 };
 
+/** The fields of a product an admin may change. */
+function editable(id) {
+  const p = PRODUCTS[id];
+  if (!p || FIXED[id]) return [];
+  if (p.kind === 'run') return p.points ? ['price_cents', 'points'] : ['price_cents'];
+  if (p.kind === 'pass') return ['price_cents'];
+  if (p.kind === 'fee') return ['fee_bps', 'pro_fee_bps'];
+  return [];
+}
+
+/** A product as sold now: its defaults here, with any price an admin set. */
 function product(id) {
   const p = PRODUCTS[id];
   if (!p) throw Object.assign(new Error(`unknown product ${id}`), { status: 400 });
-  return { id, ...p };
+  const set = settings.get(`price:${id}`) || {};
+  const over = Object.fromEntries(editable(id).filter(k => Number.isInteger(set[k])).map(k => [k, set[k]]));
+  return { id, ...p, ...over };
+}
+
+const refused = message => Object.assign(new Error(message), { status: 400 });
+const inRange = (name, v, [lo, hi], show = x => x) => {
+  if (!Number.isInteger(v) || v < lo || v > hi) throw refused(`${name} must be a whole number from ${show(lo)} to ${show(hi)}.`);
+  return v;
+};
+
+/** Checks an admin's new prices for a product; returns what to store (only what differs from the default), or null. */
+function checkPrice(id, input) {
+  const p = PRODUCTS[id];
+  if (!p) throw Object.assign(new Error(`unknown product ${id}`), { status: 404 });
+  if (FIXED[id]) throw refused(FIXED[id]);
+  const fields = editable(id);
+  const unknown = Object.keys(input).filter(k => !fields.includes(k));
+  if (unknown.length) throw refused(`${p.title}: only ${fields.join(', ')} can be changed here (not ${unknown.join(', ')}).`);
+  if (!Object.keys(input).length) throw refused(`Nothing to change: send ${fields.join(' or ')}.`);
+  const now = product(id);
+  const next = { ...Object.fromEntries(fields.map(k => [k, now[k]])), ...input };
+  if ('price_cents' in input) inRange('price_cents', input.price_cents, LIMITS.price_cents[p.kind], short);
+  if ('points' in input) inRange('points', input.points, LIMITS.points);
+  for (const k of ['fee_bps', 'pro_fee_bps']) if (k in input) inRange(k, input[k], LIMITS.fee_bps, b => `${b / 100}%`);
+  if (p.kind === 'fee' && next.pro_fee_bps > next.fee_bps) throw refused('The Safety Pro fee can\'t be more than the standard fee.');
+  const differs = Object.fromEntries(fields.filter(k => next[k] !== p[k]).map(k => [k, next[k]]));
+  return Object.keys(differs).length ? differs : null;
+}
+
+function checkFreePoints(input) {
+  const unknown = Object.keys(input).filter(k => !(k in DEFAULT_FREE_POINTS));
+  if (unknown.length) throw refused(`Free points: only ${Object.keys(DEFAULT_FREE_POINTS).join(', ')} can be changed.`);
+  for (const [k, v] of Object.entries(input)) inRange(k, v, LIMITS.free_points);
+  const next = { ...FREE_POINTS, ...input };
+  if (next.new_wallet > next.per_month) throw refused('A new wallet can\'t get more points than everyone else.');
+  const differs = Object.fromEntries(Object.keys(DEFAULT_FREE_POINTS).filter(k => next[k] !== DEFAULT_FREE_POINTS[k]).map(k => [k, next[k]]));
+  return Object.keys(differs).length ? differs : null;
+}
+
+/** The AI allowance can't be more than a 30-day pass costs, so a pass never loses money on AI. */
+function checkAiAllowance(cents) {
+  inRange('cents_per_30_days', cents, [0, product('pro_30d').price_cents], short);
+  return cents === DEFAULT_AI_ALLOWANCE_CENTS ? null : { cents_per_30_days: cents };
+}
+
+const PRICE_FIELDS = ['price_cents', 'points', 'fee_bps', 'pro_fee_bps'];
+const priceFields = p => Object.fromEntries(PRICE_FIELDS.filter(k => p[k] !== undefined && p[k] !== null).map(k => [k, p[k]]));
+
+/** Everything the admin panel shows for prices: defaults, what's set now, and what can change. */
+function adminPrices() {
+  return {
+    products: Object.keys(PRODUCTS).map(id => {
+      const p = PRODUCTS[id], fields = editable(id);
+      return {
+        id, kind: p.kind, title: p.title, editable: fields, fixed: FIXED[id] || null,
+        defaults: priceFields(p), current: priceFields(product(id)), changed: !!settings.get(`price:${id}`),
+        limits: Object.fromEntries(fields.map(k => [k, k === 'price_cents' ? LIMITS.price_cents[p.kind] : k === 'points' ? LIMITS.points : LIMITS.fee_bps])),
+      };
+    }),
+    free_points: { defaults: DEFAULT_FREE_POINTS, current: { ...FREE_POINTS }, changed: !!settings.get('free_points'), limits: LIMITS.free_points },
+    ai_allowance: { default_cents: DEFAULT_AI_ALLOWANCE_CENTS, cents_per_30_days: SAFETY_PRO.ai_allowance.cents_per_30_days, changed: !!settings.get('ai_allowance'), limits: [0, product('pro_30d').price_cents] },
+  };
+}
+
+/** "$9", "$0.25": a price as the pages write it. */
+const short = cents => (cents % 100 === 0 ? `$${(cents / 100).toLocaleString('en-US')}` : `$${(cents / 100).toFixed(2)}`);
+
+/**
+ * Puts today's prices into page text: {{price:id}} "$9", {{usd:id}} "9" (for
+ * structured data), {{points:id}} "5", {{fee:id}} and {{profee:id}} "5%",
+ * {{free_points}} "30", {{ai_allowance}} "$2". Anything else is left as it is.
+ */
+function fill(text) {
+  return String(text).replace(/\{\{(price|usd|points|fee|profee):([a-z0-9_]+)\}\}|\{\{(free_points|ai_allowance)\}\}/g, (m, kind, id, single) => {
+    if (single === 'free_points') return String(FREE_POINTS.per_month);
+    if (single === 'ai_allowance') return short(SAFETY_PRO.ai_allowance.cents_per_30_days);
+    if (!PRODUCTS[id]) return m;
+    const p = product(id);
+    if (kind === 'price') return short(p.price_cents);
+    if (kind === 'usd') return String(p.price_cents / 100);
+    if (kind === 'points') return p.points ? String(p.points) : m;
+    if (kind === 'fee') return p.fee_bps === undefined ? m : `${p.fee_bps / 100}%`;
+    return p.pro_fee_bps === undefined ? m : `${p.pro_fee_bps / 100}%`;
+  });
 }
 
 /** The ways a product can be paid for, in the order they're tried. */
@@ -164,4 +276,4 @@ function publicCatalog() {
   });
 }
 
-module.exports = { PRODUCTS, FREE_POINTS, SAFETY_PRO, product, rails, publicCatalog, usd, X402_DEFAULT_CLIENT_CAP_CENTS };
+module.exports = { PRODUCTS, FREE_POINTS, SAFETY_PRO, product, rails, publicCatalog, usd, short, fill, editable, checkPrice, checkFreePoints, checkAiAllowance, adminPrices, X402_DEFAULT_CLIENT_CAP_CENTS };

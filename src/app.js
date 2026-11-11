@@ -15,6 +15,21 @@ function createApp() {
   app.use(express.json({ limit: '100kb' }));
   // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
   app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, skip: req => !req.path.startsWith('/v1/') && req.path !== '/mcp' }));
+  // What the owners set in the admin panel (prices, agents, switches): read again at most once a minute,
+  // and today's prices put into every page and text file ({{price:...}} in the templates; payments/catalog fill()).
+  const adminSettings = require('./admin/settings');
+  const { fill } = require('./payments/catalog');
+  const { stripPage } = require('./admin/agentStates');
+  app.use((req, res, next) => {
+    const send = res.send;
+    res.send = function (body) {
+      const type = String(res.get('content-type') || '');
+      if (typeof body === 'string' && /html/.test(type)) body = stripPage(body);
+      if (typeof body === 'string' && body.includes('{{') && /html|text\/plain/.test(type)) body = fill(body);
+      return send.call(this, body);
+    };
+    adminSettings.fresh().then(() => next(), next);
+  });
   // The MetaMask Snap calls these from inside MetaMask (another origin), with its link token in a header.
   // Only the routes a link token may use; no cookies are involved, so any origin is fine.
   const { ALLOWED } = require('./auth/extensionTokens');
@@ -68,6 +83,8 @@ function createApp() {
   for (const [route, file] of Object.entries(PAGES)) {
     app.get(route, send(render(file, MENU[route] || route, route)));
   }
+  // The admin panel: not in the menu or the sitemap, noindex; its API checks the wallet (src/routes/admin.js).
+  app.get('/admin', send(render('admin.html', '/admin', '/admin')));
   // One address per page: /safety.html and the like go to /safety (the files are templates, not pages).
   for (const [route, file] of Object.entries(PAGES)) {
     app.get(`/${file}`, (_req, res) => res.redirect(301, route));

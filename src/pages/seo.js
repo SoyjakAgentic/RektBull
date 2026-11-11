@@ -44,6 +44,7 @@ const PARENT = { '/find': '/opportunities', '/governance': '/opportunities' };
 // Pages that are served but not listed or indexed.
 const UNLISTED = {
   '/404': ['Page not found | RektBull', 'There\'s no page at this address. Check a wallet, a token or a contract from the home page, or pick a desk from the menu.'],
+  '/admin': ['Admin | RektBull', 'For RektBull\'s owners.'],
 };
 
 /**
@@ -55,14 +56,14 @@ const UNLISTED = {
 const FAQ = {
   '/safety': [
     ['What does the token check look at?', 'Whether the token can be sold after you buy it, what it taxes on buys and sells, what its owner can still change (minting, pausing, blocking wallets, changing taxes), how concentrated its holders are, and, in the full report, its liquidity, volume and age. Each finding names its source, such as GoPlus, the block explorer or the chain itself.'],
-    ['How much does it cost?', 'The quick check is 1 free point or $0.25; the full report, written in plain English, is $3. Safety Pro ($9 for 30 days, $79 for a year) includes unlimited quick checks within fair use and an AI allowance every 30 days for full reports and proposal summaries (about 20 reports). Bots and AI agents can pay per call with x402, in USDC on Base.'],
-    ['What is a token approval, and why revoke it?', 'An approval lets a contract spend a token from your wallet, often with no limit, until you take it back. Drainers use old or unlimited approvals to empty wallets long after you\'ve forgotten them. The free preview shows how many you have open on six chains and how much they put at risk; the cleanup ($1 or 5 points) rates each one with its sources and prepares the revokes for your wallet to sign.'],
+    ['How much does it cost?', 'The quick check is {{points:token_quick_check}} free point or {{price:token_quick_check}}; the full report, written in plain English, is {{price:token_report}}. Safety Pro ({{price:pro_30d}} for 30 days, {{price:pro_365d}} for a year) includes unlimited quick checks within fair use and an AI allowance every 30 days for full reports and proposal summaries (about 20 reports). Bots and AI agents can pay per call with x402, in USDC on Base.'],
+    ['What is a token approval, and why revoke it?', 'An approval lets a contract spend a token from your wallet, often with no limit, until you take it back. Drainers use old or unlimited approvals to empty wallets long after you\'ve forgotten them. The free preview shows how many you have open on six chains and how much they put at risk; the cleanup ({{price:approval_cleanup}} or {{points:approval_cleanup}} points) rates each one with its sources and prepares the revokes for your wallet to sign.'],
     ['Does a clean result mean a token is safe?', 'No. A check finds known patterns; it can\'t prove that a token or its team is honest, or that nothing will change later. Treat a clean result as "nothing known was found", never as a guarantee.'],
   ],
   '/extension': [
     ['What does the extension check?', 'Before your wallet shows a transaction or a signature, it simulates what would leave your wallet, rates every spender and recipient, decodes permits, NFT listings and sign-in requests, and checks the site against phishing lists. A risky request stops with a warning that says why and where each fact came from.'],
     ['What does it see and keep?', 'It reads a request only when a site asks your wallet to sign something. RektBull keeps the kind of request and the chain, never what you were signing or which site asked. See the <a href="/privacy">privacy page</a>.'],
-    ['Does it cost anything?', 'Each check is 1 free point or $0.10, and checks are included in Safety Pro. A safe-looking request goes straight to your wallet; RektBull never signs anything for you.'],
+    ['Does it cost anything?', 'Each check is {{points:presign_check}} free point or {{price:presign_check}}, and checks are included in Safety Pro. A safe-looking request goes straight to your wallet; RektBull never signs anything for you.'],
   ],
   '/discover': [
     ['Where do the rankings come from?', 'Money locked (TVL), weekly change and fees come from DefiLlama; recorded hacks come from DefiLlama\'s hack record; trending and new tokens come from GeckoTerminal. Each row names its source.'],
@@ -98,13 +99,13 @@ const FAQ = {
     ['How do I get it by email?', 'Subscribe on this page: one email to confirm, then the digest each week it\'s published. Every email has a one-click unsubscribe that deletes your address.'],
   ],
   '/find': [
-    ['How are unclaimed rewards found?', 'RektBull checks Merkl rewards on six chains and airdrops it has verified, then confirms each claim onchain before showing it. Claims are prepared for your wallet to sign; the fee is 5% of what\'s claimed (3% with Safety Pro), and claiming on the project\'s own site is always free.'],
+    ['How are unclaimed rewards found?', 'RektBull checks Merkl rewards on six chains and airdrops it has verified, then confirms each claim onchain before showing it. Claims are prepared for your wallet to sign; the fee is {{fee:airdrop_claim}} of what\'s claimed ({{profee:airdrop_claim}} with Safety Pro), and claiming on the project\'s own site is always free.'],
     ['Where could my stablecoins earn more?', 'RektBull reads supply rates directly from Aave, Compound and Spark on Ethereum, Base and Arbitrum. A move is proposed only when it passes the rules (enough gain after costs, a venue not under strain), and costs 0.1% of what\'s moved. Rates change with demand.'],
     ['Will a site that asks me to "check eligibility" with my wallet pay out?', 'Be careful: connecting a wallet to an unknown "eligibility checker" is a common way to get drained. RektBull only needs your address to check, never a signature.'],
   ],
   '/governance': [
     ['Which DAOs does it cover?', 'Snapshot spaces you follow, and onchain governors: Uniswap, Compound, ENS, Gitcoin, Hop and Arbitrum, plus any OpenZeppelin or Compound-style governor you add.'],
-    ['What does the proposal summary do?', 'It explains a proposal in plain English from its own text: what would change, what money and powers it moves, what each choice does, and what the text doesn\'t say. It costs 1 point or $0.10 and never recommends a vote.'],
+    ['What does the proposal summary do?', 'It explains a proposal in plain English from its own text: what would change, what money and powers it moves, what each choice does, and what the text doesn\'t say. It costs {{points:governance_summary}} point or {{price:governance_summary}} and never recommends a vote.'],
     ['Who sends my vote?', 'Your wallet. RektBull prepares the vote; Snapshot votes are signed messages, and onchain votes are transactions your wallet sends.'],
   ],
   '/trade': [
@@ -240,7 +241,7 @@ function llms(base, digests = []) {
     '',
     'Key facts:',
     '- Free wallet checkup on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain: risky token approvals, unclaimed rewards, idle stablecoins and open DAO votes.',
-    '- Paid runs (token quick check $0.25, full token report $3, approval cleanup $1, pre-sign check $0.10, proposal summary $0.10) take x402 (USDC on Base, no account), points, credits or Safety Pro ($9 for 30 days). Charged only when the run succeeds.',
+    '- Paid runs (token quick check {{price:token_quick_check}}, full token report {{price:token_report}}, approval cleanup {{price:approval_cleanup}}, pre-sign check {{price:presign_check}}, proposal summary {{price:governance_summary}}, launch check {{price:launch_check}}, contract audit {{price:contract_audit}}) take x402 (USDC on Base, no account), points, credits or Safety Pro ({{price:pro_30d}} for 30 days). Charged only when the run succeeds.',
     '- AI agents (sign in with a wallet, switch one on, alerts by Telegram, email or browser): Wallet Checkup and Claim Assistant are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro. They never sign or move money, and AI never decides a fact.',
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',

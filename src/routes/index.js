@@ -623,4 +623,7 @@ router.patch('/v1/admin/airdrops/:id', requireAuth, requireAdmin, claimCall(req 
   return claims.setActive(req.params.id, req.body?.active);
 }));
 
+// The admin panel (/admin): prices, agents, emergency stops (src/routes/admin.js).
+router.use(require('./admin'));
+
 module.exports = router;
