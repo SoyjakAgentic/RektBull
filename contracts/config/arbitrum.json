@@ -1,0 +1,98 @@
+{
+  "_about": "The Trade Router's Arbitrum One parameters. Arbitrum's feeds update every few minutes; the router refuses prices older than shown here, and trades while the sequencer is down or just restarted. scripts/deployRouter.js checks every value here onchain first. feeWallet is given at deployment (FEE_WALLET) and must be a Safe.",
+  "chain": "arbitrum",
+  "chainId": 42161,
+  "label": "Arbitrum",
+  "explorer": "https://arbiscan.io",
+  "defaultBase": "USDC",
+  "sendRpc": null,
+  "checkedOnchain": "2026-11-11",
+  "heartbeatSource": "Chainlink reference data directory (feeds-ethereum-mainnet-arbitrum-1.json) and the last 12 rounds onchain",
+  "auditedCommit": "31c9c8c",
+  "auditedSources": [
+    "contracts/RektBullTradeRouter.sol",
+    "contracts/RektBullSafeModule.sol"
+  ],
+  "openzeppelin": "5.6.1",
+  "feeBps": 100,
+  "maxSlippageBps": 200,
+  "spendPermissionManager": "0xf85210B21cC50302F477BA56686d2019dC9b67Ad",
+  "venues": [
+    {
+      "name": "0x AllowanceHolder",
+      "address": "0x0000000000001fF3684f28c67538d4D072C22734"
+    }
+  ],
+  "sequencerUptimeFeed": {
+    "address": "0xFdB631F5EE196F0ed6FAa767959853A9F217697D",
+    "description": "L2 Sequencer Uptime Status Feed"
+  },
+  "tokens": [
+    {
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "feed": {
+        "address": "0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3",
+        "description": "USDC / USD",
+        "decimals": 8,
+        "heartbeat": 255
+      },
+      "maxAge": 480
+    },
+    {
+      "symbol": "USD₮0",
+      "name": "USD₮0",
+      "decimals": 6,
+      "address": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+      "feed": {
+        "address": "0x3f3f5dF88dC9F13eac63DF89EC16ef6e7E25DdE7",
+        "description": "USDT / USD",
+        "decimals": 8,
+        "heartbeat": 255
+      },
+      "maxAge": 480,
+      "key": "USDT"
+    },
+    {
+      "symbol": "WETH",
+      "name": "Wrapped Ether",
+      "decimals": 18,
+      "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+      "feed": {
+        "address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+        "description": "ETH / USD",
+        "decimals": 8,
+        "heartbeat": 1755
+      },
+      "maxAge": 2700
+    },
+    {
+      "symbol": "WBTC",
+      "name": "Wrapped BTC",
+      "decimals": 8,
+      "address": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      "feed": {
+        "address": "0xd0C7101eACbB49F3deCcCc166d238410D6D46d57",
+        "description": "WBTC / USD",
+        "decimals": 8,
+        "heartbeat": 86400
+      },
+      "maxAge": 90000
+    },
+    {
+      "symbol": "ARB",
+      "name": "Arbitrum",
+      "decimals": 18,
+      "address": "0x912CE59144191C1204E64559FE8253a0e49E6548",
+      "feed": {
+        "address": "0xb2A824043730FE05F3DA2efaFa1CBbe83fa548D6",
+        "description": "ARB / USD",
+        "decimals": 8,
+        "heartbeat": 86400
+      },
+      "maxAge": 90000
+    }
+  ]
+}

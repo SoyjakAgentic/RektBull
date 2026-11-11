@@ -29,11 +29,11 @@ const guard = fn => async (req, res) => {
 router.get('/v1/trading/config', (_req, res) => res.json({
   enabled: env.tradingEnabled,
   fee_pct: Math.min(env.swapFeeBps, 100) / 100,
-  chains: Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
+  chains: Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, label: c.label, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
   defaults: { ...rules.DEFAULT_SETTINGS, router_limits: { per_trade_usd: 500, per_day_usd: 10000, days: 7 } },
   automatic_trading: {
     session_key: env.sessionKeyAddress || null, wallet_types: ['metamask', 'safe', 'coinbase'],
-    networks: Object.fromEntries(networks.chainIds().map(id => { const n = networks.network(id); return [id, { label: n.label, router: n.router, tokens: n.tokens, default_base: n.defaultBase, delegation_manager: n.delegationManager, safe_module: n.safeModule || null, spend_permission_manager: n.spendPermissionManager || null }]; })),
+    networks: Object.fromEntries(networks.chainIds().map(id => { const n = networks.network(id); return [id, { label: n.label, router: n.router, tokens: n.tokens, default_base: n.defaultBase, delegation_manager: n.delegationManager, safe_module: n.safeModule || null, spend_permission_manager: n.spendPermissionManager || null, private_send: !!n.sendRpc }]; })),
   },
 }));
 

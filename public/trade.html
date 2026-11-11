@@ -27,8 +27,11 @@
     </section>
 
     <section class="card" id="trade-card" hidden>
-      <h2>2. Trade on Base</h2>
+      <h2>2. Trade</h2>
       <div class="grid">
+        <label>Network
+          <select id="chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option></select>
+        </label>
         <label>Side
           <select id="side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
         </label>
@@ -73,8 +76,8 @@
     </section>
 
     <section class="card" id="limits-card" hidden>
-      <h2>Automatic trading <span class="tag" id="auto-net">Base Sepolia test network</span></h2>
-      <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. Only tokens the router has a reference price for can be traded automatically. <strong id="auto-where"></strong></p>
+      <h2>Automatic trading <span class="tag" id="auto-net">Base Sepolia test network</span> <select id="auto-chain" aria-label="Network for automatic trading" hidden></select></h2>
+      <p class="muted">RektBull trades for you within limits your own wallet writes into the RektBull Trade Router. It can never change them and can never withdraw: trades only go back into your wallet, and the fee can't exceed 1%. Only tokens the router has a reference price for can be traded automatically. <strong id="auto-where"></strong> <span id="auto-gas" class="small"></span></p>
       <div id="auto-steps">
       <label>Your wallet
         <select id="w-type">

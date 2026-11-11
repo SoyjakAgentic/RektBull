@@ -1,7 +1,9 @@
 /**
- * The checks behind the Trade Router's Base mainnet deployment, shared by
- * scripts/deployBase.js (before and after deploying), scripts/verifyBase.js
- * (any time later) and test/baseDeploy.test.js (on a Base mainnet fork).
+ * The checks behind the Trade Router's mainnet deployments (Base, Ethereum,
+ * Arbitrum; one router per chain, each with its own config/<chain>.json),
+ * shared by scripts/deployRouter.js (before and after deploying),
+ * scripts/verifyRouter.js (any time later) and test/routerDeploy.test.js (on a
+ * fork of each chain).
  *
  * Each check returns { name, ok, detail } and names where its answer came
  * from: the chain, git, or the compiler output. Nothing here signs anything.
@@ -23,14 +25,24 @@ const FEED_ABI = [
 const ERC20_ABI = ['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
 const SAFE_ABI = ['function getThreshold() view returns (uint256)', 'function getOwners() view returns (address[])', 'function VERSION() view returns (string)'];
 
-export function loadParams(file = path.join(ROOT, 'config', 'base.json')) {
+/** The chains the router is deployed on, and the Hardhat networks that reach each. */
+export const CHAINS = ['base', 'ethereum', 'arbitrum'];
+export const chainOfNetwork = name => CHAINS.find(c => name === c || name === `${c}MainnetFork` || name === `${c}Read`) || null;
+
+/** A chain's parameters (config/<chain>.json), or a file given by path. */
+export function loadParams(chain = 'base') {
+  const file = String(chain).includes('/') ? chain : path.join(ROOT, 'config', `${chain}.json`);
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
+
+const ZERO = '0x0000000000000000000000000000000000000000';
+/** The sequencer feed's address, or zero where the chain has none (Ethereum). */
+const sequencerOf = p => p.sequencerUptimeFeed?.address || ZERO;
 
 /** The router's constructor arguments, in order. */
 export function routerArgs(p, feeWallet) {
   return [
-    feeWallet, p.feeBps, p.maxSlippageBps, p.sequencerUptimeFeed.address, p.spendPermissionManager,
+    feeWallet, p.feeBps, p.maxSlippageBps, sequencerOf(p), p.spendPermissionManager,
     p.venues.map(v => v.address), p.tokens.map(t => t.address), p.tokens.map(t => t.feed.address), p.tokens.map(t => t.maxAge),
   ];
 }
@@ -93,8 +105,9 @@ export async function preflight(ethers, p, { feeWallet, rehearsal = false, round
     }
   }
 
-  // The sequencer feed: up, and up for longer than the router's grace period.
-  try {
+  // The sequencer feed: up, and up for longer than the router's grace period. Only Ethereum may have none.
+  if (!p.sequencerUptimeFeed) add('sequencer feed', p.chainId === 1, p.chainId === 1 ? 'none: Ethereum has no sequencer, so the router skips that check' : 'missing: every L2 needs its sequencer uptime feed');
+  else try {
     const seq = new ethers.Contract(p.sequencerUptimeFeed.address, FEED_ABI, provider);
     const [desc, r] = await Promise.all([seq.description(), seq.latestRoundData()]);
     const up = r[1] === 0n, since = now - Number(r[2]);
@@ -167,7 +180,7 @@ export async function verifyDeployment(ethers, p, dep, { router: routerArtifact,
   add('fee wallet', same(feeWallet, dep.feeWallet), `FEE_WALLET ${feeWallet} (onchain)`);
   add('fee', Number(feeBps) === p.feeBps && Number(maxFee) === 100, `FEE_BPS ${feeBps}, MAX_FEE_BPS ${maxFee} (onchain)`);
   add('price bound', Number(slip) === p.maxSlippageBps, `MAX_SLIPPAGE_BPS ${slip} (onchain)`);
-  add('sequencer feed', same(seq, p.sequencerUptimeFeed.address), `SEQUENCER_UPTIME_FEED ${seq} (onchain)`);
+  add('sequencer feed', same(seq, sequencerOf(p)), `SEQUENCER_UPTIME_FEED ${seq}${same(seq, ZERO) ? ' (none: no sequencer on this chain)' : ''} (onchain)`);
   add('Spend Permission Manager', same(spm, p.spendPermissionManager), `SPEND_PERMISSION_MANAGER ${spm} (onchain)`);
   for (const v of p.venues) add(`venue ${v.name}`, await r.isVenue(v.address), `isVenue(${v.address}) (onchain)`);
   for (const t of p.tokens) {
@@ -200,16 +213,17 @@ export function autoTradingEntry(p, dep) {
   const venue = p.venues[0];
   return {
     [String(p.chainId)]: {
-      name: p.chain, label: 'Base', router: dep.router,
+      name: p.chain, label: p.label, router: dep.router,
       venue: { type: '0x', address: venue.address },
-      tokens: Object.fromEntries(p.tokens.map(t => [t.symbol, { address: t.address, decimals: t.decimals }])),
-      defaultBase: 'USDC', safeModule: dep.safeModule, spendPermissionManager: p.spendPermissionManager,
-      explorerTx: 'https://basescan.org/tx/',
+      tokens: Object.fromEntries(p.tokens.map(t => [t.key || t.symbol, { address: t.address, decimals: t.decimals }])), // key: what users type (USDT for Arbitrum's USD₮0)
+      defaultBase: p.defaultBase, safeModule: dep.safeModule, spendPermissionManager: p.spendPermissionManager,
+      explorerTx: `${p.explorer}/tx/`,
+      ...(p.sendRpc ? { sendRpc: p.sendRpc } : {}),
     },
   };
 }
 
-/** The compiler's standard JSON input, for verifying the source on Basescan. */
+/** The compiler's standard JSON input, for verifying the source on the chain's explorer. */
 export function standardInput(artifact) {
   const info = JSON.parse(fs.readFileSync(path.join(ROOT, 'artifacts', 'build-info', `${artifact.buildInfoId}.json`), 'utf8'));
   return { compiler: `v${info.solcLongVersion}`, contract: `${artifact.inputSourceName}:${artifact.contractName}`, input: info.input };

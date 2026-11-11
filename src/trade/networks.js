@@ -4,12 +4,13 @@
  * has a Chainlink-style price feed in the router), the exchange it calls,
  * and MetaMask's DelegationManager.
  *
- * Base Sepolia only until the router is audited (docs/SESSION_KEYS.md, 0b).
- * Its tokens, feeds and exchange are test stand-ins from
- * contracts/deployments/base-sepolia.json.
+ * The default is Base Sepolia, whose tokens, feeds and exchange are test
+ * stand-ins from contracts/deployments/base-sepolia.json.
  *
- * AUTO_TRADING_NETWORKS (JSON, same shape) replaces this, e.g. for a local
- * fork in tests.
+ * AUTO_TRADING_NETWORKS (JSON, same shape, keyed by chain id) replaces it:
+ * one entry per chain the audited router is deployed on (Base, Ethereum,
+ * Arbitrum), as contracts/scripts/verifyRouter.js prints it. An entry with
+ * sendRpc (Ethereum: Flashbots Protect) has its trades sent privately there.
  */
 const { DELEGATOR_CONTRACTS } = require('@metamask/delegation-deployments');
 

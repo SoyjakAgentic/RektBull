@@ -6,9 +6,15 @@
     "build": "hardhat compile",
     "test": "hardhat test",
     "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
-    "deploy:base:rehearse": "hardhat run scripts/deployBase.js --network baseMainnetFork",
-    "deploy:base": "hardhat run scripts/deployBase.js --network base",
-    "verify:base": "hardhat run scripts/verifyBase.js --network baseRead",
+    "deploy:base:rehearse": "hardhat run scripts/deployRouter.js --network baseMainnetFork",
+    "deploy:base": "hardhat run scripts/deployRouter.js --network base",
+    "verify:base": "hardhat run scripts/verifyRouter.js --network baseRead",
+    "deploy:ethereum:rehearse": "hardhat run scripts/deployRouter.js --network ethereumMainnetFork",
+    "deploy:ethereum": "hardhat run scripts/deployRouter.js --network ethereum",
+    "verify:ethereum": "hardhat run scripts/verifyRouter.js --network ethereumRead",
+    "deploy:arbitrum:rehearse": "hardhat run scripts/deployRouter.js --network arbitrumMainnetFork",
+    "deploy:arbitrum": "hardhat run scripts/deployRouter.js --network arbitrum",
+    "verify:arbitrum": "hardhat run scripts/verifyRouter.js --network arbitrumRead",
     "export:signin-check": "hardhat compile && node scripts/exportSignInCheck.js"
   },
   "devDependencies": {

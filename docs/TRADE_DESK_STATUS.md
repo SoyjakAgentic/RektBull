@@ -38,19 +38,19 @@ All green in CI when we stopped.
 4. **One small real approve-each trade on Base mainnet** (checklist section 5).
    This path doesn't need the router or the audit.
 5. **The mainnet deployment** itself, from the owner's hardware wallet:
-   [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md). Everything for it is ready.
+   [ROUTER_DEPLOYMENT.md](ROUTER_DEPLOYMENT.md). Everything for it is ready.
 
 ## Not done yet (code)
 
 | Item | Notes |
 |---|---|
-| Mainnet router deployment | ✅ **Prepared** (2026-11-08): parameters confirmed onchain (cbBTC's address, each feed's heartbeat), `contracts/config/base.json`, a hardware-wallet deploy script with pre-flight checks, a verify script, rehearsed on a Base mainnet fork in CI. The owner runs it: [BASE_DEPLOYMENT.md](BASE_DEPLOYMENT.md) |
+| Mainnet router deployment | ✅ **Prepared** for Base (2026-11-08), Ethereum and Arbitrum (2026-11-11): parameters confirmed onchain, a hardware-wallet deploy script with pre-flight checks, a verify script, rehearsed on a fork of each chain in CI. The owner runs it: [ROUTER_DEPLOYMENT.md](ROUTER_DEPLOYMENT.md) |
 | Verify the testnet contracts on Basescan | Not done; harmless, nice for testers |
-| Milestone 4: Ethereum and Arbitrum | Router per chain with that chain's feeds (no sequencer feed on Ethereum); Flashbots Protect for sends on Ethereum; `src/trade/networks.js` entries |
+| ✅ Milestone 4: Ethereum and Arbitrum | **Built** (2026-11-11): `contracts/config/ethereum.json` and `arbitrum.json` (tokens, feeds and heartbeats confirmed onchain and against Chainlink's directory; no sequencer on Ethereum), one deploy script for all three chains (`deploy:<chain>`), rehearsed on a fork of each in CI; automatic trades on Ethereum go through Flashbots Protect, one in flight at a time; a buy must cover the gas RektBull pays; trades the user signs on all three chains; the Trade page picks the network. Deploying each router is the owner's step: [ROUTER_DEPLOYMENT.md](ROUTER_DEPLOYMENT.md) |
 | Milestone 5: Solana with Phantom | Squads Smart Account or Swig; needs a devnet proof first (SESSION_KEYS section 3) |
 | Phantom (EVM side) for automatic trading | Approve-each works; automatic depends on Phantom supporting EIP-7702 delegations |
 | ✅ Share the wallet code between pages | Done: `/trade` uses `public/common.js` and the shared header |
-| ✅ Automatic trading's network from settings | Done: `/trade` uses Base when `AUTO_TRADING_NETWORKS` has it, the test network otherwise, and says it isn't open when there's none |
+| ✅ Automatic trading's network from settings | Done: `/trade` offers every network in `AUTO_TRADING_NETWORKS` (Base first), the test network when there's none on mainnet, and says it isn't open when there's none at all |
 
 ## Known issues
 
