@@ -28,16 +28,43 @@ advice.
   the Trade desk, already checked, for the wallet to review and sign. It never
   sells by itself.
 
-GeckoTerminal shows Clanker and Zora coins as Uniswap v4 pools, so the feed
-names the exchange, not the launchpad. Naming the launchpad needs each
-launchpad's factory contract, confirmed onchain; that comes with phase 2.
+## Phase 2: built (Base launchpads)
+
+Each launchpad is recognised by its own contract, read onchain
+(`src/services/launchpads.js`); every address was checked against its
+verified source on Sourcify and its code onchain on 11 November 2026:
+
+| Launchpad | Contract | How a token is recognised | How it trades |
+|---|---|---|---|
+| Clanker (v4) | factory `0xE85A59c628F7d27878ACeB4bf3b35733630083a9` (`src/Clanker.sol:Clanker`) | `deploymentInfoForToken(token)` names its hook and LP locker | Uniswap v4 from launch, through 0x |
+| Zora coins | `0x777777751622c0d3258f214F9DF38E35BF45baF3` (ZoraFactory, a proxy to ZoraFactoryImpl) | `getVersionForDeployedCoin(coin)` | Uniswap v4 from launch, through 0x |
+| Virtuals | Bonding `0xF66DeA7b3e897cD44A5a231c61B6B4423d613259` and FRouter `0x8292B43aB73EfAC11FAF357419C38ACF448202C5` (proxies to Bonding and FRouter); priced in VIRTUAL `0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b` | `Bonding.tokenInfo(token)` | its bonding curve until it graduates to Uniswap (as a new agent token) |
+
+- **The feed** names each Base token's launchpad, and a new section lists
+  the newest tokens still on Virtuals' curve, with how far each is to
+  graduating (125M tokens left on the curve), read from Bonding.
+- **Buying on Virtuals' curve:** the wallet signs, in one batch where it can:
+  the base asset (USDC, ETH) swapped into VIRTUAL through 0x (RektBull's 1%
+  fee is taken inside that swap, as on every trade), an approval of VIRTUAL to
+  Virtuals' FRouter for exactly that amount, and `Bonding.buy` with a minimum
+  out. The curve's own tax is 1% to buy and 1% to sell, read from its factory.
+  Checks before it: the bundle check (a token on a curve is always new), the
+  launchpad's taxes against the buyer's limit, and selling straight back on
+  the curve against their round-trip limit. The token was created by
+  Virtuals' Bonding contract, so its code is Virtuals' template.
+- **Selling:** an approval of the token to FRouter, `Bonding.sell` with a
+  minimum in VIRTUAL, then that minimum swapped back into the base asset
+  through 0x (the 1% fee inside). Any VIRTUAL above the minimum stays in the
+  wallet.
+- **Graduated tokens:** a curve token that graduated is refused, naming the
+  agent token that replaced it; Meme Watch tells its holders once.
+- Verified on a copy of Base (`contracts/scripts/curveCheck.js`): a 50 VIRTUAL
+  buy got exactly the quoted amount, a minimum the curve can't meet was
+  refused by Virtuals' contract, and selling it all back returned 49.005
+  VIRTUAL (the two 1% taxes).
 
 ## Phases to come
 
-2. **Base launchpads' bonding curves:** buying tokens still on Virtuals' and
-   Zora's curves (a direct call to the launchpad's contract, not 0x), and
-   naming each token's launchpad in the feed. Each contract confirmed onchain
-   first; the fee is a separate transfer the wallet signs next to the trade.
 3. **BNB Chain and four.meme:** BNB Chain added to trading (0x covers it),
    then four.meme's bonding curve.
 4. **Solana and pump.fun:** trades the user signs with Phantom, through

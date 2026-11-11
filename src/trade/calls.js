@@ -12,8 +12,49 @@ const { TradeBlocked } = require('./zeroex');
 
 const ERC20 = new ethers.Interface(['function approve(address spender, uint256 amount) returns (bool)']);
 
+/** The checked 0x swap call (only ever through AllowanceHolder), with its approval when 0x asks for one. */
+function zeroexCalls(plan, ah, sellToken, { step, alwaysApprove = false } = {}) {
+  const tx = plan.quote.transaction;
+  if (!tx || String(tx.to || '').toLowerCase() !== ah) throw new TradeBlocked(`0x returned a transaction to ${tx?.to}, not its AllowanceHolder: not using it.`);
+  const out = [];
+  const spender = plan.quote.allowanceSpender || (alwaysApprove ? ah : null);
+  if (spender) {
+    if (String(spender).toLowerCase() !== ah) throw new TradeBlocked(`0x asked for an approval to ${spender}, not its AllowanceHolder: not using it.`);
+    if (sellToken === NATIVE) throw new TradeBlocked('0x asked for an approval on the native coin, which has none.');
+    out.push({ step: 'approve', to: sellToken, value: '0x0', data: ERC20.encodeFunctionData('approve', [ah, plan.quote.sellAmount]) });
+  }
+  const value = BigInt(tx.value || 0);
+  if (value > 0n && sellToken !== NATIVE) throw new TradeBlocked('0x asked to send ETH with a trade that doesn\'t sell ETH: not using it.');
+  out.push({ step, to: tx.to, data: tx.data, value: ethers.toQuantity(value), ...(tx.gas ? { gas: ethers.toQuantity(BigInt(tx.gas) * 12n / 10n) } : {}) });
+  return out;
+}
+
+/**
+ * A Virtuals curve trade: only ever approvals to Virtuals' FRouter for this trade's amount, and calls
+ * to its Bonding contract, around the checked 0x leg. The curve call is the step named 'swap' (the one
+ * whose transaction confirms the trade).
+ */
+function curveCalls(plan, chain) {
+  const lp = require('../services/launchpads');
+  const r = plan.route;
+  if (r.bonding !== lp.ADDR.bonding || r.frouter !== lp.ADDR.frouter || r.virtual !== lp.VIRTUAL) throw new TradeBlocked('The curve route names a contract RektBull doesn\'t use: not using it.');
+  const ah = chain.allowanceHolder;
+  const calls = [];
+  if (plan.side === 'buy') {
+    calls.push(...zeroexCalls(plan, ah, plan.baseToken.address, { step: 'to_virtual' }));
+    calls.push({ step: 'approve', to: r.virtual, value: '0x0', data: ERC20.encodeFunctionData('approve', [r.frouter, r.virtual_in]) });
+    calls.push({ step: 'swap', to: r.bonding, value: '0x0', data: lp.BONDING.encodeFunctionData('buy', [r.virtual_in, plan.token, r.min_out, r.deadline]) });
+  } else {
+    calls.push({ step: 'approve', to: plan.token, value: '0x0', data: ERC20.encodeFunctionData('approve', [r.frouter, r.amount]) });
+    calls.push({ step: 'swap', to: r.bonding, value: '0x0', data: lp.BONDING.encodeFunctionData('sell', [r.amount, plan.token, r.min_virtual, r.deadline]) });
+    calls.push(...zeroexCalls(plan, ah, r.virtual, { step: 'from_virtual', alwaysApprove: true }));
+  }
+  return { chainId: ethers.toQuantity(chain.chainId), from: plan.wallet, calls, confirm_step: 'swap' };
+}
+
 function walletCalls(plan) {
   const chain = tradeChain(plan.chain);
+  if (plan.route?.kind === 'virtuals_curve') return curveCalls(plan, chain);
   const ah = chain.allowanceHolder;
   const tx = plan.quote.transaction;
   if (!tx || String(tx.to || '').toLowerCase() !== ah) {

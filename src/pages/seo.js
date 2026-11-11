@@ -113,7 +113,8 @@ const FAQ = {
     ['What is checked before I buy a new token?', 'RektBull\'s full token check (can it be sold, its taxes, its owner\'s powers, its holders, GoPlus\'s flags) and, for a token under a week old, the bundle check: whether its largest early buyers were funded from the same wallet or trace back to the deployer, and whether they\'re selling. A critical finding stops the trade; a high one needs you to confirm you\'ve read it.'],
     ['Who sends the trade?', 'Your wallet. RektBull prepares the trade through 0x, which finds the best route across exchanges, and your wallet shows the exact transaction to sign. RektBull never holds your funds or keys.'],
     ['What does it cost?', 'The feed and the checks before a trade are free. A trade carries RektBull\'s 1% fee, taken inside the swap, plus the network\'s own fee.'],
-    ['Can I buy a token still on a launchpad\'s bonding curve?', 'Not yet: the Launches desk trades tokens once they have a pool on an exchange. Launchpad curves (Virtuals, Zora, four.meme, pump.fun) are coming.'],
+    ['Can I buy a token still on a launchpad\'s bonding curve?', 'On Base, yes for Virtuals: RektBull swaps your USDC or ETH into VIRTUAL through 0x (its 1% fee is taken there), then buys on Virtuals\' own curve contract, with Virtuals\' 1% tax; your wallet signs each step. Clanker and Zora coins trade on Uniswap from launch, so they\'re bought through 0x like any token. four.meme (BNB Chain) and pump.fun (Solana) are coming.'],
+    ['How do you know which launchpad made a token?', 'From the launchpad\'s own contract, read onchain: Clanker\'s factory, Zora\'s coin factory and Virtuals\' Bonding contract each record the tokens they made. Their addresses were checked against their verified source code.'],
     ['Is this a recommendation?', 'No. Most new tokens go to zero and many are scams. The desk shows facts with their sources; nothing on it is financial advice.'],
   ],
   '/trade': [

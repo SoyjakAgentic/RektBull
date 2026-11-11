@@ -308,6 +308,17 @@ const RUNNERS = {
             if (change <= -settings.stop_loss_pct && !p.stop_alerted) { alert('high', 'stop', `down ${-change}%, past your stop-loss of ${settings.stop_loss_pct}%`, facts); p.stop_alerted = true; }
           }
         }
+        // A token bought on Virtuals' bonding curve: told once when it graduates (a new token replaces it).
+        if (pos.chain === 'base' && p.launchpad !== 'none') {
+          const pad = await require('./launchpads').identify('base', pos.token).catch(() => null);
+          p.launchpad = pad?.launchpad || 'none';
+          if (pad?.launchpad === 'virtuals' && pad.state === 'graduated' && !p.graduated_alerted) {
+            alert('medium', 'graduated', 'it graduated from Virtuals\' bonding curve', [
+              { text: `It now trades on Uniswap as ${pad.agent_token || 'a new agent token'}, and Virtuals swaps holders of the curve token for it. Until that happens, the curve token can't be sold on the curve.`, source: pad.source },
+            ]);
+            p.graduated_alerted = true;
+          }
+        }
         // New GoPlus flags (a honeypot, a tax, owner powers) since the last check.
         const f = await discover.flags(token);
         if (f.not_checked) notChecked.push(`${name()}: GoPlus ${f.not_checked}`);

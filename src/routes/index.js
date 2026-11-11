@@ -348,6 +348,7 @@ router.get('/v1/launches', launchCall(req => {
   if (input.error) throw new launches.LaunchesRefused(input.error);
   return launches.feed(input);
 }));
+router.get('/v1/launches/curves', launchCall(() => launches.curves()));
 router.get('/v1/launches/:chain/:token', launchCall(req => launches.card({ chain: String(req.params.chain).toLowerCase(), token: req.params.token })));
 router.get('/v1/discover/dapps', discoverCall(discover.parseDapps, input => discover.dapps(input)));
 router.get('/v1/discover/categories', discoverCall(q => (q.chain && !discover.CHAIN_NAMES[q.chain] ? { error: 'unknown chain' } : { chain: q.chain || null }), input => discover.categories(input)));

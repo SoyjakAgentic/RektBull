@@ -43,13 +43,14 @@ async function withFee(path, params, fee) {
  * A quote: { sellAmount, buyAmount, minBuyAmount, taxBps, fee, feeAmount, transaction, allowanceSpender, raw }.
  * indicative: a price only (no wallet, no transaction), for previews and sell-back checks.
  */
-async function quote({ chainId, sellToken, buyToken, sellAmount, taker, slippageBps, fee, indicative = false }) {
+async function quote({ chainId, sellToken, buyToken, sellAmount, taker, slippageBps, fee, indicative = false, fundedInBatch = false }) {
   const { data: q, fee: appliedFee } = await withFee(`/swap/allowance-holder/${indicative ? 'price' : 'quote'}`, {
     chainId, sellToken, buyToken, sellAmount: String(sellAmount), slippageBps, ...(taker ? { taker } : {}),
   }, fee);
   if (q.liquidityAvailable === false || !q.buyAmount || (!indicative && !q.transaction)) throw new TradeBlocked('0x found no liquidity for this trade.');
-  if (!indicative && q.issues?.balance) throw new TradeBlocked(`Your wallet holds ${q.issues.balance.actual} of the ${q.issues.balance.expected} (smallest units) this trade needs.`);
-  if (!indicative && q.issues?.simulationIncomplete) throw new TradeBlocked('0x could not simulate this trade, so it may fail or the token may not be sellable.');
+  // fundedInBatch: the wallet receives what it sells here earlier in the same batch (a curve sale), so 0x can't see it yet.
+  if (!indicative && !fundedInBatch && q.issues?.balance) throw new TradeBlocked(`Your wallet holds ${q.issues.balance.actual} of the ${q.issues.balance.expected} (smallest units) this trade needs.`);
+  if (!indicative && !fundedInBatch && q.issues?.simulationIncomplete) throw new TradeBlocked('0x could not simulate this trade, so it may fail or the token may not be sellable.');
   const meta = q.tokenMetadata || {};
   const taxBps = Math.max(
     Number(meta.buyToken?.buyTaxBps || 0), Number(meta.buyToken?.sellTaxBps || 0),

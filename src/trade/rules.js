@@ -96,6 +96,17 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
   const fee = swapFee(base);
   const checks = [];
 
+  // A token a Base launchpad made: Virtuals' tokens are traded on its bonding curve until they graduate.
+  const pad = chainName === 'base' ? await require('../services/launchpads').identify('base', token).catch(() => ({ launchpad: null })) : { launchpad: null };
+  if (pad.launchpad === 'virtuals') {
+    if (pad.state !== 'curve') {
+      throw new TradeBlocked(pad.state === 'graduated' && pad.agent_token
+        ? `This Virtuals token has graduated from its bonding curve: it now trades as ${pad.agent_token} on Uniswap, and Virtuals swaps holders of the curve token for it. Trade ${pad.agent_token} instead.`
+        : 'This Virtuals token\'s bonding curve is closed, and it isn\'t trading yet.');
+    }
+    return virtualsCurve({ chainName, chain, wallet, side, token, base, baseKey, price, fee, settings, checks, amountUsd, sellFraction, acknowledgeRisks, pad });
+  }
+
   if (side === 'buy') {
     const usd = Number(amountUsd);
     if (!(usd > 0)) throw new TradeBlocked('amount_usd must be a positive number for a buy.');
@@ -152,6 +163,73 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
   const q = await zeroex.quote({ chainId: chain.chainId, sellToken: token, buyToken: base.address, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee });
   checks.push({ check: 'sell', ok: true, detail: 'Sells skip the buy checks: a sale is how you get out.' });
   return plan({ chainName, chain, side, token, base, baseKey, price, quote: q, valueUsd: unitsToUsd(q.minBuyAmount, price, base.decimals), sellFraction: fraction, checks, wallet });
+}
+
+/**
+ * A Virtuals token still on its bonding curve. The fee stays inside a 0x swap, as on every trade:
+ * a buy swaps the base asset into VIRTUAL through 0x (1% fee), then buys on the curve; a sell sells
+ * on the curve for VIRTUAL, then swaps that into the base asset through 0x (1% fee). The wallet signs
+ * every step; nothing is held anywhere in between.
+ */
+async function virtualsCurve({ chainName, chain, wallet, side, token, base, baseKey, price, fee, settings, checks, amountUsd, sellFraction, acknowledgeRisks, pad }) {
+  const lp = require('../services/launchpads');
+  const { buy_tax_pct: buyTax, sell_tax_pct: sellTax, progress_pct: progress } = pad.curve;
+  const slip = BigInt(settings.slippage_bps);
+  checks.push({ check: 'launchpad', ok: true, detail: `A Virtuals token on its bonding curve (${progress}% of the way to graduating to Uniswap), traded on Virtuals' own contract with its ${buyTax}% buy and ${sellTax}% sell tax`, source: pad.source });
+  if ((buyTax + sellTax) * 100 > settings.max_tax_bps) throw new TradeBlocked(`The launchpad's taxes (${buyTax}% to buy, ${sellTax}% to sell) are above your ${settings.max_tax_bps / 100}% limit.`);
+  const route = { kind: 'virtuals_curve', bonding: lp.ADDR.bonding, frouter: lp.ADDR.frouter, virtual: lp.VIRTUAL, deadline: Math.floor(Date.now() / 1000) + 20 * 60 };
+
+  if (side === 'buy') {
+    const usd = Number(amountUsd);
+    if (!(usd > 0)) throw new TradeBlocked('amount_usd must be a positive number for a buy.');
+    if (usd > settings.max_trade_usd) throw new TradeBlocked(`$${usd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
+    checks.push({ check: 'per_trade_amount', ok: true, detail: `$${usd} of your $${settings.max_trade_usd} per trade` });
+    const launch = await require('../services/launches').forTrade({ chain: chainName, token });
+    if (launch.risk === 'block') throw new TradeBlocked(`RektBull's bundle check found a critical risk: ${launch.flags.find(f => f.severity === 'critical').title}. Not buying.`);
+    const high = [
+      ...(launch.risk === 'confirm' ? launch.flags.filter(f => f.severity === 'high').map(f => ({ id: 'bundle', ...f })) : []),
+      ...(launch.risk === 'unknown' ? [{ id: 'bundle_unchecked', severity: 'high', title: 'RektBull couldn\'t check this new token for a bundled launch', evidence: launch.detail, source: 'Launch Safety' }] : []),
+    ];
+    if (high.length && !acknowledgeRisks) {
+      const err = new TradeBlocked(`RektBull's checks found ${high.length} high risk${high.length > 1 ? 's' : ''}: ${high.map(f => f.title).join('; ')}. Read them, then confirm to go ahead.`);
+      err.needsAcknowledgement = true;
+      err.risks = high;
+      throw err;
+    }
+    checks.push({ check: 'bundle', ok: true, detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
+    const sellAmount = base.usd ? ethers.parseUnits(usd.toFixed(base.decimals), base.decimals) : usdToUnits(usd, price, base.decimals);
+    const q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: lp.VIRTUAL, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee });
+    const virtualIn = q.minBuyAmount; // the least the 0x swap delivers; any more stays in the wallet
+    const out = await lp.curveBuyQuote(token, virtualIn, buyTax);
+    if (out === 0n) throw new TradeBlocked('The curve gives nothing for this amount.');
+    const back = await lp.curveSellQuote(token, out, sellTax);
+    const lossPct = Number((virtualIn - back) * 10000n / virtualIn) / 100;
+    if (lossPct > settings.max_round_trip_loss_pct) throw new TradeBlocked(`Selling straight back on the curve would lose ${lossPct.toFixed(1)}%, above your ${settings.max_round_trip_loss_pct}% limit.`);
+    checks.push({ check: 'sell_back', ok: true, detail: `selling straight back on the curve loses ${lossPct.toFixed(1)}% (the launchpad's taxes included; limit ${settings.max_round_trip_loss_pct}%)` });
+    const p = plan({ chainName, chain, side, token, base, baseKey, price, quote: q, valueUsd: usd, checks, wallet });
+    p.route = { ...route, virtual_in: virtualIn.toString(), expected_out: out.toString(), min_out: (out * (10000n - slip) / 10000n).toString() };
+    p.summary.text = `Buy $${usd.toFixed(2)} of ${token} on Virtuals' bonding curve, paying with ${baseKey} (swapped into VIRTUAL first)`;
+    p.summary.buy_amount = out.toString();
+    p.summary.min_buy_amount = p.route.min_out;
+    return p;
+  }
+
+  const fraction = Number(sellFraction ?? 1);
+  if (!(fraction > 0 && fraction <= 1)) throw new TradeBlocked('sell_fraction must be above 0 and at most 1 (1 sells everything).');
+  const balance = await tokenBalance(chainName, wallet, token);
+  if (balance === 0n) throw new TradeBlocked('Your wallet holds none of this token.');
+  const amount = balance * BigInt(Math.round(fraction * 10000)) / 10000n;
+  if (amount === 0n) throw new TradeBlocked('That fraction of your holding rounds to nothing.');
+  const virtualOut = await lp.curveSellQuote(token, amount, sellTax);
+  const minVirtual = virtualOut * (10000n - slip) / 10000n;
+  if (minVirtual === 0n) throw new TradeBlocked('The curve gives nothing for this amount.');
+  // The 0x leg sells VIRTUAL the curve sale delivers in the same batch, so the wallet doesn't hold it yet.
+  const q = await zeroex.quote({ chainId: chain.chainId, sellToken: lp.VIRTUAL, buyToken: base.address, sellAmount: minVirtual, taker: wallet, slippageBps: settings.slippage_bps, fee, fundedInBatch: true });
+  checks.push({ check: 'sell', ok: true, detail: 'Sells skip the buy checks: a sale is how you get out.' });
+  const p = plan({ chainName, chain, side, token, base, baseKey, price, quote: q, valueUsd: unitsToUsd(q.minBuyAmount, price, base.decimals), sellFraction: fraction, checks, wallet });
+  p.route = { ...route, amount: amount.toString(), min_virtual: minVirtual.toString() };
+  p.summary.text = `Sell ${Math.round(fraction * 100)}% of ${token} on Virtuals' bonding curve, then swap the VIRTUAL into ${baseKey} (about $${p.valueUsd.toFixed(2)})`;
+  return p;
 }
 
 function plan({ chainName, chain, side, token, base, baseKey, price, quote: q, valueUsd, sellFraction, checks, wallet }) {
