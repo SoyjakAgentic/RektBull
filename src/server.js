@@ -13,6 +13,7 @@ const { createApp } = require('./app');
 const watcher = require('./payments/watcher');
 const { purgeExpired } = require('./lib/cache');
 const tradePositions = require('./trade/positions');
+const jobs = require('./admin/jobs');
 
 async function main() {
   if (env.databaseUrl) await migrate();
@@ -27,63 +28,42 @@ async function main() {
     setInterval(() => require('./admin/settings').fresh(), 60 * 1000);
   }
   if ((role === 'worker' || role === 'all') && env.databaseUrl) {
-    watcher.start();
-    setInterval(() => purgeExpired().catch(err => logger.warn('cache purge failed', { error: err.message })), 60 * 60 * 1000);
+    // Each job through admin/jobs.run: never two at once, and when it last worked is kept for the admin panel's health view.
+    const job = (name, ms, fn) => setInterval(() => jobs.run(name, fn), ms);
+    const deposits = () => jobs.run('deposits', () => watcher.tick());
+    deposits();
+    setInterval(deposits, env.watcherIntervalMs);
+    job('cache_purge', 60 * 60 * 1000, () => purgeExpired());
     // Deletes data past the periods on the privacy page (src/privacy/retention.js).
-    setInterval(() => require('./privacy/retention').purge().catch(err => logger.warn('retention purge failed', { error: err.message })), 60 * 60 * 1000);
+    job('retention', 60 * 60 * 1000, () => require('./privacy/retention').purge());
     // NOWPayments: payments under way, read back every 5 minutes so a lost notification is caught up.
-    setInterval(() => require('./payments/nowpayments').reconcile().catch(err => logger.warn('NOWPayments re-check failed', { error: err.message })), 5 * 60 * 1000);
+    job('nowpayments', 5 * 60 * 1000, () => require('./payments/nowpayments').reconcile());
     // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
-    setInterval(() => require('./services/governance').alertTick().catch(err => logger.warn('governance alerts failed', { error: err.message })), 60 * 60 * 1000);
-    // Research: last week's digest, made once on Monday from 06:00 UTC (checked hourly).
-    setInterval(() => require('./services/newsletter').tick().catch(err => logger.warn('newsletter send failed', { error: err.message })), 5 * 60 * 1000);
-    setInterval(() => require('./services/research').tick().catch(err => logger.warn('weekly digest failed', { error: err.message })), 60 * 60 * 1000);
+    job('governance_alerts', 60 * 60 * 1000, () => require('./services/governance').alertTick());
+    // Research: last week's digest, made once on Monday from 06:00 UTC (checked hourly); the newsletter after it.
+    job('newsletter', 5 * 60 * 1000, () => require('./services/newsletter').tick());
+    job('research', 60 * 60 * 1000, () => require('./services/research').tick());
     // Safety Pro renewal reminders, hourly.
-    setInterval(() => require('./payments/reminders').tick().catch(err => logger.warn('pass reminders failed', { error: err.message })), 60 * 60 * 1000);
+    job('pass_reminders', 60 * 60 * 1000, () => require('./payments/reminders').tick());
     // The yield risk watcher: every venue, every 5 minutes (src/yield/risk.js).
-    let watching = false;
-    setInterval(async () => {
-      if (watching) return;
-      watching = true;
-      try { await require('./yield/risk').tick(); } catch (err) { logger.error('yield risk tick failed', { error: err.message }); } finally { watching = false; }
-    }, 5 * 60 * 1000);
+    job('yield_risk', 5 * 60 * 1000, () => require('./yield/risk').tick());
     // The risk monitor: a few due wallets every 5 minutes (each is checked once a day).
-    let monitoring = false;
-    setInterval(async () => {
-      if (monitoring) return;
-      monitoring = true;
-      try { await require('./services/monitor').tick(); } catch (err) { logger.error('monitor tick failed', { error: err.message }); } finally { monitoring = false; }
-    }, 5 * 60 * 1000);
+    job('monitor', 5 * 60 * 1000, () => require('./services/monitor').tick());
     // AI agents that run on a schedule (wallet checkup, claim assistant, token watch): the due ones, every 5 minutes.
-    let agentsBusy = false;
-    setInterval(async () => {
-      if (agentsBusy) return;
-      agentsBusy = true;
-      try { await require('./services/myAgents').tick(); } catch (err) { logger.error('agents tick failed', { error: err.message }); } finally { agentsBusy = false; }
-    }, 5 * 60 * 1000);
+    job('agents', 5 * 60 * 1000, () => require('./services/myAgents').tick());
     // Channel Poster: new drafts for project channels, sent to their admins to approve, every 30 minutes.
-    setInterval(() => require('./services/channelPoster').tick().catch(err => logger.warn('channel poster failed', { error: err.message })), 30 * 60 * 1000);
+    job('channel_poster', 30 * 60 * 1000, () => require('./services/channelPoster').tick());
     // Alerts out to Telegram, email and browser push, every 20 seconds.
-    let sending = false;
-    setInterval(async () => {
-      if (sending) return;
-      sending = true;
-      try { await require('./alerts/dispatch').tick(); } catch (err) { logger.error('alert delivery tick failed', { error: err.message }); } finally { sending = false; }
-    }, 20 * 1000);
+    job('alerts', 20 * 1000, () => require('./alerts/dispatch').tick());
     logger.info('worker started: deposit watcher and risk monitor', { chains: env.paymentChains });
   }
   if ((role === 'trade' || role === 'all') && env.databaseUrl) {
-    let busy = false;
-    setInterval(async () => {
-      if (busy) return;
-      busy = true;
-      try {
-        await tradePositions.tick(); // approve-each trades the user's wallet sent
-        await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
-        await require('./trade/autonomous').tick(); // send and confirm automatic trades
-        await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
-      } catch (err) { logger.error('trade tick failed', { error: err.message }); } finally { busy = false; }
-    }, env.tradeTickMs);
+    setInterval(() => jobs.run('trade', async () => {
+      await tradePositions.tick(); // approve-each trades the user's wallet sent
+      await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
+      await require('./trade/autonomous').tick(); // send and confirm automatic trades
+      await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
+    }), env.tradeTickMs);
     logger.info('trade service started');
   }
   if (role === 'worker' || role === 'trade') {

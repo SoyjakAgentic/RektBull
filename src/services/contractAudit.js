@@ -442,4 +442,4 @@ async function report(runId) {
 /** Audits are cached a day per contract (the code at an address doesn't change; a proxy's implementation can, so a day). */
 const run = input => cached(`audit:${input.chain}:${input.address}`, 24 * 3600, () => audit(input));
 
-module.exports = { saveReport, report, solcLists, parse, run, audit, slither, scanLeads, parseSolidity, strip, parseSource, compilerBugs, conditionsHold, shape, AuditRefused, CHAINS, SYSTEM };
+module.exports = { saveReport, report, solcLists, authHeaders, analyzerUrl, parse, run, audit, slither, scanLeads, parseSolidity, strip, parseSource, compilerBugs, conditionsHold, shape, AuditRefused, CHAINS, SYSTEM };

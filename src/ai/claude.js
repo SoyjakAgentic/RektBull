@@ -70,8 +70,29 @@ async function usageReport(days = 30) {
   });
 }
 
+/**
+ * The admin panel's Claude switch and daily budget (admin_settings provider:claude):
+ * { off } stops every AI run; { daily_usd } stops them once today's estimated
+ * spend reaches it. Read from the database, so it holds across every service.
+ */
+async function refuseIfOverBudget() {
+  if (!env.databaseUrl) return;
+  const set = await require('../admin/settings').read('provider:claude');
+  if (set?.off) throw Object.assign(new Error('AI runs are paused by RektBull for now; nothing was charged.'), { status: 503 });
+  if (set?.daily_usd) {
+    const today = (await usageReport(1)).reduce((s, r) => s + (r.estimated_usd || 0), 0);
+    if (today >= set.daily_usd) throw Object.assign(new Error('Today\'s AI budget is used up; please try again tomorrow. Nothing was charged.'), { status: 503 });
+  }
+}
+
+/** The admin panel's test: lists one model (free; no tokens used), proving the key works. */
+async function ping() {
+  await getClient().models.list({ limit: 1 });
+}
+
 /** One request; returns the response's text. */
 async function write({ system, prompt, maxTokens = 4000 }) {
+  await refuseIfOverBudget();
   const response = await getClient().beta.messages.create({
     model: env.reportModel,
     max_tokens: maxTokens,
@@ -91,4 +112,4 @@ async function write({ system, prompt, maxTokens = 4000 }) {
   return { text, model: response.model, usage: response.usage };
 }
 
-module.exports = { write, available, usageReport, estimateUsd, recordUsage, costOf, PRICES };
+module.exports = { write, available, usageReport, estimateUsd, recordUsage, costOf, refuseIfOverBudget, ping, PRICES };
