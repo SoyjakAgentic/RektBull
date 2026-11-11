@@ -65,7 +65,7 @@ console.log(`a minimum the curve can't meet: ${refused ? 'refused by four.meme\'
 if (!refused) throw new Error('the minimum was not enforced');
 
 // Sell half with RektBull's 1% (paid by four.meme's contract from the sale), as calls.js builds it.
-const half = got / 2n;
+const half = got / 2n - (got / 2n) % lp.FOURMEME_SELL_UNIT; // four.meme sells only whole multiples of 10^9 units ('GW' otherwise)
 const s = await helper.trySell(token, half);
 const minFunds = BigInt(s.funds) * 99n / 100n;
 const fmBps = BigInt(curve?.curve.buy_tax_pct ?? 1) * 100n;
@@ -81,8 +81,13 @@ console.log(`sell half: the wallet got ${ethers.formatEther(userGot)} BNB (sure 
 if (userGot < sure) throw new Error('the wallet got less than it was sure to');
 if (feeGot === 0n || feeGot > (BigInt(s.funds) + BigInt(s.fee)) / 100n + 1n) throw new Error('the fee wasn\'t 1%');
 
+// An amount that isn't a whole multiple of 10^9 units is refused by four.meme ('GW'); calls.js never builds one.
+let gw = '';
+try { await user.call({ to: lp.FOURMEME.tokenManager, data: lp.TOKEN_MANAGER.encodeFunctionData('sellToken(uint256,address,uint256,uint256)', [0, token, (await erc.balanceOf(user.address)) - 1n, 0]) }); } catch (e) { gw = e.shortMessage || e.message; }
+console.log(`an amount not a multiple of 10^9 units: ${/GW/.test(gw) ? 'refused by four.meme (GW)' : `NOT REFUSED (${gw})`}`);
+
 // Sell the rest with no fee wallet set (the plain sellToken): all of the sale goes to the wallet.
-const rest = await erc.balanceOf(user.address);
+const rest = (await erc.balanceOf(user.address)) / lp.FOURMEME_SELL_UNIT * lp.FOURMEME_SELL_UNIT;
 const s2 = await helper.trySell(token, rest);
 const plain = { ...sellPlan, route: { ...sellPlan.route, amount: rest.toString(), min_funds: (BigInt(s2.funds) * 99n / 100n).toString(), fee_bps: 0, fee_recipient: null } };
 const u1 = await bnb(user.address);
@@ -91,4 +96,16 @@ for (const c of walletCalls(plain).calls) gas += paid(await (await user.sendTran
 const got2 = await bnb(user.address) - u1 + gas;
 console.log(`sell the rest, no fee: ${ethers.formatEther(got2)} BNB (quoted ${ethers.formatEther(s2.funds)}); tokens left ${ethers.formatEther(await erc.balanceOf(user.address))}; fee wallet unchanged: ${(await bnb(feeWallet)) === feeGot}`);
 if (got2 < BigInt(s2.funds) * 99n / 100n || (await bnb(feeWallet)) !== feeGot) throw new Error('the plain sale went wrong');
+
+// A buy paid in BNB: 99% to the curve, then 1% as a plain transfer to the fee wallet, as one batch would send them.
+const total = ethers.parseEther('0.1'), fee = total / 100n, curveFunds = total - fee;
+const est2 = await helper.tryBuy(token, 0, curveFunds);
+const bnbPlan = { chain: 'bsc', side: 'buy', token, wallet: user.address, quote: {}, route: { kind: 'fourmeme_curve', token_manager: lp.FOURMEME.tokenManager, pay: 'bnb', funds: curveFunds.toString(), min_out: (est2.estimatedAmount * 99n / 100n).toString(), fee_bps: 100, fee_amount: fee.toString(), fee_recipient: feeWallet } };
+const bnbCalls = walletCalls(bnbPlan).calls;
+const f0 = await bnb(feeWallet), u2 = await bnb(user.address);
+gas = 0n;
+for (const c of bnbCalls) gas += paid(await (await user.sendTransaction({ to: c.to, data: c.data, value: c.value })).wait());
+const got3 = await erc.balanceOf(user.address);
+console.log(`buy paid in BNB (${bnbCalls.map(c => c.step).join(', ')}): ${ethers.formatEther(got3)} tokens (quoted ${ethers.formatEther(est2.estimatedAmount)}); the wallet spent ${ethers.formatEther(u2 - await bnb(user.address) - gas)} BNB, the fee wallet got ${ethers.formatEther(await bnb(feeWallet) - f0)} BNB`);
+if (got3 < BigInt(bnbPlan.route.min_out) || (await bnb(feeWallet)) - f0 !== fee) throw new Error('the BNB-paid buy went wrong');
 console.log('ok');

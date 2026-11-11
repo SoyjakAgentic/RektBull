@@ -245,9 +245,11 @@ async function curveBundleCheck({ chainName, token, checks, acknowledgeRisks }) 
 /**
  * A four.meme token still on its bonding curve (BNB Chain), priced in BNB. Buys and sells are made on
  * four.meme's TokenManager2, which charges its own fee (1% now) both ways. RektBull's 1%:
- *   - a buy pays with USDT or USDC, swapped into BNB through 0x with the fee inside that swap (as on
- *     every trade), then buyTokenAMAP with that BNB and a minimum out. Paying with BNB itself is
- *     refused: there is no swap to carry the fee;
+ *   - a buy paid with USDT or USDC swaps it into BNB through 0x with the fee inside that swap (as on
+ *     every trade), then buyTokenAMAP with that BNB and a minimum out;
+ *   - a buy paid with BNB has no swap to carry the fee: buyTokenAMAP spends 99% of the BNB, and the
+ *     other 1% is a plain transfer to the fee wallet after it, in the same batch (atomicRequired), as
+ *     claim fees are (docs/PAYMENTS.md). A wallet that can't batch sends the buy first, then the fee;
  *   - a sell calls sellToken with an integrator fee of 1% to the fee wallet, paid by four.meme's
  *     contract from the sale in the same call (so only if the sale goes through); for USDT or USDC
  *     the BNB is then swapped through 0x without a second fee.
@@ -265,14 +267,27 @@ async function fourMemeCurve({ chainName, chain, wallet, side, token, base, base
 
   if (side === 'buy') {
     if (fmFee * 2 * 100 > settings.max_tax_bps) throw new TradeBlocked(`four.meme's fees (${fmFee}% to buy, ${fmFee}% to sell) are above your ${settings.max_tax_bps / 100}% limit.`);
-    if (!base.usd) throw new TradeBlocked('A four.meme curve is bought with BNB, and RektBull\'s 1% fee is taken inside a 0x swap into it: pay with USDT or USDC (swapped into BNB first).');
+    if (baseKey === 'WBNB') throw new TradeBlocked('A four.meme curve is bought with BNB: pay with BNB, USDT or USDC.');
     const usd = Number(amountUsd);
     if (!(usd > 0)) throw new TradeBlocked('amount_usd must be a positive number for a buy.');
     if (usd > settings.max_trade_usd) throw new TradeBlocked(`$${usd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
     checks.push({ check: 'per_trade_amount', ok: true, detail: `$${usd} of your $${settings.max_trade_usd} per trade` });
     await curveBundleCheck({ chainName, token, checks, acknowledgeRisks });
-    const q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: NATIVE, sellAmount: ethers.parseUnits(usd.toFixed(base.decimals), base.decimals), taker: wallet, slippageBps: settings.slippage_bps, fee: swapFee(base) });
-    const funds = q.minBuyAmount; // the least BNB the 0x swap delivers; any more stays in the wallet
+    let q, funds, payFee = null;
+    if (baseKey === 'BNB') {
+      // Paid in BNB: 99% to the curve, 1% to the fee wallet as its own transfer (no swap to carry it).
+      const total = ethers.parseUnits((usd / price).toFixed(12), 18); // 12 places: no float noise in the last digits
+      const have = await tokenBalance(chainName, wallet, NATIVE);
+      if (have < total) throw new TradeBlocked(`Your wallet holds ${ethers.formatEther(have)} BNB of the ${ethers.formatEther(total)} BNB this buy needs (and a little more for gas).`);
+      const feeBps = env.swapFeeWalletEvm ? BigInt(Math.min(env.swapFeeBps, MAX_FEE_BPS)) : 0n;
+      const fee = total * feeBps / 10000n;
+      funds = total - fee;
+      if (fee > 0n) payFee = { amount: fee, bps: Number(feeBps) };
+      q = { sellAmount: total, buyAmount: funds, minBuyAmount: funds, taxBps: 0, fee: null, feeAmount: 0n, transaction: null, allowanceSpender: null };
+    } else {
+      q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: NATIVE, sellAmount: ethers.parseUnits(usd.toFixed(base.decimals), base.decimals), taker: wallet, slippageBps: settings.slippage_bps, fee: swapFee(base) });
+      funds = q.minBuyAmount; // the least BNB the 0x swap delivers; any more stays in the wallet
+    }
     const est = await lp.fourMemeBuyQuote(token, funds);
     if (est.manager !== lp.FOURMEME.tokenManager || est.msgValue !== funds) throw new TradeBlocked('four.meme\'s helper quoted this buy in a way RektBull doesn\'t expect: not using it.');
     if (est.amount === 0n) throw new TradeBlocked('The curve gives nothing for this amount.');
@@ -282,7 +297,14 @@ async function fourMemeCurve({ chainName, chain, wallet, side, token, base, base
     checks.push({ check: 'sell_back', ok: true, detail: `selling straight back on the curve loses ${lossPct.toFixed(1)}% (four.meme's fees included; limit ${settings.max_round_trip_loss_pct}%)` });
     const p = plan({ chainName, chain, side, token, base, baseKey, price, quote: q, valueUsd: usd, checks, wallet });
     p.route = { ...route, funds: funds.toString(), expected_out: est.amount.toString(), min_out: (est.amount * (10000n - slip) / 10000n).toString() };
-    p.summary.text = `Buy $${usd.toFixed(2)} of ${token} on four.meme's bonding curve, paying with ${baseKey} (swapped into BNB first)`;
+    p.summary.text = `Buy $${usd.toFixed(2)} of ${token} on four.meme's bonding curve, paying with ${baseKey}${baseKey === 'BNB' ? '' : ' (swapped into BNB first)'}`;
+    if (baseKey === 'BNB') {
+      p.route.pay = 'bnb';
+      if (payFee) {
+        Object.assign(p.route, { fee_bps: payFee.bps, fee_amount: payFee.amount.toString(), fee_recipient: env.swapFeeWalletEvm.toLowerCase() });
+        p.summary.fee = { pct: payFee.bps / 100, asset: 'BNB', amount: ethers.formatEther(payFee.amount), usd: Math.round(unitsToUsd(payFee.amount, price, 18) * 100) / 100, taken_by: 'a separate transfer to RektBull, sent with the buy and after it' };
+      }
+    }
     p.summary.buy_amount = est.amount.toString();
     p.summary.min_buy_amount = p.route.min_out;
     return p;
@@ -293,7 +315,10 @@ async function fourMemeCurve({ chainName, chain, wallet, side, token, base, base
   if (!(fraction > 0 && fraction <= 1)) throw new TradeBlocked('sell_fraction must be above 0 and at most 1 (1 sells everything).');
   const balance = await tokenBalance(chainName, wallet, token);
   if (balance === 0n) throw new TradeBlocked('Your wallet holds none of this token.');
-  const amount = balance * BigInt(Math.round(fraction * 10000)) / 10000n;
+  // four.meme sells only whole multiples of 10^9 of a token's smallest units (else it reverts 'GW',
+  // seen on a copy of BNB Chain): rounded down, what's left is under a billionth of a token.
+  let amount = balance * BigInt(Math.round(fraction * 10000)) / 10000n;
+  amount -= amount % lp.FOURMEME_SELL_UNIT;
   if (amount === 0n) throw new TradeBlocked('That fraction of your holding rounds to nothing.');
   const est = await lp.fourMemeSellQuote(token, amount);
   const minFunds = est.funds * (10000n - slip) / 10000n;
@@ -309,7 +334,7 @@ async function fourMemeCurve({ chainName, chain, wallet, side, token, base, base
   checks.push({ check: 'sell', ok: true, detail: 'Sells skip the buy checks: a sale is how you get out.' });
   const bnbPrice = await basePrice(chain.bases.BNB);
   const feeExpected = (est.funds + est.fee) * feeBps / 10000n;
-  const feeView = feeBps ? { pct: Number(feeBps) / 100, asset: 'BNB', amount: ethers.formatEther(feeExpected), usd: Math.round(unitsToUsd(feeExpected, bnbPrice, 18) * 100) / 100, taken_by: 'four.meme\'s contract, from the sale' } : null;
+  const feeView = feeBps ? { pct: Number(feeBps) / 100, asset: 'BNB', amount: ethers.formatEther(feeExpected), usd: Math.round(unitsToUsd(feeExpected, bnbPrice, 18) * 100) / 100, taken_by: 'paid by four.meme\'s contract from the sale, in the same transaction' } : null;
   const r = { ...route, amount: amount.toString(), min_funds: minFunds.toString(), fee_bps: Number(feeBps), fee_recipient: feeBps ? env.swapFeeWalletEvm.toLowerCase() : null };
   let p;
   if (baseKey === 'BNB') {

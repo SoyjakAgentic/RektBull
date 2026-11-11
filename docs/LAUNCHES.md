@@ -93,8 +93,12 @@ verified source on Sourcify and its code onchain on 11 November 2026:
   swap delivers and a minimum out. four.meme's own fee is 1% each way, read
   from its helper. Checks before it: the bundle check, four.meme's fees
   against the buyer's tax limit, and selling straight back on the curve
-  against their round-trip limit. **Paying with BNB itself is refused:** there
-  is no swap to carry RektBull's fee.
+  against their round-trip limit.
+- **Buying with BNB:** there is no swap to carry RektBull's fee, so
+  `buyTokenAMAP` spends 99% of the BNB and the other 1% is a plain transfer to
+  the fee wallet after it, in the same batch (`atomicRequired`), as claim fees
+  are (docs/PAYMENTS.md). A wallet that can't batch sends the buy first, then
+  the fee, which the user can decline. Paying with WBNB is refused.
 - **Selling:** an approval of the token to TokenManager2, then `sellToken`
   with a minimum in BNB and RektBull's 1% as four.meme's integrator fee to the
   fee wallet. four.meme's contract pays it from the sale in the same call, so
@@ -103,14 +107,19 @@ verified source on Sourcify and its code onchain on 11 November 2026:
   promises the minimum less the most the fee can be. For USDT or USDC, that
   promised BNB is then swapped through 0x with no second fee. Before the fee
   wallet is set, the plain `sellToken` is used and no fee is taken. A sale
-  never applies the buy checks.
+  never applies the buy checks. four.meme sells only whole multiples of 10^9
+  of a token's smallest units (it reverts with `GW` otherwise, found on a copy
+  of BNB Chain), so a sale is rounded down to one; what's left is under a
+  billionth of a token.
 - **Graduated tokens** trade on PancakeSwap, the same token, so they go
   through 0x with the full token check. Meme Watch tells holders once.
 - Verified on a copy of BNB Chain (`contracts/scripts/fourMemeCheck.js`):
   0.1 BNB bought exactly the quoted amount, a minimum the curve can't meet was
   refused by four.meme's contract, a sale with the fee paid the fee wallet
-  exactly 1% of the sale and the wallet more than the plan promised, and a
-  sale without it paid the wallet the whole quote.
+  exactly 1% of the sale and the wallet more than the plan promised, a sale of
+  an amount that isn't a multiple of 10^9 units was refused (`GW`), a sale
+  without the fee paid the wallet the whole quote, and a buy paid in BNB got
+  exactly its quote with exactly 1% to the fee wallet.
 - **Limits:** the bundle check reads BNB Chain through Etherscan's API, whose
   free plan may not cover it; when it can't run, the buyer is told why and
   must confirm. BNB Chain has heavy sandwich trading: the slippage limit (1% by

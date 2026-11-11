@@ -101,7 +101,7 @@
     $('plan').replaceChildren(
       el('p', {}, el('strong', {}, s.text)),
       el('ul', {}, p.plan.checks.map(c => el('li', { class: 'check-ok' }, c.detail))),
-      el('p', {}, s.fee ? `RektBull fee: ${s.fee.amount} ${s.fee.asset} (${s.fee.pct}%), taken inside the swap.` : 'No RektBull fee on this trade.'),
+      el('p', {}, s.fee ? `RektBull fee: ${s.fee.amount} ${s.fee.asset} (${s.fee.pct}%), ${s.fee.taken_by || 'taken inside the swap'}.` : 'No RektBull fee on this trade.'),
       el('p', { class: 'muted' }, 'Approving re-checks everything on a fresh price, then your wallet shows the exact transactions to sign.'),
       el('div', { class: 'row' },
         el('button', { class: 'primary', onclick: approveAndSign }, 'Approve and sign in my wallet'),

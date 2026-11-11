@@ -17,6 +17,7 @@ const rpc = http.createServer((req, res) => {
     const { method, params, id } = JSON.parse(body);
     let result = null;
     if (method === 'eth_call') result = ethers.toBeHex(chain.balances[params[0].to.toLowerCase()] || 0n, 32);
+    if (method === 'eth_getBalance') result = ethers.toBeHex(chain.native || 0n);
     if (method === 'eth_getTransactionReceipt') result = chain.receipts[params[0]] || null;
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
@@ -325,10 +326,29 @@ test('trading', async t => {
     assert.deepEqual([fmCurveBuy.to, BigInt(fmCurveBuy.value)], [TM2, 16n * E18 / 100n], 'four.meme\'s TokenManager2, sent exactly the least BNB the swap delivers');
     const fb = lp.TOKEN_MANAGER.decodeFunctionData('buyTokenAMAP', fmCurveBuy.data);
     assert.deepEqual([fb[0].toLowerCase(), fb[1], fb[2]], [FM, 16n * E18 / 100n, 16_000_000n * 99n / 100n], 'its token, that BNB, and the curve\'s minimum after 1% slippage');
-    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'BNB', amount_usd: 100 }), /pay with USDT or USDC/);
+
+    // Paid in BNB: no swap to carry the fee, so 99% buys on the curve and 1% is its own transfer to the fee wallet, after the buy.
+    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'BNB', amount_usd: 60 }), /holds 0\.0 BNB of the 0\.1 BNB this buy needs/);
+    chain.native = 2n * E18;
+    const nb = seen.length;
+    const bnbBuy = await proposals.approve(account, (await proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'BNB', amount_usd: 60 })).id); // $60 at $600 = 0.1 BNB
+    assert.equal(seen.length, nb, 'no 0x swap for a buy paid in BNB');
+    assert.deepEqual(bnbBuy.calls.calls.map(c => c.step), ['swap', 'fee']);
+    const [bnbCurveBuy, bnbFee] = bnbBuy.calls.calls;
+    assert.deepEqual([bnbCurveBuy.to, BigInt(bnbCurveBuy.value)], [TM2, E18 / 10n * 99n / 100n], '99% of the BNB to four.meme\'s TokenManager2');
+    const bb = lp.TOKEN_MANAGER.decodeFunctionData('buyTokenAMAP', bnbCurveBuy.data);
+    assert.deepEqual([bb[1], bb[2]], [E18 / 10n * 99n / 100n, 9_900_000n * 99n / 100n], 'that BNB, and the minimum after 1% slippage');
+    assert.deepEqual([bnbFee.to, BigInt(bnbFee.value), bnbFee.data], [FEE_WALLET, E18 / 10n / 100n, '0x'], '1% of the BNB, a plain transfer to the fee wallet, after the buy');
+    assert.deepEqual([bnbBuy.plan.summary.fee.asset, bnbBuy.plan.summary.fee.pct, bnbBuy.plan.summary.fee.usd], ['BNB', 1, 0.6]);
+    assert.match(bnbBuy.plan.summary.fee.taken_by, /separate transfer/);
+    await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'WBNB', amount_usd: 60 }), /pay with BNB, USDT or USDC/);
+    const bnbPlan = { chain: 'bsc', side: 'buy', token: FM, wallet, quote: {}, route: { kind: 'fourmeme_curve', token_manager: TM2, pay: 'bnb', funds: '990', min_out: '1', fee_bps: 100, fee_amount: '10', fee_recipient: FEE_WALLET } };
+    assert.equal(wc(bnbPlan).calls.length, 2);
+    assert.throws(() => wc({ ...bnbPlan, route: { ...bnbPlan.route, fee_recipient: '0x' + 'ba'.repeat(20) } }), /fee RektBull doesn't charge/);
+    assert.throws(() => wc({ ...bnbPlan, route: { ...bnbPlan.route, fee_amount: '11' } }), /fee RektBull doesn't charge/, 'more than 1% of the total');
 
     // Selling for BNB: four.meme's own contract pays RektBull's 1% from the sale, in the same call.
-    chain.balances[FM] = 32_000_000n * E18;
+    chain.balances[FM] = 32_000_000n * E18 + 123n; // not a whole multiple of 10^9 units: the sale is rounded down to one (four.meme refuses others)
     let n = seen.length;
     const fmSell = await proposals.approve(account, (await proposals.propose(account, { chain: 'bsc', side: 'sell', token: FM, base: 'BNB', sell_fraction: 0.5 })).id);
     assert.equal(seen.length, n, 'no 0x swap for a sale into BNB');
@@ -356,8 +376,9 @@ test('trading', async t => {
     await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'USDT', amount_usd: 100 }), /priced in QQQB, not BNB/);
     fm = { ...fm, quote: 'bnb', quote_symbol: 'BNB', version: 1, token_manager: '0xec4549cadce5da21df6e6422d448034b5233bfbc' };
     await assert.rejects(proposals.propose(account, { chain: 'bsc', side: 'sell', token: FM, base: 'BNB' }), /older four\.meme contract/);
-    const fmPlan = { chain: 'bsc', side: 'sell', token: FM, wallet, quote: {}, route: { kind: 'fourmeme_curve', token_manager: TM2, amount: '1', min_funds: '1', fee_bps: 100, fee_recipient: FEE_WALLET } };
+    const fmPlan = { chain: 'bsc', side: 'sell', token: FM, wallet, quote: {}, route: { kind: 'fourmeme_curve', token_manager: TM2, amount: '1000000000', min_funds: '1', fee_bps: 100, fee_recipient: FEE_WALLET } };
     assert.equal(wc(fmPlan).calls.length, 2);
+    assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, amount: '1000000001' } }), /whole multiples of 10\^9/, 'four.meme would refuse it (GW)');
     assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, token_manager: '0x' + 'ee'.repeat(20) } }), /doesn't use/);
     assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, fee_recipient: '0x' + 'ba'.repeat(20) } }), /fee RektBull doesn't charge/);
     assert.throws(() => wc({ ...fmPlan, route: { ...fmPlan.route, fee_bps: 500 } }), /fee RektBull doesn't charge/);

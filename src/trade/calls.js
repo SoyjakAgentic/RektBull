@@ -54,8 +54,9 @@ function curveCalls(plan, chain) {
 
 /**
  * A four.meme curve trade (BNB Chain): only ever calls to four.meme's TokenManager2 and an approval to
- * it for this trade's amount, around the checked 0x leg. A buy sends exactly the BNB it names; a sale's
- * fee goes only to RektBull's own fee wallet, at most 1%. The curve call is the step named 'swap'.
+ * it for this trade's amount, around the checked 0x leg. A buy sends exactly the BNB it names; a fee,
+ * whether a sale's or a BNB-paid buy's own transfer, goes only to RektBull's fee wallet, at most 1%.
+ * The curve call is the step named 'swap'.
  */
 function fourMemeCalls(plan, chain) {
   const lp = require('../services/launchpads');
@@ -65,13 +66,22 @@ function fourMemeCalls(plan, chain) {
   const tm = r.token_manager;
   const ah = chain.allowanceHolder;
   const calls = [];
-  if (plan.side === 'buy') {
+  const feeWallet = String(env.swapFeeWalletEvm || '').toLowerCase();
+  if (plan.side === 'buy' && r.pay === 'bnb') {
+    // Paid in BNB: the buy, then 1% of the total as a plain transfer to the fee wallet (after the buy, so it's paid only if the buy works).
+    const funds = BigInt(r.funds);
+    const fee = BigInt(r.fee_amount || 0);
+    if (fee > 0n && (!feeWallet || r.fee_recipient !== feeWallet || fee * 10000n > (funds + fee) * 100n)) throw new TradeBlocked('The curve buy names a fee RektBull doesn\'t charge: not using it.');
+    calls.push({ step: 'swap', to: tm, value: ethers.toQuantity(funds), data: lp.TOKEN_MANAGER.encodeFunctionData('buyTokenAMAP', [plan.token, funds, r.min_out]) });
+    if (fee > 0n) calls.push({ step: 'fee', to: feeWallet, value: ethers.toQuantity(fee), data: '0x' });
+  } else if (plan.side === 'buy') {
     if (BigInt(r.funds) !== plan.quote.minBuyAmount) throw new TradeBlocked('The curve buy doesn\'t match the BNB its swap delivers: not using it.');
     calls.push(...zeroexCalls(plan, ah, plan.baseToken.address, { step: 'to_bnb' }));
     calls.push({ step: 'swap', to: tm, value: ethers.toQuantity(BigInt(r.funds)), data: lp.TOKEN_MANAGER.encodeFunctionData('buyTokenAMAP', [plan.token, r.funds, r.min_out]) });
   } else {
     const fee = Number(r.fee_bps || 0);
-    if (fee > 100 || (fee > 0 && String(r.fee_recipient || '') !== String(env.swapFeeWalletEvm || '').toLowerCase())) throw new TradeBlocked('The curve sale names a fee RektBull doesn\'t charge: not using it.');
+    if (fee > 100 || (fee > 0 && (!feeWallet || String(r.fee_recipient || '') !== feeWallet))) throw new TradeBlocked('The curve sale names a fee RektBull doesn\'t charge: not using it.');
+    if (BigInt(r.amount) % lp.FOURMEME_SELL_UNIT !== 0n) throw new TradeBlocked('four.meme sells only whole multiples of 10^9 of a token\'s smallest units: not using this sale.');
     calls.push({ step: 'approve', to: plan.token, value: '0x0', data: ERC20.encodeFunctionData('approve', [tm, r.amount]) });
     const data = fee > 0
       ? lp.TOKEN_MANAGER.encodeFunctionData('sellToken(uint256,address,uint256,uint256,uint256,address)', [0, plan.token, r.amount, r.min_funds, fee, r.fee_recipient])

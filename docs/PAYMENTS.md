@@ -182,6 +182,25 @@ When automatic rebalancing is switched on (built, off), its fee is the same
 0.1%, enforced onchain by the Yield Router: a constant cap in the contract,
 paid only to the fixed fee wallet.
 
+## Trade fees
+
+Every trade carries RektBull's 1% (`SWAP_FEE_BPS`, at most 1%), taken inside
+the trade wherever the trade has a place for it:
+
+- **Through 0x** (most trades): 0x takes it inside the swap, in the base
+  asset, and pays `SWAP_FEE_WALLET_EVM`.
+- **Selling on four.meme's curve** (BNB Chain): four.meme's `sellToken`
+  pays it as an integrator fee from the sale, in the same call.
+- **Buying on four.meme's curve with BNB**: there's no swap to carry it, so
+  the buy spends 99% of the BNB and the other 1% is a plain BNB transfer to
+  the fee wallet, after the buy. The same rules as the claim fee: no
+  approval, nothing held, one EIP-5792 batch with `atomicRequired` where the
+  wallet can (so it's paid only if the buy works); other wallets send the buy
+  first, then the fee, which the user can decline.
+
+No fee can be forced onchain: anyone can call 0x or four.meme directly. The
+fee is what RektBull's checks and the prepared trade cost.
+
 ## NOWPayments (a second checkout)
 
 RektBull's own top-ups (USDT/USDC to a deposit address) cost nothing, but a

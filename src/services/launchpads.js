@@ -80,6 +80,8 @@ const HELPER = new ethers.Interface([
 ]);
 /** four.meme's sellToken refuses an integrator fee above 5% ('FR'), checked on a copy of BNB Chain. */
 const FOURMEME_MAX_FEE_BPS = 500;
+/** four.meme's sellToken takes only whole multiples of this many of a token's smallest units ('GW' otherwise; checked on a copy of BNB Chain). */
+const FOURMEME_SELL_UNIT = 10n ** 9n;
 
 async function call(to, iface, fn, args = [], chain = 'base') {
   const raw = await rpc.evmRpc(chain, 'eth_call', [{ to, data: iface.encodeFunctionData(fn, args) }, 'latest']);
@@ -270,5 +272,5 @@ async function newestOnFourMeme(n = 10, scan = 80) {
 
 module.exports = {
   identify, virtualsCurve, curveBuyQuote, curveSellQuote, newestOnCurve, BONDING, ADDR, VIRTUAL, LINKS,
-  fourMemeCurve, fourMemeBuyQuote, fourMemeSellQuote, newestOnFourMeme, FOURMEME, TOKEN_MANAGER, HELPER, FOURMEME_MAX_FEE_BPS,
+  fourMemeCurve, fourMemeBuyQuote, fourMemeSellQuote, newestOnFourMeme, FOURMEME, TOKEN_MANAGER, HELPER, FOURMEME_MAX_FEE_BPS, FOURMEME_SELL_UNIT,
 };
