@@ -39,6 +39,8 @@ export default defineConfig({
       chainId: 8453,
       forking: { url: BASE_MAINNET_RPC },
     },
+    // A blank local chain (no fork), for tests that need nothing deployed: the Meme Router's break-it tests.
+    local: { type: 'edr-simulated', chainType: 'l1', hardfork: 'prague', chainId: 31337 },
     // A copy of BNB Chain, for checking four.meme's bonding-curve calls (scripts/fourMemeCheck.js). No router is deployed there.
     bscMainnetFork: {
       type: 'edr-simulated',

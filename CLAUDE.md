@@ -14,7 +14,10 @@
   limited, expiring, revocable permission the user signs. Its limits must be
   enforced onchain; no permission may allow transfers to any address but the
   user's own, except to the audited Trade Router contract, which must return
-  the result to the user in the same transaction (Coinbase spend permissions).
+  the result to the user in the same transaction (Coinbase spend permissions),
+  or the audited Meme Router, which fills only orders the user signed, at the
+  user's own price, and returns the result in the same transaction
+  (docs/MEME_ROUTER.md).
   Never to any address RektBull controls. RektBull's own keys live in Google Cloud KMS, used only by the
   trade service.
 - **Charge only for work delivered.** Every paid run goes through

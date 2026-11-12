@@ -1,0 +1,66 @@
+{
+  "about": "Slither findings on RektBull's own contracts that were reviewed and accepted, each with the reason. scripts/slither.mjs fails CI on any Medium or High finding not listed here. A finding is matched by its detector, file and function (or variable). Add an entry only with a reason a reviewer can check against the code; never to silence a finding nobody has read.",
+  "reviewed": "2026-11-11, Slither 0.11.6",
+  "accepted": [
+    {
+      "check": "arbitrary-send-erc20", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter.fill",
+      "reason": "The input is pulled from o.account only after _checkOrder has verified o.account's own signature (EIP-712, or EIP-1271 for a contract wallet) over the order, the executor and the size left. Covered by memeRouter.test.js: a forged order, a changed order, and an order for another account that can't touch the user's approved tokens."
+    },
+    {
+      "check": "arbitrary-send-eth", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter._callVenue",
+      "reason": "Native coin is sent only to f.venue, which _checkOrder requires to be on the immutable venue list fixed at deployment, and only the wrapped native this fill pulled from the order's account (less the fee)."
+    },
+    {
+      "check": "arbitrary-send-eth", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter._send",
+      "reason": "_send is called with only two recipients: FEE_WALLET (immutable) and o.account (whose signature was verified). Covered by the native-coin sale test."
+    },
+    {
+      "check": "reentrancy-balance", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter.fill",
+      "reason": "Measuring the output as a balance change around the exchange call is the intended check. fill is nonReentrant, so the router can't be re-entered to fill again mid-call; cancel and cancelAll only act for msg.sender. Tokens someone else sends the router mid-call can only raise what the user receives. The router holds nothing between transactions (asserted by the break-it tests)."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter._send",
+      "reason": "amount == 0 is a plain zero check that skips an empty transfer, not a balance equality an attacker could break."
+    },
+    {
+      "check": "reentrancy-balance", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter._trade",
+      "reason": "The output is measured as a balance change around the venue call, as intended. Both entry points (swap, swapWithSpendPermission) are nonReentrant; the venue must be on the immutable list. Covered by breakIt.test.js and walletsBreakIt.test.js."
+    },
+    {
+      "check": "reentrancy-no-eth", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter.swapWithSpendPermission",
+      "reason": "boughtByRouter is written after the venue call, but both functions that read or write it during a trade are nonReentrant. The other external functions (setLimits, setOperator, revoke) only change msg.sender's own entries, so a venue calling them changes nothing for the account being traded for."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter._spend",
+      "reason": "usd == 0 (an exempt sale) and validUntil == 0 (limits off) are plain zero checks, not balance equalities."
+    },
+    {
+      "check": "unused-return", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter._price",
+      "reason": "latestRoundData's roundId, startedAt and answeredInRound are deliberately unused: Chainlink deprecated answeredInRound; staleness is checked with updatedAt against a per-token heartbeat, and answer must be positive."
+    },
+    {
+      "check": "unused-return", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter._checkSequencer",
+      "reason": "Only answer (up or down) and startedAt (the grace period after a restart) mean anything for Chainlink's sequencer uptime feed."
+    },
+    {
+      "check": "reentrancy-balance", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._depositFor",
+      "reason": "The position is measured before and after the venue call to check it grew by the amount deposited, as intended. Every entry point is nonReentrant; venues are fixed at deployment (Aave, Compound, Spark). Covered by yieldRouter.test.js on a Base fork."
+    },
+    {
+      "check": "unused-return", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._depositFor",
+      "reason": "The vault's returned shares aren't needed: the position's growth is measured directly afterwards and must be at least the amount less MAX_LOSS_BPS."
+    },
+    {
+      "check": "unused-return", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._withdrawFrom",
+      "reason": "Mid-move, what arrived is measured as a balance change (move()); on a plain withdrawal the account is paid directly, and a venue paying less leaves the rest in the account's own position. _assertUnchanged checks the router keeps nothing."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._held",
+      "reason": "held == 0 and amount == 0 refuse an empty position or amount: plain zero checks."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._checkLimits",
+      "reason": "amount == 0 and lastMoveAt == 0 (first move) are plain zero checks."
+    }
+  ]
+}

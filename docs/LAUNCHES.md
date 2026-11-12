@@ -131,7 +131,9 @@ verified source on Sourcify and its code onchain on 11 November 2026:
    Jupiter. Needs a reliable Solana data source first: the free public RPC
    rate-limits the bundle check. A paid RPC such as QuickNode (a month's free
    trial) or Helius (about $50 a month) goes in `RPC_URLS_SOLANA`.
-5. **The Meme Router:** automatic meme trading. The audited Trade Router
+5. **The Meme Router:** automatic meme trading. *Contract and break-it tests
+   built, not audited: [MEME_ROUTER.md](MEME_ROUTER.md). It bounds each fill by
+   the price the user signed instead of a TWAP.* The original plan: The audited Trade Router
    trades only tokens with a Chainlink price, which meme coins don't have, and
    that price bound is what stops a hacked RektBull from selling a user's
    tokens at a bad price. A Meme Router would bound each trade another way

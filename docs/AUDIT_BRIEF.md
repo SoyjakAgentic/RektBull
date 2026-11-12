@@ -11,7 +11,8 @@ fixed or explicitly accepted.*
 | `contracts/contracts/RektBullTradeRouter.sol` | 227 | 327 |
 | `contracts/contracts/RektBullSafeModule.sol` | 46 | 81 |
 | `contracts/contracts/RektBullYieldRouter.sol` (automatic yield rebalancing; [YIELD_ROUTER.md](YIELD_ROUTER.md) states its guarantees, `contracts/test/yieldRouter.test.js` tries to break them on a Base mainnet fork) | — | ~280 |
-| **Total** | **273 + the Yield Router** | |
+| `contracts/contracts/RektBullMemeRouter.sol` (automatic meme trades from orders the user signs; [MEME_ROUTER.md](MEME_ROUTER.md) states its guarantees, `contracts/test/memeRouter.test.js` tries to break them; added after this brief, for the same engagement) | ~190 | 267 |
+| **Total** | **273 + the Yield and Meme Routers** | |
 
 - **Commit:** `31c9c8c` on `main` of `SoyjakAgentic/RektBull` (or the commit we
   freeze when the audit is booked).
