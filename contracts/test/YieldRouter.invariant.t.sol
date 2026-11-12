@@ -25,10 +25,13 @@ contract YieldHandler is Test {
     uint256 public feeBase; // amounts deposited or moved (received), summed
     uint256 public valueLostBeyondAllowed; // value a user lost beyond the fee and MAX_LOSS_BPS: must stay 0
     uint256 public worseMoves; // moves into a venue paying less than MIN_GAIN_BPS more: must stay 0
+    uint256 public worseDeposits; // deposits into a venue paying MIN_GAIN_BPS or more below the best: must stay 0
+    uint256 public redepositFees; // fees taken on a deposit within REDEPOSIT_WINDOW of a withdrawal: must stay 0
     uint256 public intervalBreaks; // fee-bearing calls closer than MIN_INTERVAL: must stay 0
     uint256 public blockedWithdrawals; // withdrawals of a held position that failed: must stay 0
     uint256 public calls;
     mapping(address => uint256) public lastFeeCallAt;
+    mapping(address => uint256) public lastWithdrawAt;
 
     constructor(RektBullYieldRouter r, MockERC20 u, MockVault4626 v0, MockVault4626 v1, MockSsrOracle o0, MockSsrOracle o1, address fw) {
         router = r; usdc = u; vaults[0] = v0; vaults[1] = v1; oracles[0] = o0; oracles[1] = o1; feeWallet = fw;
@@ -96,12 +99,17 @@ contract YieldHandler is Test {
     function deposit(uint256 who, uint256 v, uint256 amount) external {
         address u = users[bound(who, 0, 2)];
         amount = bound(amount, 1, 1e12);
+        uint256 id = bound(v, 0, 1);
+        uint256 rate = router.rateOf(id);
+        uint256 other = router.rateOf(1 - id);
         uint256 before = _value(u);
         uint256 feeBefore = usdc.balanceOf(feeWallet);
         vm.prank(u);
-        try router.deposit(bound(v, 0, 1), amount) {
+        try router.deposit(id, amount) {
             calls++;
+            if (rate + uint256(router.MIN_GAIN_BPS()) * 1e14 < other) worseDeposits++;
             uint256 fee = usdc.balanceOf(feeWallet) - feeBefore;
+            if (fee > 0 && lastWithdrawAt[u] != 0 && block.timestamp < lastWithdrawAt[u] + router.REDEPOSIT_WINDOW()) redepositFees++;
             feesPaid += fee; feeBase += amount;
             _lossCheck(u, before, fee, amount);
             _interval(u);
@@ -140,6 +148,7 @@ contract YieldHandler is Test {
         vm.prank(u);
         try router.withdraw(id, amount) {
             calls++;
+            lastWithdrawAt[u] = block.timestamp;
             _lossCheck(u, before, 0, amount > held ? held : amount);
         } catch {
             if (held > 0) blockedWithdrawals++;
@@ -184,8 +193,8 @@ contract YieldRouterInvariantTest is Test {
 
     /// The handler's honest path really deposits, moves and withdraws (so the invariants aren't passing on nothing).
     function test_handlerWorks() public {
+        handler.deposit(0, 0, 1e9); // both pay 0%: either is the best
         handler.setRate(1, 500);
-        handler.deposit(0, 0, 1e9);
         handler.wait(2 hours);
         handler.move(0, 0, type(uint256).max); // into the venue paying 5% more
         handler.withdraw(0, 1, type(uint256).max);
@@ -194,6 +203,15 @@ contract YieldRouterInvariantTest is Test {
         handler.deposit(1, 1, 1e9);
         handler.move(1, 1, 1e9); // straight away, and into a venue paying less: refused
         assertEq(handler.calls(), 4);
+        handler.deposit(2, 0, 1e9); // into the venue paying 5% less than the best: refused
+        assertEq(handler.calls(), 4);
+        // User 0 withdrew above; putting it back within the window costs no fee (MIN_INTERVAL still applies).
+        handler.wait(2 hours);
+        uint256 fees = handler.feesPaid();
+        handler.deposit(0, 1, 1e9);
+        assertEq(handler.calls(), 5);
+        assertEq(handler.feesPaid(), fees);
+        assertEq(handler.redepositFees(), 0);
     }
 
     function invariant_routerHoldsNothing() public view {
@@ -213,6 +231,13 @@ contract YieldRouterInvariantTest is Test {
 
     /// Every move went to a venue paying at least MIN_GAIN_BPS more, read onchain.
     function invariant_onlyBetterMoves() public view { assertEq(handler.worseMoves(), 0); }
+
+    /// Every deposit went to the best venue, or one within MIN_GAIN_BPS of it (so withdraw + deposit can't
+    /// stand in for a move the rule above would refuse).
+    function invariant_onlyBestDeposits() public view { assertEq(handler.worseDeposits(), 0); }
+
+    /// Putting money back within REDEPOSIT_WINDOW of taking it out is never charged a fee.
+    function invariant_noFeeOnRedeposit() public view { assertEq(handler.redepositFees(), 0); }
 
     /// Fee-bearing calls per account are at least MIN_INTERVAL apart.
     function invariant_minInterval() public view { assertEq(handler.intervalBreaks(), 0); }

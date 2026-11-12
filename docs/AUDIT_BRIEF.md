@@ -10,7 +10,7 @@ fixed or explicitly accepted.*
 |---|---|---|
 | `contracts/contracts/RektBullTradeRouter.sol` | 227 | 327 |
 | `contracts/contracts/RektBullSafeModule.sol` | 46 | 81 |
-| `contracts/contracts/RektBullYieldRouter.sol` (automatic yield rebalancing; [YIELD_ROUTER.md](YIELD_ROUTER.md) states its guarantees, `contracts/test/yieldRouter.test.js` tries to break them on a Base mainnet fork) | — | ~280 |
+| `contracts/contracts/RektBullYieldRouter.sol` (automatic yield rebalancing; [YIELD_ROUTER.md](YIELD_ROUTER.md) states its guarantees, `contracts/test/yieldRouter.test.js` tries to break them on a Base mainnet fork; the pre-audit fixes of 12 November 2026, the best-venue rule for deposits, the fee-free redeposit window and the Aave health-factor floor, and the accepted rate-manipulation risk are in YIELD_ROUTER.md) | — | ~310 |
 | `contracts/contracts/RektBullMemeRouter.sol` (automatic meme trades from orders the user signs; [MEME_ROUTER.md](MEME_ROUTER.md) states its guarantees, `contracts/test/memeRouter.test.js` tries to break them; added after this brief, for the same engagement) | ~190 | 267 |
 | **Total** | **273 + the Yield and Meme Routers** | |
 

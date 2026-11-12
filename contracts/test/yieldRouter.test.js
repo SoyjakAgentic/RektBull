@@ -89,6 +89,15 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
   }
   const call = (fn, args) => redeem(delegation, router.target, router.interface.encodeFunctionData(fn, args));
 
+  /** The user puts money in a venue themselves (not through the router): how a position elsewhere comes about. */
+  async function directDeposit(id, amount) {
+    const target = [AAVE_POOL, COMET, SPARK][id];
+    await (await usdcToken.connect(user).approve(target, amount)).wait();
+    if (id === AAVE) await (await new ethers.Contract(AAVE_POOL, ['function supply(address,uint256,address,uint16)'], user).supply(USDC, amount, user.address, 0)).wait();
+    else if (id === COMP) await (await new ethers.Contract(COMET, ['function supply(address,uint256)'], user).supply(USDC, amount)).wait();
+    else await (await new ethers.Contract(SPARK, ['function deposit(uint256,address) returns (uint256)'], user).deposit(amount, user.address)).wait();
+  }
+
   before(async function () {
     assert.ok((await ethers.provider.getCode(MM.DelegationManager)).length > 2, 'MetaMask DelegationManager not found on Base');
     [funder] = await ethers.getSigners();
@@ -133,20 +142,21 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
   });
 
   it('works: a deposit lands in the user\'s own position, 0.1% goes to the fee wallet, the router keeps nothing', async function () {
-    await (await call('deposit', [low, usdc(1000)])).wait();
-    const pos = await router.positionOf(low, user.address);
+    await (await call('deposit', [high, usdc(1000)])).wait(); // deposits go only to the best-paying venue (or within MIN_GAIN_BPS of it)
+    const pos = await router.positionOf(high, user.address);
     assert.ok(pos >= usdc(998.99) && pos <= usdc(999.01), `position ${ethers.formatUnits(pos, 6)}`);
     assert.equal(await usdcToken.balanceOf(feeWallet), usdc(1));
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
 
   it('works: a move to the better-paying venue, after the interval; the position moves, nothing is left behind', async function () {
+    await directDeposit(low, usdc(1000)); // a position the user opened elsewhere themselves
     await fails(call('move', [low, high, ethers.MaxUint256]), /TooSoon/);
     await advance(DAY + 1);
     await (await call('move', [low, high, ethers.MaxUint256])).wait();
     assert.ok(await router.positionOf(low, user.address) <= 1n, 'the old position is empty');
     const pos = await router.positionOf(high, user.address);
-    assert.ok(pos >= usdc(997.9), `moved ${ethers.formatUnits(pos, 6)}`);
+    assert.ok(pos >= usdc(1996.9), `moved ${ethers.formatUnits(pos, 6)}`);
     assert.ok(await usdcToken.balanceOf(feeWallet) >= usdc(1.998), 'the move paid 0.1%');
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
@@ -194,9 +204,17 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
     it('cannot move between different assets', async function () {
       await fails(call('move', [high, AAVE_WETH, usdc(10)]), /NotAllowed/);
     });
-    it('at most one deposit or move per interval', async function () {
-      await (await call('deposit', [high, usdc(10)])).wait();
+    it('at most one deposit or move per interval; a deposit soon after a withdrawal through the router pays no fee', async function () {
+      const fees = await usdcToken.balanceOf(feeWallet);
+      await (await call('deposit', [high, usdc(10)])).wait(); // 100 USDC was withdrawn through the router above
+      assert.equal(await usdcToken.balanceOf(feeWallet), fees, 'withdrawing and depositing can\'t churn fees');
       await fails(call('deposit', [high, usdc(10)]), /TooSoon/);
+    });
+    it('cannot park the user\'s money in a venue paying clearly less than the best (a withdraw, then a deposit)', async function () {
+      await advance(DAY + 1);
+      const [rl, rh] = [await router.rateOf(low), await router.rateOf(high)];
+      assert.ok(rl + (await router.MIN_GAIN_BPS()) * 10n ** 14n < rh, 'the fork block\'s rates are far enough apart');
+      await fails(call('deposit', [low, usdc(10)]), /NotBestVenue/);
     });
     it('nothing above the user\'s per-asset limit, nothing in an asset without one', async function () {
       await advance(DAY + 1);
@@ -215,6 +233,38 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
     it('a router with a fee above 0.1% cannot be deployed', async function () {
       const F = await ethers.getContractFactory('RektBullYieldRouter');
       await fails(F.deploy(feeWallet, 11, 100, DAY, [{ kind: KIND.Comet, target: COMET, asset: USDC, position: COMET, rateSource: ethers.ZeroAddress }]), /BadConfig/);
+    });
+  });
+
+  describe('a hacked RektBull cannot push a borrowing user toward liquidation on Aave', function () {
+    const POOL = new ethers.Interface([
+      'function getUserAccountData(address) view returns (uint256,uint256,uint256,uint256,uint256,uint256)',
+      'function borrow(address,uint256,uint256,uint16,address)', 'function repay(address,uint256,uint256,address) returns (uint256)',
+    ]);
+    it('refuses a withdrawal that would leave the user\'s Aave health factor under 1.5; allows a small one', async function () {
+      // USDC can't back a loan on Aave's Base market (its LTV is 0), so the user borrows against WETH, the usual case.
+      const pool = new ethers.Contract(AAVE_POOL, POOL, user);
+      const weth = new ethers.Contract(WETH, ['function deposit() payable', 'function approve(address,uint256) returns (bool)'], user);
+      await (await weth.deposit({ value: ethers.parseEther('1') })).wait();
+      await (await weth.approve(AAVE_POOL, ethers.parseEther('1'))).wait();
+      await (await new ethers.Contract(AAVE_POOL, ['function supply(address,uint256,address,uint16)'], user).supply(WETH, ethers.parseEther('1'), user.address, 0)).wait();
+      const [collateral, , , lt] = await pool.getUserAccountData(user.address);
+      // Borrow USDC so the health factor is about 2 (base units are USD with 8 decimals; USDC is about $1).
+      await (await pool.borrow(USDC, collateral * lt / 10_000n / 2n / 100n, 2, 0, user.address)).wait();
+      const [, , , , , hf] = await pool.getUserAccountData(user.address);
+      assert.ok(hf > 19n * 10n ** 17n && hf < 21n * 10n ** 17n, `health factor about 2 (${ethers.formatUnits(hf, 18)})`);
+      // Taking out 30% leaves about 1.4: still above Aave's own 1.0, so Aave would allow it; the router must not.
+      const held = await erc20(AWETH).balanceOf(user.address);
+      await (await erc20(AWETH).connect(user).approve(router.target, ethers.MaxUint256)).wait();
+      await fails(call('withdraw', [AAVE_WETH, held * 30n / 100n]), /UnsafeHealthFactor/);
+      // A small withdrawal that keeps it over 1.5 goes through, to the user.
+      const before = await erc20(WETH).balanceOf(user.address);
+      await (await call('withdraw', [AAVE_WETH, held / 100n])).wait();
+      assert.ok(await erc20(WETH).balanceOf(user.address) > before, 'the small withdrawal reached the user');
+      const [, , , , , hf2] = await pool.getUserAccountData(user.address);
+      assert.ok(hf2 >= 15n * 10n ** 17n, 'still at least 1.5');
+      await (await usdcToken.connect(user).approve(AAVE_POOL, ethers.MaxUint256)).wait();
+      await (await pool.repay(USDC, ethers.MaxUint256, 2, user.address)).wait();
     });
   });
 

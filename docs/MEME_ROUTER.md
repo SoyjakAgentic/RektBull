@@ -129,8 +129,9 @@ trader):
   isn't in `contracts/slither.triage.json` with a reviewed reason. Today: 15,
   all reviewed (none was a real flaw), 0 open.
 - **Stateful fuzz tests** (`contracts/test/*.invariant.t.sol`, Hardhat 3's
-  Solidity tests): 256 runs of random sequences each for this router and the
-  Trade Router. The invariants:
+  Solidity tests): 256 runs of random sequences each for this router, the
+  Trade Router, the Yield Router and the Safe Module (29 tests in all). The
+  invariants:
     - the router holds nothing;
     - users get their signed (or oracle) price;
     - nothing is filled past its size or sold past what was signed;
@@ -147,6 +148,20 @@ trader):
   transaction, so it can't reach users who approved this router. **Found
   below the bar:** for a token that taxes transfers, the price was checked
   before the tax. The check now uses what reaches the account.
+- **The same checks on the older contracts** (12 November 2026), before
+  their re-audit:
+    - **Trade Router:** one High finding, with a working proof: trades that
+      are exempt from the daily limit (selling back what the router bought)
+      also count as bought, so selling and buying back over and over is
+      never limited. To be fixed, with a test, and sent to the auditor.
+    - **Yield Router:** a hacked RektBull could withdraw and deposit to
+      make a move the rate rule refuses (fixed: deposits only into the best
+      venue, and no fee on putting money back within 7 days), or withdraw a
+      borrowing user's Aave collateral down toward liquidation (fixed: no
+      withdrawal may leave the health factor under 1.5). Rates read in the
+      same transaction can be pushed by a flash loan: accepted, and
+      documented in YIELD_ROUTER.md.
+    - **Safe Module and the sign-in checker:** nothing found.
 - These are not an audit. They catch the common and mechanical bugs so the
   auditor's time goes to the design.
 

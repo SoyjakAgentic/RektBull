@@ -37,6 +37,7 @@ const ROUTER = new ethers.Interface([
   'function deposit(uint256 id, uint256 amount)', 'function move(uint256 fromId, uint256 toId, uint256 amount)', 'function withdraw(uint256 id, uint256 amount)',
   'function validUntil(address) view returns (uint64)', 'function maxPerMove(address, address) view returns (uint256)',
   'function lastMoveAt(address) view returns (uint256)', 'function MIN_INTERVAL() view returns (uint32)',
+  'function MIN_GAIN_BPS() view returns (uint16)', 'function rateOf(uint256 id) view returns (uint256)',
   'function venueCount() view returns (uint256)', 'function venueAt(uint256 id) view returns (tuple(uint8 kind, address target, address asset, address position, address rateSource))',
   'function setLimits(address[] assets, uint256[] limits, uint64 until)', 'function revoke()',
   'event Deposited(address indexed account, uint256 indexed venue, uint256 amount, uint256 fee)',
@@ -180,10 +181,22 @@ async function plan(perm, deps = {}) {
   if (!(Number(until) > now)) return { none: 'the limits on the Yield Router have expired or were revoked' };
   if (Number(last) && now < Number(last) + Number(interval)) return { none: `the router allows the next deposit or move after ${new Date((Number(last) + Number(interval)) * 1000).toISOString()}` };
   const s = await scan(wallet);
+  // The router compares the venues' own onchain rates (no rewards), so a proposal it would refuse is skipped here.
+  let gain;
+  const rateCache = new Map();
+  const rate = async id => { if (!rateCache.has(id)) rateCache.set(id, BigInt((await read({ name: 'rateOf', args: [id] }))[0])); return rateCache.get(id); };
   for (const p of s.proposals.filter(x => x.chain === chain)) {
     const toId = idOf(p.to.protocol, p.asset);
     const fromId = p.from.protocol ? idOf(p.from.protocol, p.asset) : null;
     if (toId === undefined || fromId === undefined) continue;
+    if (gain === undefined) gain = BigInt((await read({ name: 'MIN_GAIN_BPS', args: [] }))[0]) * 10n ** 14n;
+    const toRate = await rate(toId);
+    if (fromId === null) {
+      // A deposit only into the best venue for the asset, or one within MIN_GAIN_BPS of it.
+      let best = 0n;
+      for (const v of ids.filter(x => x.asset === p.asset)) { const r = await rate(v.id); if (r > best) best = r; }
+      if (toRate + gain < best) continue;
+    } else if (toRate < (await rate(fromId)) + gain) continue; // a move only to a venue paying MIN_GAIN_BPS more
     const token = venues.tokenOf(chain, p.asset);
     const [limit] = await read({ name: 'maxPerMove', args: [wallet, token.address] });
     if (BigInt(limit) === 0n) continue;

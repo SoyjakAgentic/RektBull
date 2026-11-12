@@ -16,8 +16,12 @@ const W = '0x' + '11'.repeat(20);
 const ROUTER = '0x' + '22'.repeat(20);
 const perm = { id: 'p1', chain_id: 8453, wallet: W, router: ROUTER };
 const now = () => Math.floor(Date.now() / 1000);
-const reads = ({ until = now() + 86400, last = 0, interval = 86400, limit = 500n * 10n ** 6n } = {}) => async fn => {
+// Onchain rates (18 decimals) by protocol; the proposals below go to the better-paying venue unless a test says otherwise.
+const RATES = { 'aave-v3': 7n * 10n ** 16n, 'compound-v3': 7n * 10n ** 16n, 'spark-susdc': 3n * 10n ** 16n };
+const reads = ({ until = now() + 86400, last = 0, interval = 86400, limit = 500n * 10n ** 6n, rates = RATES } = {}) => async fn => {
   if (fn.name === 'validUntil') return [BigInt(until)];
+  if (fn.name === 'MIN_GAIN_BPS') return [100n];
+  if (fn.name === 'rateOf') return [rates[venues.routerVenues('base')[fn.args[0]].protocol] ?? 0n];
   if (fn.name === 'lastMoveAt') return [BigInt(last)];
   if (fn.name === 'MIN_INTERVAL') return [BigInt(interval)];
   if (fn.name === 'maxPerMove') return [limit];
@@ -60,6 +64,17 @@ test('deposits and moves: only within the router\'s interval and expiry, capped 
   assert.match((await auto.plan(perm, deps({ read: { limit: 0n }, proposals: [proposal(null, 'compound-v3')] }))).none, /no move passes/, 'an asset without a limit is never touched');
   const other = await auto.plan(perm, deps({ proposals: [{ ...proposal(null, 'aave-v3'), chain: 'ethereum' }] }));
   assert.ok(other.none, 'only proposals on the permission\'s own chain');
+});
+
+test('only what the router itself would allow, by the venues\' onchain rates (no rewards): the best venue for a deposit, 1 point more for a move', async () => {
+  // Spark pays 3% onchain while the others pay 7%: a deposit there would be refused by the router (NotBestVenue).
+  const worse = await auto.plan(perm, deps({ proposals: [proposal(null, 'spark-susdc'), proposal(null, 'compound-v3')] }));
+  assert.deepEqual([worse.kind, worse.id], ['deposit', id('compound-v3')], 'skips to the next proposal the router accepts');
+  // Within 1 point of the best is still allowed.
+  const near = await auto.plan(perm, deps({ read: { rates: { ...RATES, 'spark-susdc': 6n * 10n ** 16n + 1n } }, proposals: [proposal(null, 'spark-susdc')] }));
+  assert.equal(near.kind, 'deposit');
+  // A move whose gain shows only off-chain (rewards) is skipped: onchain, Aave pays no more than Compound.
+  assert.match((await auto.plan(perm, deps({ proposals: [proposal('compound-v3', 'aave-v3')] }))).none, /no move passes/);
 });
 
 test('the redeem call: the DelegationManager, one execution, only the router', () => {
