@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @dev Chainlink's aggregator interface, the part used here.
 interface IPriceFeed {
@@ -242,10 +243,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
     /// @notice One swap for msg.sender, which is the trading account.
     function swap(SwapParams calldata p) external nonReentrant returns (uint256 amountOut) {
         address account = msg.sender;
-        uint256 counted = _check(account, p);
+        (uint256 counted, uint256 exempt) = _check(account, p);
         uint256 inBefore = IERC20(p.tokenIn).balanceOf(address(this));
         IERC20(p.tokenIn).safeTransferFrom(account, address(this), p.amountIn);
-        return _trade(account, p, inBefore, counted);
+        return _trade(account, p, inBefore, counted, exempt);
     }
 
     /// @notice One swap for a Coinbase Smart Wallet, paid through its spend permission to this router.
@@ -259,28 +260,30 @@ contract RektBullTradeRouter is ReentrancyGuard {
         address operator = operatorOf[account];
         if (operator == address(0) || msg.sender != operator) revert NotAllowed();
         if (sp.spender != address(this) || sp.token != p.tokenIn || p.amountIn > type(uint160).max) revert NotAllowed();
-        uint256 counted = _check(account, p);
+        (uint256 counted, uint256 exempt) = _check(account, p);
         uint256 inBefore = IERC20(p.tokenIn).balanceOf(address(this));
         SPEND_PERMISSION_MANAGER.spend(sp, uint160(p.amountIn));
-        return _trade(account, p, inBefore, counted);
+        return _trade(account, p, inBefore, counted, exempt);
     }
 
     /// @dev Everything checked before any funds move: deadline, venue, and the account's limits.
-    function _check(address account, SwapParams calldata p) internal returns (uint256 countedUsd) {
+    function _check(address account, SwapParams calldata p) internal returns (uint256 countedUsd, uint256 exempt) {
         if (block.timestamp > p.deadline) revert Expired();
         if (!isVenue[p.venue] || !isVenue[p.spender] || p.tokenIn == p.tokenOut) revert NotAllowed();
 
         // The account's limits, valued at the reference price. Selling what this router
         // bought for the account is exempt, up to the amount bought; the rest counts.
         uint256 bought = boughtByRouter[account][p.tokenIn];
-        uint256 exempt = p.amountIn < bought ? p.amountIn : bought;
+        exempt = p.amountIn < bought ? p.amountIn : bought;
         boughtByRouter[account][p.tokenIn] = bought - exempt;
         countedUsd = exempt == p.amountIn ? 0 : valueUsd(p.tokenIn, p.amountIn - exempt);
         _spend(account, countedUsd);
     }
 
     /// @dev The input has arrived; take the fee, trade, check the price, pay the account.
-    function _trade(address account, SwapParams calldata p, uint256 inBefore, uint256 countedUsd) internal returns (uint256 amountOut) {
+    function _trade(address account, SwapParams calldata p, uint256 inBefore, uint256 countedUsd, uint256 exempt)
+        internal returns (uint256 amountOut)
+    {
         IERC20 tokenIn = IERC20(p.tokenIn);
         IERC20 tokenOut = IERC20(p.tokenOut);
         uint256 received = tokenIn.balanceOf(address(this)) - inBefore;
@@ -303,7 +306,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
         if (amountOut < minimum) revert BelowMinimum(amountOut, minimum);
 
         // Everything goes back to the account: the output, and any input the venue didn't use.
-        boughtByRouter[account][p.tokenOut] += amountOut;
+        // Only the part of the trade that counted toward the limits earns an exemption for selling it
+        // back. Crediting the output of an exempt sale would let sell-and-buy-back loop forever,
+        // each round exempt (audit finding H-1, November 2026).
+        if (exempt < p.amountIn) boughtByRouter[account][p.tokenOut] += Math.mulDiv(amountOut, p.amountIn - exempt, p.amountIn);
         tokenOut.safeTransfer(account, amountOut);
         uint256 leftover = tokenIn.balanceOf(address(this)) - inBefore;
         if (leftover > 0) tokenIn.safeTransfer(account, leftover);

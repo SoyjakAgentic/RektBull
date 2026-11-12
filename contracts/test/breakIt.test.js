@@ -240,6 +240,14 @@ describe('RektBull Trade Router: break-it tests', function () {
       assert.equal(await router.boughtByRouter(user.address, WETH.target), 0n);
     });
 
+    it('what an exempt sale brings in is not exempt itself: no buy-sell loop past the limits (audit finding H-1)', async function () {
+      // The limit is used up, and the sale above was exempt. Before the fix, its USDC was credited as
+      // "bought by the router", so buying back with it was exempt too, and so on: unlimited churn, each
+      // round paying the fee and up to MAX_SLIPPAGE_BPS.
+      assert.equal(await router.boughtByRouter(user.address, USDC.target), 0n, 'the exempt sale credited nothing');
+      await fails(redeem(delegation, router.target, await swapCall({ amountIn: usdc(500) })), /OverPeriodLimit/);
+    });
+
     it('tokens the user already had, that RektBull did not buy, still count toward the limits', async function () {
       await WETH.mint(user.address, ethers.parseEther('1')); // the user's own tWETH
       assert.equal(await router.boughtByRouter(user.address, WETH.target), 0n);

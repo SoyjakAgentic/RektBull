@@ -159,8 +159,10 @@ exactly what this design rules out.
   records, per user and token, how much it bought for them; selling up to
   that amount doesn't count toward the per-trade or daily limit, so an exit is
   never blocked. Tokens the user had before still count. Revoke and the price
-  check still apply to exempt sells. Because buys are capped, what can be sold
-  freely is capped too.
+  check still apply to exempt sells. Only trades that counted toward the
+  limits earn the exemption (the output of an exempt sale doesn't), so what
+  can be sold freely is capped by the capped buys. (Fixed after the November
+  2026 audit: finding H-1, AUDIT_BRIEF.md section 8.)
 - **The worst case of a bad price is bounded:** a hacked RektBull could take
   at most the price bound (2%) on each trade, within the limits. Lower the bound
   for liquid pairs if that's too much.

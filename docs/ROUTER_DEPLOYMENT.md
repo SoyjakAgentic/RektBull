@@ -4,11 +4,16 @@
 here needs a private key, a seed phrase or a KMS key, and nothing of the kind
 may ever be pasted into a chat, an issue or the repository.*
 
-Each chain gets its own copy of two audited contracts (commit `31c9c8c`,
-AUDIT_BRIEF.md section 1): the **RektBull Trade Router** and the **RektBull
-Safe Module**. Same code everywhere; only the settings differ (its tokens,
-their price feeds, and the sequencer feed on L2s). The Yield Router is
-separate and waits for its own audit (YIELD_ROUTER.md).
+Each chain gets its own copy of two contracts: the **RektBull Trade Router**
+and the **RektBull Safe Module**. Same code everywhere; only the settings
+differ (its tokens, their price feeds, and the sequencer feed on L2s). The
+Yield Router is deployed separately (YIELD_ROUTER.md).
+
+**Not yet:** the Trade Router changed after its November 2026 audit (the
+H-1 fix) and the Safe Module was never audited, so both are listed under
+`awaitingAudit` in `config/<chain>.json` and the pre-flight refuses them
+(AUDIT_BRIEF.md section 8). After the next audit, set `auditedCommit` to the
+audited commit and remove those entries.
 
 Neither contract has an owner or admin. Once deployed, the wallet that
 deployed it has no power over it; it only pays the gas. The fee wallet only

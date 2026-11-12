@@ -13,6 +13,10 @@
     "contracts/RektBullTradeRouter.sol",
     "contracts/RektBullSafeModule.sol"
   ],
+  "awaitingAudit": {
+    "contracts/RektBullTradeRouter.sol": "changed after the November 2026 audit: the fix for pre-audit finding H-1 (docs/AUDIT_BRIEF.md section 8)",
+    "contracts/RektBullSafeModule.sol": "not covered by the November 2026 audit (the owner, 12 November 2026)"
+  },
   "openzeppelin": "5.6.1",
   "feeBps": 100,
   "maxSlippageBps": 200,

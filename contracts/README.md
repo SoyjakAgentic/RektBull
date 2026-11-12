@@ -19,8 +19,11 @@ On every trade it enforces onchain:
 No owner, no admin, no upgrades: venues, tokens, price feeds, the fee and the
 fee wallet are fixed at deployment. Funds are only pulled from `msg.sender`.
 
-**Audited** (the Trade Router and Safe Module, at commit `31c9c8c`; the owner
-reports it passed in November 2026). The Yield Router's audit is still to come.
+**Audited in November 2026** (the owner reports it passed): the Trade Router,
+at commit `31c9c8c`, and the Yield Router. **Awaiting audit before any
+deployment:** the Trade Router's fix for finding H-1, the Safe Module (never
+audited), the Yield Router's pre-audit fixes, and the Meme Router
+(docs/AUDIT_BRIEF.md section 8).
 
 ## How a user grants a permission
 
