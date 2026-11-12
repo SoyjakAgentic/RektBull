@@ -1,0 +1,68 @@
+[package]
+name = "rektbull-orders"
+version = "0.1.0"
+description = "RektBull order program: automatic meme trades from orders the user places, filled only at the user's price"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "rektbull_orders"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "=0.32.3"
+anchor-spl = { version = "=0.32.3", default-features = false, features = ["token", "token_2022", "associated_token"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[dev-dependencies]
+# The break-it tests (tests/orders.rs) run the compiled program on LiteSVM, an in-process Solana chain.
+litesvm = "=0.17.0"
+solana-address = "~2.7.0"
+solana-account = "4.3"
+solana-clock = "~3.2.0"
+solana-instruction = "~3.5.0"
+solana-keypair = "3.1.2"
+solana-message = "4.2.4"
+solana-signer = "3.0.1"
+solana-transaction = "4.1.5"
+# The pump.fun check (tests/pump_fun.rs) reads account copies saved as JSON.
+base64 = "0.21"
+serde_json = "1"
+sha2 = "0.10"
+# LiteSVM 0.17 asks for Agave ^4.3, but Agave 4.4 changed its internals: keep the runtime crates on 4.3.x.
+agave-feature-set = "~4.3.2"
+agave-reserved-account-keys = "~4.3.2"
+solana-bpf-loader-program = "~4.3.2"
+solana-builtins = "~4.3.2"
+solana-builtins-default-costs = "~4.3.2"
+solana-compute-budget = "~4.3.2"
+solana-compute-budget-instruction = "~4.3.2"
+solana-compute-budget-program = "~4.3.2"
+solana-program-runtime = "~4.3.2"
+solana-runtime-transaction = "~4.3.2"
+solana-svm-callback = "~4.3.2"
+solana-svm-feature-set = "~4.3.2"
+solana-svm-log-collector = "~4.3.2"
+solana-svm-measure = "~4.3.2"
+solana-svm-timings = "~4.3.2"
+solana-svm-type-overrides = "~4.3.2"
+solana-syscalls = "~4.3.2"
+solana-system-program = "~4.3.2"
+solana-transaction-context = "~4.3.2"
+solana-vote-program = "~4.3.2"
+solana-zk-elgamal-proof-program = "~4.3.2"
+solana-zk-token-proof-program = "~4.3.2"
+solana-fee = "~4.3.2"

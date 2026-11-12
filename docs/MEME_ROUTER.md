@@ -221,7 +221,10 @@ RektBull order program, the Solana twin of this router:
 - the program fills an order through pump.fun or Jupiter and checks the
   output reached the user at their price.
 
-It needs its own audit. Until then, Solana trading stays approve-each: the
+**Built (12 November 2026):** [SOLANA_ORDERS.md](SOLANA_ORDERS.md). Orders
+are accounts the user creates in the same transaction as the approval,
+rather than signed messages, and it was checked against pump.fun's real
+program. It needs its own audit. Until then, Solana trading stays approve-each: the
 user signs every trade, which phase 4 builds first. Turnkey can still be
 looked at later as a wallet for users who have none: an app key whose policy
 allows only the RektBull program would sit inside that program's

@@ -17,7 +17,8 @@
   the result to the user in the same transaction (Coinbase spend permissions),
   or the audited Meme Router, which fills only orders the user signed, at the
   user's own price, and returns the result in the same transaction
-  (docs/MEME_ROUTER.md).
+  (docs/MEME_ROUTER.md; on Solana, its twin the order program,
+  docs/SOLANA_ORDERS.md).
   Never to any address RektBull controls. RektBull's own keys live in Google Cloud KMS, used only by the
   trade service.
 - **Charge only for work delivered.** Every paid run goes through
@@ -32,5 +33,6 @@
   Never let an AI report fill gaps with guesses.
 - **The Claude model is a setting** (`REPORT_MODEL`), called only from `src/ai/claude.js`.
 - Plain CommonJS on Node 22 (Hardhat 3 in `contracts/` needs 22.13+), no build step. Run `npm test` (and with
-  `TEST_DATABASE_URL` for the end-to-end test) before pushing.
+  `TEST_DATABASE_URL` for the end-to-end test) before pushing. The Solana program in `solana/` is Rust
+  (Anchor 0.32): `cargo build-sbf --arch v0` then `cargo test -p rektbull-orders` there before pushing it.
 - Schema changes are new files in `migrations/`, never edits to applied ones.
