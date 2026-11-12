@@ -5,7 +5,9 @@
 (`contracts/test/yieldRouter.test.js`, 18 tests against the real Aave v3,
 Compound v3, Spark sUSDC and MetaMask delegation contracts on a copy of Base
 mainnet) pass. The server side (`src/yield/auto.js`) is tested end to end on
-the same fork (`test/yield.e2e.js`). Not audited, not deployed.
+the same fork (`test/yield.e2e.js`). Audited in November 2026 (the owner
+reports); the pre-audit fixes below came after, so it is re-audited with the
+other contracts before deployment (AUDIT_BRIEF.md section 8). Not deployed.
 `YIELD_AUTO_ENABLED` is off, so no permission is accepted and the trade
 service does nothing.*
 
@@ -81,7 +83,7 @@ deployments), with only a one-hour floor onchain.
 
 ## Before switching it on
 
-1. An audit of `RektBullYieldRouter.sol` (add it to [AUDIT_BRIEF.md](AUDIT_BRIEF.md)'s scope).
+1. The re-audit of `RektBullYieldRouter.sol` with the changes since November 2026 ([AUDIT_BRIEF.md](AUDIT_BRIEF.md) section 8).
 2. Deploy it per chain: `contracts/scripts/deployYieldRouter.js`; set
    `YIELD_ROUTERS` (`{"8453": "0x…"}`) on the API and trade services.
 3. The trade service deployed with its KMS session key ([DEPLOY.md](DEPLOY.md)).

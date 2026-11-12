@@ -88,7 +88,7 @@ an allowlisted venue).
 | G2 | All output goes to the trading account, and any input the venue didn't use goes back to it. The router keeps nothing between transactions | `_trade` |
 | G3 | The fee is at most 1% (`MAX_FEE_BPS`, a constant), paid only to the immutable `FEE_WALLET` | constructor, `_trade` |
 | G4 | The output is at least the Chainlink fair value less `MAX_SLIPPAGE_BPS` (≤ 5%, deployed at 2%), and at least the caller's `minAmountOut`. Calldata that pays someone else, pays less, or takes more than approved must revert the whole trade | `_trade` |
-| G5 | Every trade fits the account's own limits: per-trade USD, per-period USD, expiry. Selling up to what this router bought for the account is exempt; everything else counts | `_check`, `_spend` |
+| G5 | Every trade fits the account's own limits: per-trade USD, per-period USD, expiry. Selling up to what this router bought for the account (with trades that counted) is exempt; everything else counts | `_check`, `_spend`, `_trade` |
 | G6 | Prices are fresh (per-token max age), positive, and not used while the L2 sequencer is down or within an hour of restarting | `_price`, `_checkSequencer` |
 | G7 | No owner, admin, upgrade, pause or setter for the fee, fee wallet, venues, tokens or feeds. Every write function only changes the caller's own state, or trades for an account under G1 | whole contract |
 | G8 | Safe module: only the Safe's named session key, before its expiry (≤ 30 days), can make the Safe call exactly `router.swap(p)`, with value 0 and operation CALL. Only the Safe itself can set or revoke its session | `RektBullSafeModule` |
@@ -228,3 +228,37 @@ and USDT's approval behaviour on Ethereum (the router uses SafeERC20's
 - **Shortlist:** firms that have audited delegation/session-key or DEX-router
   code. Ask each for comparable past reports.
 - **Contact:** the repository owner (SoyjakAgentic).
+
+## 8. Changes since the November 2026 audit
+
+The November 2026 audit covered the **Trade Router** (at commit `31c9c8c`)
+and the **Yield Router** (the owner, 12 November 2026). The **Safe Module**
+was not covered. Before any deployment, the next engagement should cover:
+
+- **Trade Router, finding H-1 (High), fixed.** Found by the pre-audit checks
+  (an AI security review with a working proof, 12 November 2026); it is the
+  case asked about in section 4, question 4. The output of every trade was
+  credited to `boughtByRouter`, including trades that were themselves exempt.
+  So selling what the router bought (exempt) credited the proceeds, buying
+  back with them was exempt too, and so on: sell-and-buy-back could loop with
+  no limit, each round paying the fee and up to `MAX_SLIPPAGE_BPS`. **Fix:**
+  `_check` returns the exempt part of the input, and `_trade` credits only
+  the counted share of the output, `amountOut × (amountIn − exempt) /
+  amountIn`. Regression test: "what an exempt sale brings in is not exempt
+  itself" in `contracts/test/breakIt.test.js`. Please review the fix and the
+  rest of the exemption logic again.
+- **Safe Module:** the whole contract (81 lines), never audited.
+- **Yield Router:** the pre-audit fixes listed in section 1 (the best-venue
+  rule for deposits, the fee-free redeposit window, the Aave health-factor
+  floor), and the accepted rate-manipulation risk in YIELD_ROUTER.md.
+- **Meme Router:** the whole contract, new.
+- **Below the bar on the Trade Router, for your view:** the fixed window
+  allows up to twice the period limit across a window boundary; `setLimits`
+  resets what was spent this period (only the user can call it); for a token
+  that taxes transfers, the price is checked before the tax; disabling the
+  Safe Module in a Safe leaves its session stored (harmless while disabled);
+  Chainlink answers aren't checked against a feed's min/max.
+
+`contracts/config/<chain>.json` lists the Trade Router and the Safe Module
+under `awaitingAudit`, so the deploy pre-flight refuses both until the new
+audit's commit replaces `auditedCommit` and the entries are removed.

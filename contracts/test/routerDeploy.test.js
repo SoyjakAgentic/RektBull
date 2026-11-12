@@ -43,8 +43,15 @@ describe('Base mainnet deployment', function () {
     safe = await makeSafe(ethers, deployer);
   });
 
-  it('the audited sources and compiler settings are what will be compiled', function () {
-    assert.deepEqual(failed(checkSources(params, art.router)), []);
+  it('the audited sources and compiler settings are what will be compiled; only the sources listed as awaiting audit fail, and they do', function () {
+    // Until the re-audit, the changed Trade Router and the never-audited Safe Module must be refused at
+    // deployment (awaitingAudit in the config); everything else must match the audited commit.
+    const awaiting = Object.keys(params.awaitingAudit || {}).map(s => `source ${s}`);
+    assert.deepEqual(failed(checkSources(params, art.router)), awaiting);
+    // Taking an entry off the list doesn't make an unaudited change pass: git still compares with the audited commit.
+    const q = structuredClone(params);
+    delete q.awaitingAudit['contracts/RektBullTradeRouter.sol'];
+    assert.ok(failed(checkSources(q, art.router)).includes('source contracts/RektBullTradeRouter.sol'), 'the changed router fails the git check');
   });
 
   it('the pre-flight passes with the real parameters and a Safe as the fee wallet', async function () {

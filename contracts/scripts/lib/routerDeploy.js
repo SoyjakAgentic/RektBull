@@ -59,12 +59,16 @@ const ago = s => (s < 120 ? `${s}s` : s < 7200 ? `${Math.round(s / 60)} min` : `
 /**
  * The audited sources are what will be compiled: unchanged since the audited
  * commit (git), the same OpenZeppelin release, and the audited compiler
- * settings (the compiler's own build record).
+ * settings (the compiler's own build record). A source listed in the config's
+ * awaitingAudit (changed since the audit, or never covered by it) always
+ * fails, with the reason given there, until a new audit moves auditedCommit
+ * on and the entry is removed.
  */
 export function checkSources(p, artifact) {
   const { results, add } = collector();
   for (const src of p.auditedSources) {
     let detail, ok = false;
+    if (p.awaitingAudit?.[src]) { add(`source ${src}`, false, `awaiting audit: ${p.awaitingAudit[src]} (config)`); continue; }
     try {
       execFileSync('git', ['diff', '--quiet', p.auditedCommit, '--', src], { cwd: ROOT, stdio: 'pipe' });
       ok = true; detail = `unchanged since ${p.auditedCommit} (git)`;

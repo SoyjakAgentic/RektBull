@@ -153,7 +153,9 @@ trader):
     - **Trade Router:** one High finding, with a working proof: trades that
       are exempt from the daily limit (selling back what the router bought)
       also count as bought, so selling and buying back over and over is
-      never limited. To be fixed, with a test, and sent to the auditor.
+      never limited. Fixed (only trades that counted earn the exemption),
+      with a regression test, and listed for the auditor (AUDIT_BRIEF.md
+      section 8).
     - **Yield Router:** a hacked RektBull could withdraw and deposit to
       make a move the rate rule refuses (fixed: deposits only into the best
       venue, and no fee on putting money back within 7 days), or withdraw a
