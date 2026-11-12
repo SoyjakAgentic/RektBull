@@ -2,7 +2,7 @@
 
 *Status: **built and switched off.** The contract
 (`contracts/contracts/RektBullYieldRouter.sol`) and its break-it tests
-(`contracts/test/yieldRouter.test.js`, 16 tests against the real Aave v3,
+(`contracts/test/yieldRouter.test.js`, 18 tests against the real Aave v3,
 Compound v3, Spark sUSDC and MetaMask delegation contracts on a copy of Base
 mainnet) pass. The server side (`src/yield/auto.js`) is tested end to end on
 the same fork (`test/yield.e2e.js`). Not audited, not deployed.
@@ -26,6 +26,9 @@ owner, no admin and no upgrade path, and enforces onchain:
 | It can only call the Yield Router's deposit, move and withdraw | AllowedTargets and AllowedMethods caveats | Can't call a token, a venue or anything else |
 | Positions are opened only for the user; withdrawals pay only the user | The router: every pull is from the caller, every deposit is on the caller's behalf, every withdrawal is to the caller | **Can't withdraw to itself or anyone else** |
 | A move only goes to a venue for the same asset paying at least 1 point more **right now**, read from both venues' contracts | The router (`rateOf`: Aave's liquidity rate, Comet's supply rate, the Sky Savings Rate) | Can't churn money back and forth for fees |
+| A deposit only goes to the best-paying venue for the asset, or one within 1 point of it | The router (`NotBestVenue`) | Can't stand in for a move the rule above refuses, by withdrawing and depositing |
+| Money taken out through the router and put back within 7 days pays no fee | The router (`REDEPOSIT_WINDOW`) | Withdraw + deposit can't earn a fee a move wouldn't |
+| A withdrawal from Aave never leaves a user who borrows there with a health factor under 1.5 | The router (`MIN_HEALTH_FACTOR`, read from Aave after the withdrawal) | Can't push a borrowing user toward liquidation by taking out their collateral |
 | At most one deposit or move per account a day | The router (`MIN_INTERVAL`) | Worst case in fees: 0.1% of the per-move limit a day |
 | Nothing above the user's own per-asset limit, nothing after their expiry | The router (`setLimits`, which only the user can call) | — |
 | The fee is at most 0.1% (a constant), paid only to the fixed fee wallet; withdrawals are free | The router (`MAX_FEE_BPS = 10`, `FEE_WALLET` immutable) | Can't charge more |
@@ -36,6 +39,25 @@ owner, no admin and no upgrade path, and enforces onchain:
 RektBull could deposit idle stablecoins or WETH into one of the listed
 venues, or move between them to a better-paying one, once a day, paying
 0.1% each time. Every listed venue carries its own smart-contract risk.
+
+**Accepted: rates read in the same transaction can be pushed.** The router
+reads each venue's rate at the moment of the call. Someone with a large flash
+loan can briefly change a lending market's rate (by borrowing or supplying a
+lot in the same transaction) so that a venue looks better than it is. A
+hacked RektBull could use that to make moves the rule would otherwise refuse.
+What it still can't do: send money anywhere but the user's own positions,
+take more than 0.1% a day of the per-move limit, or exceed the user's limits.
+So the worst case is the same as above: fees on unneeded moves, once a day,
+within the limits. Reading a time-averaged rate instead would need an oracle
+per venue, which none of them offer; decided 12 November 2026 to accept and
+document this rather than add one.
+
+**Below the bar, noted for the auditor:** the rate rule compares rates before
+the move (a large move lowers the rate it lands in); the exit side of a move
+isn't measured separately (the new position is); a little aToken dust can stay
+behind after a full Aave withdrawal; signing in on one chain counts for the
+others; and `MIN_INTERVAL` is set at deployment (one day in RektBull's
+deployments), with only a one-hour floor onchain.
 
 ## How it runs (when switched on)
 
@@ -52,7 +74,9 @@ venues, or move between them to a better-paying one, once a day, paying
    wallet holds → withdraw all of it to the wallet. Otherwise, when the
    router's interval has passed, the best proposal on that chain (the same
    rules as proposals the user signs), capped at the onchain limit → deposit
-   or move. Each is simulated, its signature logged (`key_signatures`), then
+   or move. A proposal the router would refuse by the venues' own onchain
+   rates (a deposit not into the best venue, a move whose gain shows only in
+   rewards) is skipped; the user can still sign it themselves. Each is simulated, its signature logged (`key_signatures`), then
    sent; the next tick reads the receipt.
 
 ## Before switching it on

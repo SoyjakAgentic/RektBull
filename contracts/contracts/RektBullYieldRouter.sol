@@ -28,6 +28,10 @@ interface IAavePool {
     function getReserveData(address asset) external view returns (ReserveDataLegacy memory);
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
+    function getUserAccountData(address user)
+        external
+        view
+        returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor);
 }
 
 /// @dev Compound v3 Comet, the parts used here.
@@ -64,8 +68,16 @@ interface ISsrOracle {
  *           - a move only goes to a venue for the same asset paying at least
  *             MIN_GAIN_BPS more right now, read from both venues' own
  *             contracts, so a hacked RektBull can't churn money back and forth;
+ *           - a deposit only goes to a venue paying within MIN_GAIN_BPS of the
+ *             best venue for that asset, so withdrawing and depositing can't
+ *             park money somewhere worse;
  *           - the fee is FEE_BPS (at most 0.1%) of what's deposited or moved,
- *             paid only to FEE_WALLET; withdrawals to the caller are free;
+ *             paid only to FEE_WALLET; withdrawals to the caller are free, and
+ *             so is a deposit within REDEPOSIT_WINDOW of a withdrawal through
+ *             this router (so withdrawing and depositing can't churn fees);
+ *           - an Aave withdrawal (or move out of Aave) can't leave an account
+ *             that borrows on Aave below MIN_HEALTH_FACTOR, so a hacked RektBull
+ *             can't push it toward liquidation;
  *           - at most one deposit or move per account per MIN_INTERVAL, and
  *             none above the caller's own per-asset limit or after the
  *             caller's expiry, which only the caller can set;
@@ -87,6 +99,10 @@ contract RektBullYieldRouter is ReentrancyGuard {
     uint16 public constant MAX_FEE_BPS = 10; // 0.1%: the most this router can ever charge
     uint16 public constant MAX_LOSS_BPS = 10; // what a deposit may lose to rounding or a vault's conversion
     uint256 private constant SECONDS_PER_YEAR = 31_536_000;
+    /// @notice A deposit within this long after a withdrawal through this router pays no fee.
+    uint256 public constant REDEPOSIT_WINDOW = 7 days;
+    /// @notice The lowest Aave health factor (1e18 = 1.0) a router-driven Aave exit may leave a borrowing account at.
+    uint256 public constant MIN_HEALTH_FACTOR = 1.5e18;
     uint256 private constant RAY = 1e27;
 
     enum Kind { None, Aave, Comet, SparkL1, SparkL2 }
@@ -111,6 +127,7 @@ contract RektBullYieldRouter is ReentrancyGuard {
     mapping(address => uint64) public validUntil;
     mapping(address => mapping(address => uint256)) public maxPerMove; // account => asset => units
     mapping(address => uint256) public lastMoveAt;
+    mapping(address => uint256) public lastWithdrawAt;
 
     event LimitsSet(address indexed account, address[] assets, uint256[] maxPerMove, uint64 validUntil);
     event Revoked(address indexed account);
@@ -126,6 +143,8 @@ contract RektBullYieldRouter is ReentrancyGuard {
     error TooSoon(uint256 nextAt);
     error NotBetter(uint256 fromRate, uint256 toRate);
     error PositionShort(uint256 got, uint256 expected);
+    error NotBestVenue(uint256 rate, uint256 best);
+    error UnsafeHealthFactor(uint256 healthFactor);
 
     constructor(address feeWallet, uint16 feeBps, uint16 minGainBps, uint32 minInterval, Venue[] memory list) {
         if (feeWallet == address(0) || feeBps > MAX_FEE_BPS || minGainBps == 0 || minInterval < 1 hours || list.length == 0) revert BadConfig();
@@ -190,8 +209,12 @@ contract RektBullYieldRouter is ReentrancyGuard {
         Venue memory v = _venue(id);
         uint256 start = IERC20(v.asset).balanceOf(address(this));
         _checkLimits(account, v.asset, amount);
+        uint256 rate = rateOf(id);
+        uint256 best = _bestRate(v.asset);
+        if (rate + uint256(MIN_GAIN_BPS) * 1e14 < best) revert NotBestVenue(rate, best);
         IERC20(v.asset).safeTransferFrom(account, address(this), amount);
-        uint256 fee = _takeFee(v.asset, amount);
+        // Money taken out through this router and put back soon after pays no fee: no churning for fees.
+        uint256 fee = block.timestamp < lastWithdrawAt[account] + REDEPOSIT_WINDOW ? 0 : _takeFee(v.asset, amount);
         _depositFor(v, id, account, amount - fee);
         emit Deposited(account, id, amount, fee);
         _assertUnchanged(v.asset, start);
@@ -225,6 +248,7 @@ contract RektBullYieldRouter is ReentrancyGuard {
         uint256 start = IERC20(v.asset).balanceOf(address(this));
         amount = _held(id, account, amount);
         _withdrawFrom(v, account, account, amount);
+        lastWithdrawAt[account] = block.timestamp;
         emit Withdrawn(account, id, amount);
         _assertUnchanged(v.asset, start);
     }
@@ -252,6 +276,15 @@ contract RektBullYieldRouter is ReentrancyGuard {
         lastMoveAt[account] = block.timestamp;
     }
 
+    /// @dev The best rate any venue for this asset pays right now.
+    function _bestRate(address asset) internal view returns (uint256 best) {
+        for (uint256 i; i < venues.length; ++i) {
+            if (venues[i].asset != asset) continue;
+            uint256 r = rateOf(i);
+            if (r > best) best = r;
+        }
+    }
+
     function _takeFee(address asset, uint256 amount) internal returns (uint256 fee) {
         fee = amount * FEE_BPS / 10_000;
         if (fee > 0) IERC20(asset).safeTransfer(FEE_WALLET, fee);
@@ -277,6 +310,9 @@ contract RektBullYieldRouter is ReentrancyGuard {
             uint256 held = IERC20(v.position).balanceOf(address(this));
             IERC20(v.position).safeTransferFrom(account, address(this), amount);
             IAavePool(v.target).withdraw(v.asset, IERC20(v.position).balanceOf(address(this)) - held, to);
+            // An account that borrows on Aave against this position must stay well clear of liquidation.
+            (, uint256 debt,,,, uint256 hf) = IAavePool(v.target).getUserAccountData(account);
+            if (debt > 0 && hf < MIN_HEALTH_FACTOR) revert UnsafeHealthFactor(hf);
         } else if (v.kind == Kind.Comet) {
             // Never more than the position: withdrawing more from Comet would borrow for the account.
             uint256 held = IComet(v.target).balanceOf(account);
