@@ -197,6 +197,8 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     let init = ix(PUMP_FUN, vec![AnchorMeta::new(key(&p.exec), true), r(transit()), w(uva), r(system_program::ID), r(p.acct("event_authority")), r(PUMP_FUN)], disc("init_user_volume_accumulator"));
     let exec = p.exec.insecure_clone();
     p.send(&[init], &[&exec]).expect("pump.fun's init_user_volume_accumulator for transit");
+    let uva_account = p.svm.get_account(&a(&uva)).unwrap();
+    println!("pump.fun's volume account for transit: {} bytes, {} lamports of rent (paid by the executor)", uva_account.data.len(), uva_account.lamports);
 
     // 1. A limit buy: 0.1 SOL of wrapped SOL for at least 1 token unit (the price check is the next step).
     let user_wsol = p.wsol_account(key(&user), SOL);

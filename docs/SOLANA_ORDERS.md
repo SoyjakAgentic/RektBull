@@ -164,7 +164,9 @@ current v3 instructions and transit as pump.fun's trader, on 12 November 2026:
 - **pump.fun's volume account.** pump.fun creates a volume-tracking account
   for each trader on their first trade, with rent taken from the trader, which
   here would mean a user's SOL. The trade service creates it once for transit
-  (`init_user_volume_accumulator`, paid by the executor) before the first fill.
+  (`init_user_volume_accumulator`, paid by the executor) before the first fill:
+  a 137-byte account, 1,844,400 lamports (about 0.0018 SOL) of rent-exempt
+  deposit, paid once in all, since every fill trades through the same transit.
 - **pump.fun's extra charge.** pump.fun takes a small fixed amount from the
   trader on top of `spendable_quote_in`: 552,720 lamports in this test, the
   same for an ordinary wallet. The trade service simulates each fill and
