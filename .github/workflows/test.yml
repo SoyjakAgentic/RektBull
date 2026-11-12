@@ -66,6 +66,34 @@ jobs:
       - run: solc-select install 0.8.24 && solc-select use 0.8.24
       - run: node scripts/slither.mjs
 
+  solana:
+    # The Solana order program (solana/): built for Solana, Clippy, its break-it tests and random-sequence
+    # invariant tests on LiteSVM. (The pump.fun check needs copies of mainnet accounts and is run by hand:
+    # docs/SOLANA_ORDERS.md.)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: solana
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            solana/target
+          key: solana-${{ hashFiles('solana/Cargo.lock') }}
+      - run: rustup toolchain install 1.99.0 --profile minimal --component clippy && rustup default 1.99.0
+      - name: Agave (Solana's tools) 4.3.2
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - run: cargo build-sbf --arch v0
+      - run: cargo clippy -p rektbull-orders -p mock-venue --all-targets -- -D warnings
+      - run: cargo test -p rektbull-orders
+
   autonomous-e2e:
     runs-on: ubuntu-latest
     services:

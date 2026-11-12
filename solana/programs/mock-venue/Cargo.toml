@@ -1,0 +1,20 @@
+[package]
+name = "mock-venue"
+version = "0.1.0"
+description = "Test-only stand-in exchange for the RektBull order program's tests. Never deployed."
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "=0.32.3"
+anchor-spl = { version = "=0.32.3", default-features = false, features = ["token", "token_2022"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

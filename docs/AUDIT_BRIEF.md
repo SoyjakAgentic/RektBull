@@ -12,6 +12,7 @@ fixed or explicitly accepted.*
 | `contracts/contracts/RektBullSafeModule.sol` | 46 | 81 |
 | `contracts/contracts/RektBullYieldRouter.sol` (automatic yield rebalancing; [YIELD_ROUTER.md](YIELD_ROUTER.md) states its guarantees, `contracts/test/yieldRouter.test.js` tries to break them on a Base mainnet fork; the pre-audit fixes of 12 November 2026, the best-venue rule for deposits, the fee-free redeposit window and the Aave health-factor floor, and the accepted rate-manipulation risk are in YIELD_ROUTER.md) | — | ~310 |
 | `contracts/contracts/RektBullMemeRouter.sol` (automatic meme trades from orders the user signs; [MEME_ROUTER.md](MEME_ROUTER.md) states its guarantees, `contracts/test/memeRouter.test.js` tries to break them; added after this brief, for the same engagement) | ~190 | 267 |
+| `solana/programs/rektbull-orders/src/lib.rs` (Solana, Anchor 0.32: the Meme Router's twin for pump.fun, PumpSwap and Jupiter; [SOLANA_ORDERS.md](SOLANA_ORDERS.md) states its guarantees; `tests/orders.rs` and `tests/pump_fun.rs` try to break them; a Solana specialist may be a separate engagement) | — | 521 |
 | **Total** | **273 + the Yield and Meme Routers** | |
 
 - **Commit:** `31c9c8c` on `main` of `SoyjakAgentic/RektBull` (or the commit we
@@ -252,6 +253,8 @@ was not covered. Before any deployment, the next engagement should cover:
   rule for deposits, the fee-free redeposit window, the Aave health-factor
   floor), and the accepted rate-manipulation risk in YIELD_ROUTER.md.
 - **Meme Router:** the whole contract, new.
+- **Solana order program:** the whole program, new (SOLANA_ORDERS.md), if
+  the same firm covers Solana.
 - **Below the bar on the Trade Router, for your view:** the fixed window
   allows up to twice the period limit across a window boundary; `setLimits`
   resets what was spent this period (only the user can call it); for a token

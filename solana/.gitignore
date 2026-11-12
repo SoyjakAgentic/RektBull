@@ -1,0 +1,7 @@
+target/
+test-ledger/
+*.so.dump
+fixtures/*.so
+fixtures/
+# Solana keypairs (e.g. target/deploy/*-keypair.json) never belong in the repo
+*keypair*.json
