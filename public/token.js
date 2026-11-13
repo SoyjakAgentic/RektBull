@@ -96,7 +96,11 @@
       const grad = !c.graduates_at ? '' : pad.id === 'virtuals' ? `; it graduates when ${amount(c.graduates_at)} tokens are left in it` : `; it graduates at ${amount(c.graduates_at)} ${c.symbol} raised`;
       out.push(el('p', { class: 'small muted' }, `${amount(c.in_curve)} ${c.symbol} in the curve${grad}. The launchpad charges ${c.buy_tax_pct}% to buy and ${c.sell_tax_pct}% to sell.`));
     }
-    if (pad.agent_token) out.push(el('p', {}, `It now trades as `, el('a', { href: `/token?chain=${chain}&token=${pad.agent_token}` }, el('code', {}, short(pad.agent_token))), '.'));
+    const anti = pad.curve?.anti_sniper;
+    if (anti && (anti.buy_pct || anti.sell_pct)) out.push(el('p', { class: 'risk' }, `Virtuals' anti-sniper tax is running: ${anti.buy_pct}% extra to buy, ${anti.sell_pct}% extra to sell now`, anti.ends_at ? `, falling to 0 by ${new Date(anti.ends_at).toLocaleTimeString()}` : '', '. ', el('span', { class: 'source' }, `(${anti.source})`)));
+    if (pad.project_60_days) out.push(el('p', { class: 'bad' }, 'A "Project 60 days" launch: Virtuals\' operators can withdraw all the money and tokens from its curve, and if they do, holders can\'t sell. ', el('span', { class: 'source' }, '(BondingV5 and FRouterV3, verified source)')));
+    if (pad.legacy) out.push(el('p', { class: 'small muted' }, 'On Virtuals\' old bonding curve, which has had no launches or buys since Virtuals moved to a new contract. RektBull only sells on it, so holders can get out.'));
+    if (pad.agent_token && pad.agent_token !== token) out.push(el('p', {}, `It now trades as `, el('a', { href: `/token?chain=${chain}&token=${pad.agent_token}` }, el('code', {}, short(pad.agent_token))), '.'));
     for (const f of pad.facts || []) out.push(el('p', { class: 'small' }, f));
     out.push(el('p', {}, el('a', { href: pad.link, rel: 'noopener', target: '_blank' }, `Its page on ${pad.name}`), el('span', { class: 'source' }, ` (${pad.source})`)));
     $('tp-pad').replaceChildren(...out);

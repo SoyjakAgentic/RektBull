@@ -129,7 +129,10 @@
   function liveItem(chain, i, kind, first) {
     const fresh = !first && !known.has(`${kind}:${i.token}`);
     known.add(`${kind}:${i.token}`);
-    const signs = ((i.flags && i.flags.flags) || []).filter(x => x.level !== 'ok').slice(0, 2);
+    const signs = [
+      ...(i.project_60_days ? [{ level: 'bad', text: 'Virtuals\' operators can drain this curve ("Project 60 days")', source: 'its Launched event' }] : []),
+      ...((i.flags && i.flags.flags) || []).filter(x => x.level !== 'ok'),
+    ].slice(0, 2);
     const body = [el('div', { class: 'live-top' }, el('span', {}, ...label(i)), el('span', { class: 'small muted' }, i.launchpad_name))];
     if (kind === 'new') {
       body.push(el('div', { class: 'small muted' }, `Launched ${ago(i.at)}`, i.creator ? ' by ' : '', i.creator ? el('code', {}, `${i.creator.slice(0, 6)}…${i.creator.slice(-4)}`) : ''));

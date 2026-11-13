@@ -38,7 +38,7 @@ verified source on Sourcify and its code onchain on 11 November 2026:
 |---|---|---|---|
 | Clanker (v4) | factory `0xE85A59c628F7d27878ACeB4bf3b35733630083a9` (`src/Clanker.sol:Clanker`) | `deploymentInfoForToken(token)` names its hook and LP locker | Uniswap v4 from launch, through 0x |
 | Zora coins | `0x777777751622c0d3258f214F9DF38E35BF45baF3` (ZoraFactory, a proxy to ZoraFactoryImpl) | `getVersionForDeployedCoin(coin)` | Uniswap v4 from launch, through 0x |
-| Virtuals | Bonding `0xF66DeA7b3e897cD44A5a231c61B6B4423d613259` and FRouter `0x8292B43aB73EfAC11FAF357419C38ACF448202C5` (proxies to Bonding and FRouter); priced in VIRTUAL `0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b` | `Bonding.tokenInfo(token)` | its bonding curve until it graduates to Uniswap (as a new agent token) |
+| Virtuals | BondingV5 `0x1A540088125d00dD3990f9dA45CA0859af4d3B01` and FRouterV3 `0x02FE8eC3d9BBf7318eb54590bcC39198a8b47deD` (proxies, verified on Sourcify; the addresses on Virtuals' contract-addresses page); priced in VIRTUAL `0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b`. The old Bonding `0xF66DeA7b3e897cD44A5a231c61B6B4423d613259` and FRouter `0x8292B43aB73EfAC11FAF357419C38ACF448202C5`: sold on only (see below) | `BondingV5.tokenInfo(token)`, then the old `Bonding.tokenInfo(token)` | its bonding curve until it graduates to Uniswap |
 
 - **The feed** names each Base token's launchpad, and a new section lists
   the newest tokens still on Virtuals' curve, with how far each is to
@@ -62,6 +62,36 @@ verified source on Sourcify and its code onchain on 11 November 2026:
   buy got exactly the quoted amount, a minimum the curve can't meet was
   refused by Virtuals' contract, and selling it all back returned 49.005
   VIRTUAL (the two 1% taxes).
+
+### Virtuals' new launchpad, BondingV5 (13 November 2026)
+
+Virtuals moved launches to BondingV5 with FRouterV3 (their "launchpadv2"). The
+old Bonding had no launches and no buys in the 30 days read; BondingV5's last
+launch was 54 hours earlier. RektBull reads BondingV5 first:
+
+- **Same calls:** `buy` and `sell` keep their signatures, with an approval to
+  FRouterV3. Each token graduates at its own `tokenGradThreshold`, and not while
+  its anti-sniper tax runs; a graduated token can be its own agent token, which
+  then trades through 0x like any token.
+- **Anti-sniper tax:** up to 99% (the factory's start value), falling in a
+  straight line to 0 over 60 seconds, 10 or 98 minutes after launch, on buys,
+  sells or both by the token's type (`BondingConfig`). RektBull works it out as
+  FRouterV3 does (`_calculateAntiSniperTaxForSide`), by the chain's clock, and
+  adds it to the taxes: a buy over the user's tax limit is refused saying when it
+  ends; a sale goes ahead, saying what it pays. Re-read every 10 seconds while it runs.
+- **"Project 60 days" launches:** `FRouterV3.drainPrivatePool` lets Virtuals'
+  operators (BE_OPS role) take all the money and tokens from such a curve. A buy
+  needs the user to confirm they've read that; the token page and the live
+  feed's card say it too.
+- **A token not open yet** (made with `preLaunch`, `launchExecuted` false) is
+  refused: Virtuals' contract refuses its buys and sells until it launches.
+- **The old curve** is only sold on: a buy there is refused, saying why, and
+  `calls.js` won't build one; a holder's sale goes through the old pair.
+- Verified on a copy of Base (`contracts/scripts/curveCheck.js`, 13 November
+  2026): on BondingV5, a 50 VIRTUAL buy got exactly its quote, a minimum the
+  curve can't meet was refused, and selling it all back returned 49.005 VIRTUAL;
+  on the old Bonding, RektBull refused to build a buy, and a holder's sale built
+  by RektBull returned 19.602 VIRTUAL for 20 put in.
 
 ## Phase 3: built (BNB Chain and four.meme)
 
@@ -133,8 +163,8 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
 
 | Column | Base | BNB Chain |
 |---|---|---|
-| New (the last hour) | Clanker `TokenCreated`; Zora `CoinCreatedV4`, `CreatorCoinCreated`, `CoinCreated`; Virtuals `Launched` | four.meme `TokenCreate` |
-| Nearest to graduating | Virtuals' curves (the newest on its Bonding contract) | Curves bought in the last hour (four.meme `TokenPurchase`), the ones that raised most, each confirmed with its helper (`getTokenInfo`) |
+| New (the last hour) | Clanker `TokenCreated`; Zora `CoinCreatedV4`, `CreatorCoinCreated`, `CoinCreated`; Virtuals BondingV5 `Launched` | four.meme `TokenCreate` |
+| Nearest to graduating | Virtuals' curves (the newest on BondingV5) | Curves bought in the last hour (four.meme `TokenPurchase`), the ones that raised most, each confirmed with its helper (`getTokenInfo`) |
 | Just graduated (24 hours) | Virtuals `Graduated` (bought as its new agent token) | four.meme `LiquidityAdded` |
 
 - **Event layouts:** Clanker's, Zora's and Virtuals' from their verified source
@@ -157,9 +187,9 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
   (Base's: "request limit reached"; BNB Chain's: "limit exceeded").
 - **Seen on 13 November 2026:** about 80 four.meme launches an hour and about
   3 graduations a day; on Base, a few Clanker and Zora launches an hour, and
-  no `Launched` or `Graduated` from Virtuals' Bonding contract in the 33 hours
-  read. Virtuals may launch from a newer contract now: worth checking before
-  relying on Virtuals in this feed or on the Trade desk's curve.
+  few Virtuals launches (BondingV5's last was 54 hours earlier). The feed reads
+  BondingV5's events: its `Launched` has a new layout (it carries the launch's
+  settings, so a "Project 60 days" card says so).
 
 ## Phases to come
 

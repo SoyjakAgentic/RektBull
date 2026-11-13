@@ -133,7 +133,11 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
     return fourMemeCurve({ chainName, chain, wallet, side, token, base, baseKey, price, settings, checks, amountUsd, sellFraction, acknowledgeRisks, pad });
   }
   if (pad.launchpad === 'fourmeme') checks.push({ check: 'launchpad', ok: true, detail: 'A four.meme token that graduated from its bonding curve: it trades on PancakeSwap, through 0x', source: pad.source });
-  if (pad.launchpad === 'virtuals') {
+  // On Virtuals' current curve a graduated token can be its own agent token ("single token model"): it then trades through 0x like any token.
+  if (pad.launchpad === 'virtuals' && pad.state === 'graduated' && pad.agent_token === token) {
+    checks.push({ check: 'launchpad', ok: true, detail: 'A Virtuals token that graduated from its bonding curve: it trades on Uniswap now, through 0x', source: pad.source });
+  } else if (pad.launchpad === 'virtuals') {
+    if (pad.state === 'prelaunch') throw new TradeBlocked('This Virtuals token hasn\'t opened for trading yet: Virtuals\' contract refuses buys and sells until it launches.');
     if (pad.state !== 'curve') {
       throw new TradeBlocked(pad.state === 'graduated' && pad.agent_token
         ? `This Virtuals token has graduated from its bonding curve: it now trades as ${pad.agent_token} on Uniswap, and Virtuals swaps holders of the curve token for it. Trade ${pad.agent_token} instead.`
@@ -221,17 +225,40 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
  * a buy swaps the base asset into VIRTUAL through 0x (1% fee), then buys on the curve; a sell sells
  * on the curve for VIRTUAL, then swaps that into the base asset through 0x (1% fee). The wallet signs
  * every step; nothing is held anywhere in between.
+ *
+ * On Virtuals' current curve (BondingV5), the taxes include any anti-sniper tax still running (up to
+ * 99%, falling to 0 over 60 seconds to 98 minutes after launch): it counts towards the tax limit like
+ * any tax, and the refusal says when it ends. A "Project 60 days" token's curve can be drained by
+ * Virtuals' operators, so a buy needs the user to confirm they've read that. Virtuals' old curve is
+ * only sold on: launches and buys moved to BondingV5.
  */
 async function virtualsCurve({ chainName, chain, wallet, side, token, base, baseKey, price, fee, settings, checks, amountUsd, sellFraction, acknowledgeRisks, pad }) {
   const lp = require('../services/launchpads');
   const { buy_tax_pct: buyTax, sell_tax_pct: sellTax, progress_pct: progress } = pad.curve;
+  const anti = pad.curve.anti_sniper || null;
   const slip = BigInt(settings.slippage_bps);
-  checks.push({ check: 'launchpad', ok: true, detail: `A Virtuals token on its bonding curve (${progress}% of the way to graduating to Uniswap), traded on Virtuals' own contract with its ${buyTax}% buy and ${sellTax}% sell tax`, source: pad.source });
-  const route = { kind: 'virtuals_curve', bonding: lp.ADDR.bonding, frouter: lp.ADDR.frouter, virtual: lp.VIRTUAL, deadline: Math.floor(Date.now() / 1000) + 20 * 60 };
+  const minutesLeft = iso => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 60000));
+  const antiNote = anti && (anti.buy_pct || anti.sell_pct)
+    ? ` (including Virtuals' anti-sniper tax of ${anti.buy_pct}% to buy and ${anti.sell_pct}% to sell${anti.starts_at ? ', at its highest until trading opens' : anti.ends_at ? `, falling to 0 in about ${minutesLeft(anti.ends_at)} minute${minutesLeft(anti.ends_at) === 1 ? '' : 's'}` : ''})` : '';
+  checks.push({ check: 'launchpad', ok: true, detail: `A Virtuals token on its ${pad.legacy ? 'old ' : ''}bonding curve (${progress}% of the way to graduating to Uniswap), traded on Virtuals' own contract with its ${buyTax}% buy and ${sellTax}% sell tax${antiNote}`, source: pad.source });
+  // The token's own contract and router (BondingV5 or the old pair); calls.js accepts only these pairs.
+  const route = { kind: 'virtuals_curve', bonding: pad.bonding || lp.ADDR.bondingV5, frouter: pad.frouter || lp.ADDR.frouterV3, virtual: lp.VIRTUAL, deadline: Math.floor(Date.now() / 1000) + 20 * 60 };
 
   if (side === 'buy') {
+    if (pad.legacy) throw new TradeBlocked('This token is on Virtuals\' old bonding curve, which has had no launches or buys since Virtuals moved to a new contract: RektBull only sells on it, so holders can get out. Not buying.');
     // The tax limit is a buy check: a sale is how you get out.
-    if ((buyTax + sellTax) * 100 > settings.max_tax_bps) throw new TradeBlocked(`The launchpad's taxes (${buyTax}% to buy, ${sellTax}% to sell) are above your ${settings.max_tax_bps / 100}% limit.`);
+    if ((buyTax + sellTax) * 100 > settings.max_tax_bps) {
+      throw new TradeBlocked(anti && anti.buy_pct + anti.sell_pct > 0
+        ? `Virtuals' anti-sniper tax is running on this new token: ${buyTax}% to buy and ${sellTax}% to sell now${anti.starts_at ? ', at its highest until trading opens' : anti.ends_at ? `, falling to 0 in about ${minutesLeft(anti.ends_at)} minute${minutesLeft(anti.ends_at) === 1 ? '' : 's'}` : ''}. That's above your ${settings.max_tax_bps / 100}% limit: wait, or raise the limit in your trading settings.`
+        : `The launchpad's taxes (${buyTax}% to buy, ${sellTax}% to sell) are above your ${settings.max_tax_bps / 100}% limit.`);
+    }
+    if (pad.project_60_days && !acknowledgeRisks) {
+      const err = new TradeBlocked('This is a "Project 60 days" Virtuals launch: Virtuals\' operators can withdraw all the money and tokens from its curve (FRouterV3.drainPrivatePool), and if they do you can\'t sell. Read it, then confirm to go ahead.');
+      err.needsAcknowledgement = true;
+      err.risks = [{ id: 'virtuals_project_60_days', severity: 'high', title: 'Virtuals\' operators can drain this curve ("Project 60 days")', evidence: 'BondingV5.tokenLaunchParams: isProject60days = true; FRouterV3.drainPrivatePool lets the BE_OPS role take its money and tokens', source: 'Virtuals\' BondingV5 and FRouterV3 contracts (verified source)' }];
+      throw err;
+    }
+    if (pad.project_60_days) checks.push({ check: 'drain_risk', ok: true, detail: 'A "Project 60 days" launch: Virtuals\' operators can drain its curve. You confirmed you\'ve read this.', source: 'Virtuals\' BondingV5 contract' });
     const usd = Number(amountUsd);
     if (!(usd > 0)) throw new TradeBlocked('amount_usd must be a positive number for a buy.');
     if (usd > settings.max_trade_usd) throw new TradeBlocked(`$${usd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
@@ -240,9 +267,9 @@ async function virtualsCurve({ chainName, chain, wallet, side, token, base, base
     const sellAmount = base.usd ? ethers.parseUnits(usd.toFixed(base.decimals), base.decimals) : usdToUnits(usd, price, base.decimals);
     const q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: lp.VIRTUAL, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee });
     const virtualIn = q.minBuyAmount; // the least the 0x swap delivers; any more stays in the wallet
-    const out = await lp.curveBuyQuote(token, virtualIn, buyTax);
+    const out = await lp.curveBuyQuote(token, virtualIn, pad);
     if (out === 0n) throw new TradeBlocked('The curve gives nothing for this amount.');
-    const back = await lp.curveSellQuote(token, out, sellTax);
+    const back = await lp.curveSellQuote(token, out, pad);
     const lossPct = Number((virtualIn - back) * 10000n / virtualIn) / 100;
     if (lossPct > settings.max_round_trip_loss_pct) throw new TradeBlocked(`Selling straight back on the curve would lose ${lossPct.toFixed(1)}%, above your ${settings.max_round_trip_loss_pct}% limit.`);
     checks.push({ check: 'sell_back', ok: true, detail: `selling straight back on the curve loses ${lossPct.toFixed(1)}% (the launchpad's taxes included; limit ${settings.max_round_trip_loss_pct}%)` });
@@ -260,7 +287,7 @@ async function virtualsCurve({ chainName, chain, wallet, side, token, base, base
   if (balance === 0n) throw new TradeBlocked('Your wallet holds none of this token.');
   const amount = balance * BigInt(Math.round(fraction * 10000)) / 10000n;
   if (amount === 0n) throw new TradeBlocked('That fraction of your holding rounds to nothing.');
-  const virtualOut = await lp.curveSellQuote(token, amount, sellTax);
+  const virtualOut = await lp.curveSellQuote(token, amount, pad);
   const minVirtual = virtualOut * (10000n - slip) / 10000n;
   if (minVirtual === 0n) throw new TradeBlocked('The curve gives nothing for this amount.');
   // The 0x leg sells VIRTUAL the curve sale delivers in the same batch, so the wallet doesn't hold it yet.

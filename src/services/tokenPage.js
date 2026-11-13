@@ -120,8 +120,10 @@ async function page(input) {
     holders, creator,
     launchpad: pad.launchpad ? {
       id: pad.launchpad, name: pad.name, state: pad.state, link: pad.link, source: pad.source,
-      curve: pad.curve ? { progress_pct: pad.curve.progress_pct, in_curve: pad.curve.in_curve, graduates_at: pad.curve.graduates_at ?? null, symbol: pad.curve.in_curve_symbol, buy_tax_pct: pad.curve.buy_tax_pct, sell_tax_pct: pad.curve.sell_tax_pct } : null,
+      curve: pad.curve ? { progress_pct: pad.curve.progress_pct, in_curve: pad.curve.in_curve, graduates_at: pad.curve.graduates_at ?? null, symbol: pad.curve.in_curve_symbol, buy_tax_pct: pad.curve.buy_tax_pct, sell_tax_pct: pad.curve.sell_tax_pct, anti_sniper: pad.curve.anti_sniper || null } : null,
       agent_token: pad.agent_token || null, facts: pad.facts || [],
+      // Virtuals: an operator-drainable curve, and the old curve RektBull only sells on.
+      ...(pad.project_60_days ? { project_60_days: true } : {}), ...(pad.legacy ? { legacy: true } : {}),
     } : pad.not_checked ? { not_checked: pad.not_checked } : null,
     flags,
     note: 'Information with its sources, not financial advice. Most new tokens go to zero. A buy runs RektBull\'s full token check (and, for a token under a week old, the bundle check) before your wallet is asked to sign.',
