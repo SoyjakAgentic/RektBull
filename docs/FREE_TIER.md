@@ -16,6 +16,7 @@ Free plans change (Etherscan changed which chains its free plan covers in
 | Your RPC (e.g. Alchemy free plan) via `RPC_URLS_<CHAIN>` | Contract reads, deposit watching, current approvals (batched through Multicall3) | Yes | Next listed endpoint, then the public RPC |
 | Public RPCs (publicnode, mainnet.base.org, ...) | Same, last resort | No | — |
 | publicnode's keyless RPCs, for event logs (`eth_getLogs`) | The live launch feed: the launchpads' events on Base and BNB Chain, once every 10 seconds per chain while anyone watches, only the blocks since the last read (your `RPC_URLS_<CHAIN>` first) | No | The last good list stays up, saying why it couldn't be updated; with none yet, the card says so |
+| dRPC's, 1RPC's and a few other keyless RPCs, for logs filtered only by topics | The Wallet Tracker: two `eth_getLogs` per chain every 5 seconds while anyone follows a wallet, only the blocks since the last read (your `RPC_URLS_<CHAIN>` first; publicnode refuses these) | No | The chain keeps its place and the next read picks up what was missed; set your own `RPC_URLS_BSC` for production (docs/WALLET_TRACKER.md) |
 | Etherscan API V2 | Verified source, ABI, role logs, approval logs | Free key | Blockscout |
 | Blockscout PRO API | Same, for chains Etherscan's free plan won't serve | Free key | The chain's public Blockscout |
 | Public Blockscout explorers (eth., base., arbitrum., optimism., polygon.blockscout.com) | Same, last resort; rate-limited | No | — (check marked "not checked") |

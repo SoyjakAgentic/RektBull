@@ -601,6 +601,18 @@ router.get('/v1/my-agents/catalog', (_req, res) => res.json({ agents: myAgents.c
 router.get('/v1/my-agents', requireAuth, agentCall(req => myAgents.list(req.account.id)));
 router.patch('/v1/my-agents/:id', requireAuth, agentCall(req => myAgents.update(req.account.id, req.params.id, req.body || {})));
 
+// ── The wallet tracker: wallets an account follows, and their trades (alerts come from the worker) ──
+const walletTracker = require('../services/walletTracker');
+const trackerCall = fn => async (req, res) => {
+  try { res.json(await fn(req)); } catch (err) {
+    if (err instanceof walletTracker.TrackerRefused) return res.status(err.status).json({ error: 'refused', message: err.message, ...(err.offer ? { offer: err.offer } : {}) });
+    res.status(500).json({ error: 'internal', message: 'Something went wrong; try again.' });
+  }
+};
+router.get('/v1/wallet-tracker', requireAuth, trackerCall(req => walletTracker.list(req.account.id)));
+router.post('/v1/wallet-tracker/wallets', requireAuth, trackerCall(req => walletTracker.follow(req.account.id, req.body || {})));
+router.delete('/v1/wallet-tracker/wallets/:id', requireAuth, trackerCall(req => walletTracker.unfollow(req.account.id, req.params.id)));
+
 // ── Where alerts go: Telegram, email, browser push ──
 const alertChannels = require('../alerts/channels');
 const alertDispatch = require('../alerts/dispatch');

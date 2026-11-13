@@ -53,8 +53,10 @@ async function main() {
     job('agents', 5 * 60 * 1000, () => require('./services/myAgents').tick());
     // Channel Poster: new drafts for project channels, sent to their admins to approve, every 30 minutes.
     job('channel_poster', 30 * 60 * 1000, () => require('./services/channelPoster').tick());
-    // Alerts out to Telegram, email and browser push, every 20 seconds.
-    job('alerts', 20 * 1000, () => require('./alerts/dispatch').tick());
+    // The wallet tracker: followed wallets' trades, read from each chain every 5 seconds.
+    job('wallet_tracker', 5 * 1000, () => require('./services/walletTracker').tick());
+    // Alerts out to Telegram, email and browser push, every 5 seconds (a followed wallet's trade is only a signal while it's fresh).
+    job('alerts', 5 * 1000, () => require('./alerts/dispatch').tick());
     logger.info('worker started: deposit watcher and risk monitor', { chains: env.paymentChains });
   }
   if ((role === 'trade' || role === 'all') && env.databaseUrl) {

@@ -26,6 +26,7 @@ const AGENT_LINKS = {
   trade_exit: { action: 'See the trade', path: () => '/trade' },
   agent_paused: { action: 'See your agents', path: () => '/agents#yours' },
   meme_watch: { action: 'Review the sell', path: a => a.detail?.sell || '/trade' },
+  wallet_trade: { action: a => (a.detail?.side === 'buy' ? 'Review the buy' : 'See the token'), path: a => a.detail?.link || '/launches#follow-card' },
 };
 
 /** { subject, text, url } for an alert. */
@@ -36,16 +37,18 @@ function message(alert) {
   if (alert.kind === 'digest_draft') {
     return { subject: `RektBull: ${alert.title}`.slice(0, 150), text: [alert.title, ...(alert.detail?.reasons || []).map(r => r.text)].join('\n'), url: `${env.publicUrl}/research#review`, action: 'Review and publish' };
   }
+  // A followed wallet's trade is a signal, not a risk: its severity is only named when the token check found a critical risk.
+  const plain = alert.kind === 'wallet_trade' && alert.severity === 'medium';
   const lines = [
-    `${SEVERITY[alert.severity] || alert.severity}: ${alert.title}`,
+    plain ? alert.title : `${SEVERITY[alert.severity] || alert.severity}: ${alert.title}`,
     `Wallet ${short(alert.wallet)}`,
     ...reasons(alert),
   ];
   const agent = AGENT_LINKS[alert.kind];
   if (agent) {
     return {
-      subject: `RektBull ${alert.severity === 'info' || alert.severity === 'low' ? '' : `${SEVERITY[alert.severity]} `}alert: ${alert.title}`.slice(0, 150),
-      text: lines.join('\n'), url: `${env.publicUrl}${agent.path(alert)}`, action: agent.action,
+      subject: (plain ? `RektBull: ${alert.title}` : `RektBull ${alert.severity === 'info' || alert.severity === 'low' ? '' : `${SEVERITY[alert.severity]} `}alert: ${alert.title}`).slice(0, 150),
+      text: lines.join('\n'), url: `${env.publicUrl}${agent.path(alert)}`, action: typeof agent.action === 'function' ? agent.action(alert) : agent.action,
     };
   }
   const yieldRisk = alert.kind === 'yield_risk';

@@ -21,7 +21,8 @@ const JOBS = {
   monitor: { every_ms: 5 * 60 * 1000, role: 'worker', what: 'Re-checks watched wallets (Wallet Guardian)' },
   agents: { every_ms: 5 * 60 * 1000, role: 'worker', what: 'Scheduled AI agents' },
   channel_poster: { every_ms: 30 * 60 * 1000, role: 'worker', what: 'Channel Poster drafts' },
-  alerts: { every_ms: 20 * 1000, role: 'worker', what: 'Sends alerts (Telegram, email, push)' },
+  wallet_tracker: { every_ms: 5 * 1000, role: 'worker', what: 'Reads followed wallets\' trades (Wallet Tracker)' },
+  alerts: { every_ms: 5 * 1000, role: 'worker', what: 'Sends alerts (Telegram, email, push)' },
   trade: { every_ms: null, role: 'trade', what: 'Trades, exits and automatic yield moves' },
 };
 

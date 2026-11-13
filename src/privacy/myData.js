@@ -30,6 +30,7 @@ const TABLES = {
   trade_permissions: 'SELECT id, wallet, chain_id, wallet_type, router, delegate, expires_at, status, created_at, revoked_at FROM trade_permissions WHERE account_id = $1',
   trade_intents: 'SELECT * FROM trade_intents WHERE account_id = $1 ORDER BY created_at',
   monitored_wallets: 'SELECT wallet, label, created_at, last_checked_at FROM monitored_wallets WHERE account_id = $1',
+  followed_wallets: 'SELECT address, family, label, created_at FROM followed_wallets WHERE account_id = $1 ORDER BY created_at',
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
   contract_audits: 'SELECT run_id, chain, address, created_at FROM audit_reports WHERE account_id = $1 ORDER BY created_at',
@@ -70,6 +71,7 @@ async function deleteMine(account, { confirm } = {}) {
     await run('alert_link_codes', 'DELETE FROM alert_link_codes WHERE account_id = $1');
     await run('monitor_alerts', 'DELETE FROM monitor_alerts WHERE account_id = $1');
     await run('monitored_wallets', 'DELETE FROM monitored_wallets WHERE account_id = $1');
+    await run('followed_wallets', 'DELETE FROM followed_wallets WHERE account_id = $1');
     await run('ai_agents', 'DELETE FROM agent_settings WHERE account_id = $1');
     const { rows: links } = await c.query('DELETE FROM extension_tokens WHERE account_id = $1 RETURNING jti', [account.id]);
     removed.extension_links = links.length;
