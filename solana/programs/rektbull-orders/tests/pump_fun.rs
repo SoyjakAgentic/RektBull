@@ -117,7 +117,11 @@ impl Pump {
     }
     fn send(&mut self, ixs: &[Instruction], signers: &[&Keypair]) -> Result<(), String> {
         let payer = signers[0].pubkey();
-        let tx = Transaction::new(signers, Message::new(ixs, Some(&payer)), self.svm.latest_blockhash());
+        let message = Message::new(ixs, Some(&payer));
+        let size = 1 + 64 * signers.len() + message.serialize().len();
+        assert!(size <= 1232, "the transaction is {size} bytes, over Solana's 1,232");
+        if ixs.iter().any(|i| i.program_id == a(&rektbull_orders::ID)) { println!("transaction: {size} bytes"); }
+        let tx = Transaction::new(signers, message, self.svm.latest_blockhash());
         let res = self.svm.send_transaction(tx);
         self.svm.expire_blockhash();
         res.map(|_| ()).map_err(|e| format!("{:?} :: {}", e.err, e.meta.logs.join(" | ")))

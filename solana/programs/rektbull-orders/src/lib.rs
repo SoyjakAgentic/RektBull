@@ -114,7 +114,9 @@ pub mod rektbull_orders {
     /// The executor fills `amount_in` of the order through an allowed venue. `venue_data` is the venue's
     /// own instruction; its accounts are the remaining accounts, with `transit` as the trader.
     /// `unwrap_in`: the input is wrapped SOL, sent to the venue as native SOL (pump.fun's curve is bought
-    /// with SOL); unused SOL goes back to the owner as native SOL.
+    /// with SOL); unused SOL goes back to the owner as native SOL. For an order paying out native SOL through an
+    /// exchange that pays wrapped SOL (PumpSwap, Jupiter), `transit_out` is transit's wrapped-SOL account: it is
+    /// unwrapped after the exchange call.
     pub fn fill<'info>(
         ctx: Context<'_, '_, 'info, 'info, Fill<'info>>,
         amount_in: u64,
@@ -149,7 +151,14 @@ pub mod rektbull_orders {
         };
         // Output accounts must match the order.
         if output_native {
-            require!(a.owner_out.is_none() && a.transit_out.is_none(), OrderError::BadFill);
+            // Native SOL out. An exchange that pays wrapped SOL (PumpSwap, Jupiter) pays it into transit's
+            // wrapped-SOL account, passed as transit_out; it is unwrapped after the exchange call.
+            require!(a.owner_out.is_none(), OrderError::BadFill);
+            if let Some(transit_out) = &a.transit_out {
+                require_keys_eq!(transit_out.mint, WSOL_MINT, OrderError::BadFill);
+                require_keys_eq!(transit_out.owner, a.transit.key(), OrderError::BadFill);
+                require!(a.output_token_program.is_some(), OrderError::BadFill);
+            }
         } else {
             let (Some(owner_out), Some(transit_out), Some(mint)) = (&a.owner_out, &a.transit_out, &a.output_mint) else {
                 return err!(OrderError::BadFill);
@@ -244,6 +253,25 @@ pub mod rektbull_orders {
 
         // 4. The output to the owner (less the fee on the output side), and unused input back.
         if output_native {
+            if let Some(transit_out) = &a.transit_out {
+                // Unwrap: close transit's wrapped-SOL account into transit. Its rent goes back to the executor
+                // who opened it; the wrapped SOL it held is this fill's proceeds.
+                let mut t = transit_out.clone();
+                t.reload()?;
+                let before = a.transit.lamports();
+                token_interface::close_account(CpiContext::new_with_signer(
+                    a.output_token_program.as_ref().ok_or(OrderError::BadFill)?.to_account_info(),
+                    CloseAccount {
+                        account: transit_out.to_account_info(),
+                        destination: a.transit.to_account_info(),
+                        authority: a.transit.to_account_info(),
+                    },
+                    &[transit_seeds],
+                ))?;
+                let got = a.transit.lamports().checked_sub(before).ok_or(OrderError::Math)?;
+                let rent = got.checked_sub(t.amount).ok_or(OrderError::Math)?;
+                send_lamports(&a.transit, &a.executor.to_account_info(), &a.system_program, rent, transit_seeds)?;
+            }
             // Everything transit now holds is this fill's proceeds.
             let out = a.transit.lamports();
             if fee_on_output {
