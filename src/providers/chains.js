@@ -23,10 +23,21 @@ const ALL = [...Object.keys(EVM), 'solana'];
 // Chains read only for trading permissions (not token checks): testnets.
 const EXTRA_RPC = { 'base-sepolia': 'https://sepolia.base.org' };
 
+// Event logs (eth_getLogs): the public endpoints above refuse them (Base's answers "request limit
+// reached", BNB Chain's "limit exceeded"); publicnode's keyless ones answer small ranges (checked
+// 13 November 2026). Your own RPC_URLS_<CHAIN> are asked first, as for every call.
+const LOGS_RPC = { base: 'https://base-rpc.publicnode.com', bsc: 'https://bsc-rpc.publicnode.com', ethereum: 'https://ethereum-rpc.publicnode.com', arbitrum: 'https://arbitrum-one-rpc.publicnode.com' };
+
 function rpcUrls(chain) {
   const own = String(process.env[`RPC_URLS_${chain.toUpperCase().replace(/-/g, '_')}`] || '').split(',').map(s => s.trim()).filter(Boolean);
   const pub = chain === 'solana' ? SOLANA.publicRpc : EVM[chain]?.publicRpc || EXTRA_RPC[chain];
   return [...own, ...(pub ? [pub] : [])];
 }
 
-module.exports = { EVM, SOLANA, ALL, rpcUrls };
+/** Where to ask for event logs: your own endpoints, then a keyless one that answers them. */
+function logsRpcUrls(chain) {
+  const own = String(process.env[`RPC_URLS_${chain.toUpperCase().replace(/-/g, '_')}`] || '').split(',').map(s => s.trim()).filter(Boolean);
+  return [...new Set([...own, ...(LOGS_RPC[chain] ? [LOGS_RPC[chain]] : rpcUrls(chain).slice(own.length))])];
+}
+
+module.exports = { EVM, SOLANA, ALL, rpcUrls, logsRpcUrls, LOGS_RPC };

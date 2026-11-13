@@ -348,6 +348,16 @@ router.get('/v1/launches', launchCall(req => {
   if (input.error) throw new launches.LaunchesRefused(input.error);
   return launches.feed(input);
 }));
+// The live feed: new, nearest to graduating, just graduated, from the launchpads' own events (re-read every 10 seconds).
+router.get('/v1/launches/live', async (req, res) => {
+  try {
+    res.set('cache-control', 'public, max-age=5'); // the page asks again every 10 seconds
+    res.json(await require('../services/liveLaunches').live({ chain: String(req.query.chain || 'base') }));
+  } catch (err) {
+    if (err instanceof launches.LaunchesRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+});
 router.get('/v1/launches/curves', launchCall(req => launches.curves({ chain: String(req.query.chain || 'base').toLowerCase() })));
 router.get('/v1/launches/:chain/:token', launchCall(req => launches.card({ chain: String(req.params.chain).toLowerCase(), token: req.params.token })));
 
