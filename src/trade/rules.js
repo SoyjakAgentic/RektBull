@@ -38,9 +38,12 @@ const DEFAULT_SETTINGS = {
   max_trade_usd: 500, max_tax_bps: 1000, max_round_trip_loss_pct: 30, slippage_bps: 100, stop_loss_pct: 20, take_profit_pct: 50, auto_exit: true,
   // The one-click buttons: dollar amounts to buy, shares of the holding to sell.
   buy_presets_usd: [25, 50, 100], sell_presets_pct: [25, 50, 100],
+  // How fast to get into a block: 'standard' leaves the fee to the wallet (trade/fees.js).
+  send_speed: 'standard',
 };
 const PRESETS = 4; // the most buttons of each kind
 const ARRAYS = ['buy_presets_usd', 'sell_presets_pct'];
+const NOT_NUMBERS = [...ARRAYS, 'auto_exit', 'send_speed'];
 
 /** A list of preset buttons, sorted and without repeats, or an error naming what's wrong. */
 function presets(name, list, max) {
@@ -59,12 +62,17 @@ async function settingsFor(accountId) {
     stop_loss_pct: Number(r.stop_loss_pct ?? 20), take_profit_pct: Number(r.take_profit_pct ?? 50), auto_exit: r.auto_exit ?? true,
     buy_presets_usd: (r.buy_presets_usd || DEFAULT_SETTINGS.buy_presets_usd).map(Number),
     sell_presets_pct: (r.sell_presets_pct || DEFAULT_SETTINGS.sell_presets_pct).map(Number),
+    send_speed: r.send_speed || DEFAULT_SETTINGS.send_speed,
   };
 }
 
 async function saveSettings(accountId, s) {
   const cur = await settingsFor(accountId);
-  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS).filter(k => k !== 'auto_exit' && !ARRAYS.includes(k))), ...(s?.auto_exit !== undefined ? { auto_exit: !!s.auto_exit } : {}) };
+  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS).filter(k => !NOT_NUMBERS.includes(k))), ...(s?.auto_exit !== undefined ? { auto_exit: !!s.auto_exit } : {}) };
+  if (s?.send_speed !== undefined) {
+    if (!(s.send_speed in require('./fees').SPEEDS)) throw Object.assign(new Error('send_speed must be standard, fast or fastest'), { status: 400 });
+    next.send_speed = s.send_speed;
+  }
   if (s?.buy_presets_usd !== undefined) next.buy_presets_usd = presets('buy_presets_usd', s.buy_presets_usd, 1000000);
   if (s?.sell_presets_pct !== undefined) next.sell_presets_pct = presets('sell_presets_pct', s.sell_presets_pct, 100);
   if (!(next.stop_loss_pct >= 1 && next.stop_loss_pct <= 95)) throw Object.assign(new Error('stop_loss_pct must be 1 to 95'), { status: 400 });
@@ -74,11 +82,11 @@ async function saveSettings(accountId, s) {
   if (!(next.max_round_trip_loss_pct > 0 && next.max_round_trip_loss_pct <= 100)) throw Object.assign(new Error('max_round_trip_loss_pct must be above 0 and at most 100'), { status: 400 });
   if (!(next.slippage_bps >= 10 && next.slippage_bps <= 1000)) throw Object.assign(new Error('slippage_bps must be 10 to 1000'), { status: 400 });
   await db.query(
-    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps, stop_loss_pct, take_profit_pct, auto_exit, buy_presets_usd, sell_presets_pct)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps, stop_loss_pct, take_profit_pct, auto_exit, buy_presets_usd, sell_presets_pct, send_speed)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (account_id) DO UPDATE SET max_trade_usd = $2, max_tax_bps = $3, max_round_trip_loss_pct = $4, slippage_bps = $5,
-       stop_loss_pct = $6, take_profit_pct = $7, auto_exit = $8, buy_presets_usd = $9, sell_presets_pct = $10, updated_at = now()`,
-    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps, next.stop_loss_pct, next.take_profit_pct, next.auto_exit, next.buy_presets_usd, next.sell_presets_pct],
+       stop_loss_pct = $6, take_profit_pct = $7, auto_exit = $8, buy_presets_usd = $9, sell_presets_pct = $10, send_speed = $11, updated_at = now()`,
+    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps, next.stop_loss_pct, next.take_profit_pct, next.auto_exit, next.buy_presets_usd, next.sell_presets_pct, next.send_speed],
   );
   return next;
 }

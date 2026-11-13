@@ -20,11 +20,12 @@
   async function afterSignIn() {
     if (!state.provider) return; // signed in on an earlier page: wait until the wallet is connected here
     state.config = await api('GET', '/v1/trading/config');
-    for (const id of ['trade-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
+    for (const id of ['trade-card', 'protect-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
     showChains();
     prefill();
     showSide();
+    showProtect();
     showAutoNetwork();
     await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
   }
@@ -45,7 +46,51 @@
     $('base').replaceChildren(...c.bases.map(b => el('option', {}, b)));
     $('base').value = c.bases.includes(keep) ? keep : c.default_base;
   }
-  $('chain').addEventListener('change', showBases);
+  $('chain').addEventListener('change', () => { showBases(); showProtect(); });
+
+  /* ── Protected sending: private networks that keep trades out of the public mempool, and what each speed pays ── */
+  const gwei = hex => { const g = Number(BigInt(hex)) / 1e9; return `${g < 0.01 ? g.toFixed(4) : g < 1 ? g.toFixed(3) : g.toFixed(2)} gwei`; };
+  async function showProtect() {
+    const chain = $('chain').value;
+    const p = state.config?.protected_networks?.[chain];
+    if (!p) return;
+    $('p-chain').textContent = state.config.chains[chain]?.label || chain;
+    $('p-note').textContent = p.note || 'Trades you sign go to the public mempool unless your wallet uses a private network, where front-running and sandwich bots can\'t see them coming. Add one with a click; your wallet asks you to confirm.';
+    say('p-msg', '');
+    $('p-networks').replaceChildren(...p.networks.map(n => el('div', { class: 'protect-net' },
+      el('p', {}, el('strong', {}, n.name), ' — ', n.what, ' ', el('a', { href: n.docs, rel: 'noopener', target: '_blank' }, 'Its documentation')),
+      n.caveats.length ? el('ul', { class: 'small' }, n.caveats.map(c => el('li', {}, c))) : '',
+      el('p', { class: 'small muted' }, 'RPC: ', el('code', {}, n.rpc), ` · chain ID ${parseInt(n.chain_id, 16)}`),
+      el('button', { type: 'button', onclick: () => addNetwork(n) }, `Add ${n.name} to my wallet`),
+      el('span', { class: 'small ok', id: `p-on-${n.id}`, hidden: true }, ' ✓ your wallet sends through it now'))));
+    detectProtected(chain, p);
+    try {
+      const f = await api('GET', `/v1/trading/fees?chain=${chain}`);
+      if ($('chain').value !== chain) return;
+      const line = s => { const x = f.speeds[s]; return x.none ? `${s[0].toUpperCase() + s.slice(1)}: ${x.none}` : `${s[0].toUpperCase() + s.slice(1)}: ${gwei(x.max_priority_fee_per_gas)} priority fee (at most ${gwei(x.max_fee_per_gas)} in all)`; };
+      $('p-fees').textContent = `Now: ${line('fast')} ${line('fastest')}`;
+    } catch (err) { $('p-fees').textContent = `The fees couldn't be read: ${err.message}`; }
+  }
+  /** 48 Club's own check: an eth_call to 0x…0048 answers 0x30 only through its RPC (asked of the wallet, on that chain). */
+  async function detectProtected(chain, p) {
+    if (!p.detect) return;
+    try {
+      if (await req('eth_chainId') !== '0x' + Number(state.config.chains[chain].chain_id).toString(16)) return;
+      const r = await req('eth_call', [p.detect.call, 'latest']);
+      const on = $(`p-on-${p.detect.network}`);
+      if (on) on.hidden = r !== p.detect.answer;
+    } catch { /* any other RPC answers with an error: not 48 Club */ }
+  }
+  async function addNetwork(n) {
+    try {
+      await req('wallet_addEthereumChain', [{ chainId: n.chain_id, chainName: n.chain_name, rpcUrls: [n.rpc], nativeCurrency: n.currency, blockExplorerUrls: [n.explorer] }]);
+      say('p-msg', `Added. Check that ${n.name} is the network your wallet uses for ${state.config.chains[$('chain').value].label}.`, 'ok');
+      detectProtected($('chain').value, state.config.protected_networks[$('chain').value]);
+    } catch (err) {
+      say('p-msg', err.code === 4001 ? 'You declined it in your wallet.'
+        : `Your wallet didn't add it (${err.message}). Add it by hand in your wallet's network settings: name ${n.name}, RPC ${n.rpc}, chain ID ${parseInt(n.chain_id, 16)}, currency ${n.currency.symbol}, explorer ${n.explorer}.`, err.code === 4001 ? null : 'bad');
+    }
+  }
 
   /** ?chain=&token=&side=&fraction= (a Meme Watch alert's ready-made sell, or a buy from the Launches desk). */
   function prefill() {
@@ -192,7 +237,7 @@
       await switchChain(chainHex(t.chain || i.chain));
       say('trade-msg', 'Confirm in your wallet…');
       const toPrompt = Math.round(performance.now() - clickAt);
-      txHash = await sendCalls(t.calls);
+      txHash = await sendCalls(t.calls, t.fees);
       await api('POST', `/v1/trading/proposals/${t.id}/submitted`, { tx_hash: txHash, click_to_prompt_ms: toPrompt });
       say('trade-msg', `Sent: ${short(txHash)}. RektBull will confirm it onchain.`, 'ok');
       await loadHistory();
@@ -208,10 +253,14 @@
     }
   }
 
-  /** Sends the calls: as one batch where the wallet supports it (EIP-5792), else one by one. Returns the swap's hash. */
-  async function sendCalls(bundle) {
+  /**
+   * Sends the calls: as one batch where the wallet supports it (EIP-5792), else one by one. Returns the swap's hash.
+   * With fees (Fast or Fastest), one by one, each with that fee: a batch leaves the fee to the wallet.
+   */
+  async function sendCalls(bundle, fees = null) {
     const calls = bundle.calls.map(c => ({ to: c.to, data: c.data, value: c.value }));
-    try {
+    const fee = fees?.max_fee_per_gas ? { maxFeePerGas: fees.max_fee_per_gas, maxPriorityFeePerGas: fees.max_priority_fee_per_gas } : null;
+    if (!fee) try {
       const res = await req('wallet_sendCalls', [{ version: '2.0.0', chainId: bundle.chainId, from: state.address, atomicRequired: true, calls }]);
       const id = typeof res === 'string' ? res : res.id;
       for (let i = 0; i < 120; i++) {
@@ -228,7 +277,7 @@
     // One at a time: each step waits for the one before it (a curve buy spends what the swap before it delivered).
     let last = null, confirm = null;
     for (const [i, c] of bundle.calls.entries()) {
-      last = await req('eth_sendTransaction', [{ from: state.address, to: c.to, data: c.data, value: c.value, ...(c.gas ? { gas: c.gas } : {}) }]);
+      last = await req('eth_sendTransaction', [{ from: state.address, to: c.to, data: c.data, value: c.value, ...(c.gas ? { gas: c.gas } : {}), ...(fee || {}) }]);
       if (c.step === (bundle.confirm_step || 'swap')) confirm = last;
       if (i < bundle.calls.length - 1) await waitFor(last);
     }
@@ -268,6 +317,7 @@
     $('s-max').value = s.max_trade_usd; $('s-tax').value = s.max_tax_bps / 100; $('s-loss').value = s.max_round_trip_loss_pct; $('s-slip').value = s.slippage_bps / 100;
     $('s-stop').value = s.stop_loss_pct; $('s-tp').value = s.take_profit_pct; $('s-auto').value = String(s.auto_exit);
     $('s-buys').value = s.buy_presets_usd.join(', '); $('s-sells').value = s.sell_presets_pct.join(', ');
+    $('s-speed').value = s.send_speed || 'standard';
     tradeState.presets = { buy: s.buy_presets_usd, sell: s.sell_presets_pct };
     showPresets();
   }
@@ -278,7 +328,7 @@
         max_trade_usd: Number($('s-max').value), max_tax_bps: Math.round(Number($('s-tax').value) * 100),
         max_round_trip_loss_pct: Number($('s-loss').value), slippage_bps: Math.round(Number($('s-slip').value) * 100),
         stop_loss_pct: Number($('s-stop').value), take_profit_pct: Number($('s-tp').value), auto_exit: $('s-auto').value === 'true',
-        buy_presets_usd: list($('s-buys').value), sell_presets_pct: list($('s-sells').value),
+        buy_presets_usd: list($('s-buys').value), sell_presets_pct: list($('s-sells').value), send_speed: $('s-speed').value,
       });
       say('settings-msg', 'Saved.', 'ok');
       await loadSettings();

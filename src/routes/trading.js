@@ -38,11 +38,24 @@ router.get('/v1/trading/config', (_req, res) => res.json({
   fee_pct: Math.min(env.swapFeeBps, 100) / 100,
   chains: Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, label: c.label, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
   defaults: { ...rules.DEFAULT_SETTINGS, router_limits: { per_trade_usd: 500, per_day_usd: 10000, days: 7 } },
+  // Private networks that keep trades out of the public mempool, per chain (trade/fees.js).
+  protected_networks: require('../trade/fees').PROTECTED,
   automatic_trading: {
     session_key: env.sessionKeyAddress || null, wallet_types: ['metamask', 'safe', 'coinbase'],
     networks: Object.fromEntries(networks.chainIds().map(id => { const n = networks.network(id); return [id, { label: n.label, router: n.router, tokens: n.tokens, default_base: n.defaultBase, delegation_manager: n.delegationManager, safe_module: n.safeModule || null, spend_permission_manager: n.spendPermissionManager || null, private_send: !!n.sendRpc }]; })),
   },
 }));
+
+/** The fees each speed would offer on a chain now (the trade page shows them next to the setting). */
+router.get('/v1/trading/fees', async (req, res) => {
+  const chain = String(req.query.chain || '');
+  if (!TRADE_CHAINS[chain]) return res.status(400).json({ error: 'bad_request', message: `chain must be one of: ${Object.keys(TRADE_CHAINS).join(', ')}` });
+  const fees = require('../trade/fees');
+  const out = {};
+  for (const speed of Object.keys(fees.SPEEDS)) out[speed] = await fees.suggest(chain, speed).catch(err => ({ speed, none: `couldn't be read: ${err.message}` }));
+  res.set('cache-control', 'public, max-age=6');
+  res.json({ chain, speeds: out });
+});
 
 router.get('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.settingsFor(req.account.id)));
 router.put('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.saveSettings(req.account.id, req.body || {})));
