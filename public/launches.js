@@ -11,6 +11,7 @@
   };
   const sign = s => el('li', { class: s.level === 'bad' ? 'bad' : s.level === 'warn' ? 'warn' : 'muted' }, s.text, ' ', el('span', { class: 'source' }, `(${s.source})`));
   const tradeLink = (chain, token, side) => `/trade?chain=${chain}&token=${token}&side=${side}#trade-card`;
+  const tokenLink = (chain, token) => `/token?chain=${chain}&token=${token}`; // the token page: chart, live trades, holders
   const CHAINS = ['base', 'ethereum', 'arbitrum', 'bsc'];
   const PAD_CHAINS = ['base', 'bsc']; // chains whose launchpads RektBull reads
   const NAMES = { base: 'Base', ethereum: 'Ethereum', arbitrum: 'Arbitrum', bsc: 'BNB Chain' };
@@ -36,7 +37,7 @@
           el('td', { class: 'num' }, money(t.liquidity_usd)),
           el('td', { class: 'num' }, money(t.volume_24h_usd)),
           el('td', {}, signs.length ? el('ul', { class: 'signals' }, signs.slice(0, 4).map(sign)) : el('span', { class: 'small muted' }, t.flags ? 'None of GoPlus\'s red flags; market data shows no warning sign' : 'No warning sign in its market data')),
-          el('td', {}, el('button', { class: 'btn', type: 'button', onclick: () => show(chain, t.token) }, 'Look closer')));
+          el('td', {}, el('a', { class: 'btn', href: tokenLink(chain, t.token) }, 'Look closer')));
       }));
       $('l-src').textContent = `Sources: ${f.sources.join('; ')}. ${f.note}`;
     } catch (err) { if (current()) say('l-msg', err.message, 'bad'); }
@@ -73,6 +74,7 @@
         el('div', { class: 'row' },
           el('a', { class: 'btn primary', href: tradeLink(chain, token, 'buy') }, 'Buy on the Trade desk'),
           el('a', { class: 'btn', href: tradeLink(chain, token, 'sell') }, 'Sell'),
+          el('a', { class: 'btn', href: tokenLink(chain, token) }, 'Chart, trades and holders'),
           el('a', { class: 'btn', href: c.launch_check }, 'Full launch check')),
         el('p', { class: 'source' }, `Sources: ${m.source || 'DexScreener'}; ${c.flags?.source || 'GoPlus'}. ${c.note}`));
     } catch (err) { $('t-card').replaceChildren(); say('t-msg', err.message, 'bad'); }
@@ -94,7 +96,7 @@
         el('td', { class: 'num' }, `${t.curve.progress_pct}%`),
         el('td', { class: 'num' }, `${inCurve(t.curve.in_curve)} ${t.curve.in_curve_symbol}`),
         el('td', {}, `${t.curve.buy_tax_pct}% buy, ${t.curve.sell_tax_pct}% sell`),
-        el('td', {}, el('button', { class: 'btn', type: 'button', onclick: () => show(chain, t.token) }, 'Look closer')))));
+        el('td', {}, el('a', { class: 'btn', href: tokenLink(chain, t.token) }, 'Look closer')))));
       $('c-src').textContent = `Source: ${c.source}. ${c.note}`;
     } catch (err) { if (current()) say('c-msg', err.message, 'bad'); }
   }

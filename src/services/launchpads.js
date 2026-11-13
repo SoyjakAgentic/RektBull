@@ -107,6 +107,8 @@ async function virtualsCurve(token) {
     state: info.trading ? 'curve' : info.tradingOnUniswap ? 'graduated' : 'closed',
     agent_token: info.agentToken && info.agentToken !== ZERO ? String(info.agentToken).toLowerCase() : null,
     link: LINKS.virtuals(token), source: SOURCE.virtuals,
+    // The links the creator gave Virtuals (unchecked here; the token page checks them before showing them).
+    links: require('../providers/dexscreener').links({ websites: info.website ? [{ label: 'Website', url: info.website }] : [], socials: [['twitter', info.twitter], ['telegram', info.telegram], ['youtube', info.youtube]].filter(([, u]) => u).map(([type, url]) => ({ type, url })) }),
   };
   if (out.state === 'curve') {
     const [[reserveToken, reserveVirtual], [threshold], [factory]] = await Promise.all([

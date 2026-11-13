@@ -46,6 +46,7 @@ const PARENT = { '/find': '/opportunities', '/governance': '/opportunities' };
 const UNLISTED = {
   '/404': ['Page not found | RektBull', 'There\'s no page at this address. Check a wallet, a token or a contract from the home page, or pick a desk from the menu.'],
   '/admin': ['Admin | RektBull', 'For RektBull\'s owners.'],
+  '/token': ['Token: Chart, Trades, Holders and Flags | RektBull', 'A token\'s price chart, live trades, top holders, what its creator still holds, its launchpad and its warning signs, each with its source.'],
 };
 
 /**

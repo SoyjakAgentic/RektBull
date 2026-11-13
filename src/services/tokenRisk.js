@@ -206,6 +206,7 @@ async function goplus(chain, token) {
       top10_people_pct: people.length ? Math.round(people.reduce((s, h) => s + (h.share || 0), 0) * 10000) / 100 : null,
       lp_locked_pct: lpKnown.length ? Math.round(lpKnown.filter(h => h.locked).reduce((s, h) => s + h.share, 0) * 10000) / 100 : null,
       top_holders: holders.slice(0, 10),
+      creator_address: /^0x[0-9a-fA-F]{40}$/.test(String(r.creator_address || '')) ? r.creator_address.toLowerCase() : null,
     };
   } catch (err) {
     return { not_checked: `GoPlus: ${err.message}` };
@@ -565,4 +566,4 @@ async function scanToken({ chain, token_address }) {
   };
 }
 
-module.exports = { scanToken, goplus, SCAN_CHAINS, EVM_CHAINS, POWERS, powersFromAbi, evmFlags, disagreements, rolePower, KNOWN_ROLES, ROLE_GRANTED, ROLE_REVOKED };
+module.exports = { scanToken, goplus, DEAD, SCAN_CHAINS, EVM_CHAINS, POWERS, powersFromAbi, evmFlags, disagreements, rolePower, KNOWN_ROLES, ROLE_GRANTED, ROLE_REVOKED };

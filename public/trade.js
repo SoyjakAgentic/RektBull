@@ -55,6 +55,8 @@
     if (['buy', 'sell'].includes(q.get('side'))) { $('side').value = q.get('side'); $('side').dispatchEvent(new Event('change')); }
     const f = Number(q.get('fraction'));
     if (f > 0 && f <= 100) $('fraction').value = String(f);
+    const a = Number(q.get('amount')); // a buy button on the token page
+    if (a > 0 && a <= 1000000) $('amount').value = String(a);
     if (q.get('token')) { $('trade-card').scrollIntoView({ block: 'start' }); changed(); }
   }
 
@@ -100,6 +102,8 @@
     tradeState.preview = null;
     tradeState.seq++; // a preview still on its way is for the trade as it was
     $('go').disabled = !(isSell() && tokenOk());
+    $('token-link').hidden = !tokenOk() || !['base', 'ethereum', 'arbitrum', 'bsc'].includes($('chain').value);
+    $('token-link').href = `/token?chain=${$('chain').value}&token=${$('token').value.trim().toLowerCase()}`;
     if (!tokenOk()) { $('plan').hidden = true; say('trade-msg', ''); return; }
     debounce = setTimeout(previewNow, 500);
   }

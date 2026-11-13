@@ -350,6 +350,21 @@ router.get('/v1/launches', launchCall(req => {
 }));
 router.get('/v1/launches/curves', launchCall(req => launches.curves({ chain: String(req.query.chain || 'base').toLowerCase() })));
 router.get('/v1/launches/:chain/:token', launchCall(req => launches.card({ chain: String(req.params.chain).toLowerCase(), token: req.params.token })));
+
+// The token page (/token): its facts, then its trades and candles, which the page refreshes itself. Free, cached.
+const tokenPage = require('../services/tokenPage');
+const tokenPageCall = (maxAge, fn) => async (req, res) => {
+  try {
+    res.set('cache-control', `public, max-age=${maxAge}`);
+    res.json(await fn(req));
+  } catch (err) {
+    if (err instanceof tokenPage.TokenPageRefused) return res.status(err.status).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+};
+router.get('/v1/tokens/:chain/:token/page', tokenPageCall(60, req => tokenPage.page(req.params)));
+router.get('/v1/tokens/:chain/:token/trades', tokenPageCall(10, req => tokenPage.trades(req.params)));
+router.get('/v1/tokens/:chain/:token/candles', tokenPageCall(60, req => tokenPage.candles({ ...req.params, size: req.query.size })));
 router.get('/v1/discover/dapps', discoverCall(discover.parseDapps, input => discover.dapps(input)));
 router.get('/v1/discover/categories', discoverCall(q => (q.chain && !discover.CHAIN_NAMES[q.chain] ? { error: 'unknown chain' } : { chain: q.chain || null }), input => discover.categories(input)));
 router.get('/v1/discover/chains', discoverCall(null, () => discover.chainList()));

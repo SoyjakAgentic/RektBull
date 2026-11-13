@@ -83,6 +83,8 @@ function createApp() {
   for (const [route, file] of Object.entries(PAGES)) {
     app.get(route, send(render(file, MENU[route] || route, route)));
   }
+  // One token's page (/token?chain=&token=): opened from Launches, Trade and the home lookup; noindex (most are new meme coins).
+  app.get('/token', send(render('token.html', '/launches', '/token')));
   // The admin panel: not in the menu or the sitemap, noindex; its API checks the wallet (src/routes/admin.js).
   app.get('/admin', send(render('admin.html', '/admin', '/admin')));
   // One address per page: /safety.html and the like go to /safety (the files are templates, not pages).
