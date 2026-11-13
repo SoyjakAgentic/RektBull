@@ -125,6 +125,42 @@ verified source on Sourcify and its code onchain on 11 November 2026:
   must confirm. BNB Chain has heavy sandwich trading: the slippage limit (1% by
   default) bounds what a sandwich can take.
 
+## The live feed: built (Trade desk, stage 1)
+
+The Live card at the top of `/launches`: three columns that fill in by
+themselves, read from the launchpads' own contract events every 10 seconds
+while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?chain=base|bsc`).
+
+| Column | Base | BNB Chain |
+|---|---|---|
+| New (the last hour) | Clanker `TokenCreated`; Zora `CoinCreatedV4`, `CreatorCoinCreated`, `CoinCreated`; Virtuals `Launched` | four.meme `TokenCreate` |
+| Nearest to graduating | Virtuals' curves (the newest on its Bonding contract) | Curves bought in the last hour (four.meme `TokenPurchase`), the ones that raised most, each confirmed with its helper (`getTokenInfo`) |
+| Just graduated (24 hours) | Virtuals `Graduated` (bought as its new agent token) | four.meme `LiquidityAdded` |
+
+- **Event layouts:** Clanker's, Zora's and Virtuals' from their verified source
+  on Sourcify (implementations for the proxies). four.meme's implementation
+  isn't verified: `TokenCreate(address creator, address token, uint256
+  requestId, string name, string symbol, uint256 totalSupply, uint256
+  launchTime, uint256 launchFee)`, `TokenPurchase(address token, address
+  account, uint256 price, uint256 amount, uint256 cost, uint256 fee, uint256
+  offers, uint256 funds)` and `LiquidityAdded(address base, uint256 offers,
+  address quote, uint256 funds)` were matched by signature against its logs,
+  and a decoded launch and graduation checked with its helper (13 November 2026).
+- **Cost:** each chain is read at most once every 10 seconds for everyone (the
+  result is cached in the database, so every instance shares it), each read
+  asks only for the blocks since the last one, and the 24 hours of
+  graduations are filled in three chunks per read. After a gap with nobody
+  watching, the last hour is read afresh. GoPlus's flags go on the six newest
+  launches, asked once per token.
+- **Logs:** `providers/rpc.evmLogs` asks your `RPC_URLS_<CHAIN>` first, then
+  publicnode's keyless endpoints. The default public RPCs refuse log queries
+  (Base's: "request limit reached"; BNB Chain's: "limit exceeded").
+- **Seen on 13 November 2026:** about 80 four.meme launches an hour and about
+  3 graduations a day; on Base, a few Clanker and Zora launches an hour, and
+  no `Launched` or `Graduated` from Virtuals' Bonding contract in the 33 hours
+  read. Virtuals may launch from a newer contract now: worth checking before
+  relying on Virtuals in this feed or on the Trade desk's curve.
+
 ## Phases to come
 
 4. **Solana and pump.fun:** trades the user signs with Phantom, through

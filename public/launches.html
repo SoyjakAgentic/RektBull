@@ -15,11 +15,29 @@
       <h1>New tokens, <em>checked before you trade them</em></h1>
       <p>The newest tokens on Base, Ethereum, Arbitrum and BNB Chain, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
       <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
-      <nav class="jump" aria-label="On this page"><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
+      <nav class="jump" aria-label="On this page"><a href="#live-card">Live</a><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
     </div>
   </section>
 
   <main class="tool wide">
+    <section class="card" id="live-card">
+      <div class="chart-head">
+        <h2>Live <span class="live-dot" aria-hidden="true"></span></h2>
+        <div class="row filters">
+          <label class="inline">Network <select id="v-chain"><option value="base">Base</option><option value="bsc">BNB Chain</option></select></label>
+          <span class="small muted" id="v-status" role="status"></span>
+        </div>
+      </div>
+      <p class="small muted">Read straight from the launchpads' own contracts every 10 seconds, while this page is open: Clanker, Zora and Virtuals on Base; four.meme on BNB Chain. New launches are highlighted as they arrive.</p>
+      <p id="v-msg" class="msg"></p>
+      <div class="live-cols">
+        <div class="live-col"><h3>New</h3><ol class="live-list" id="v-new"></ol></div>
+        <div class="live-col"><h3>Nearest to graduating</h3><ol class="live-list" id="v-near"></ol></div>
+        <div class="live-col"><h3>Just graduated</h3><ol class="live-list" id="v-grad"></ol></div>
+      </div>
+      <p id="v-src" class="source"></p>
+    </section>
+
     <section class="card" id="feed-card">
       <div class="chart-head">
         <h2>New tokens</h2>

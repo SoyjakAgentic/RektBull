@@ -110,5 +110,74 @@
   const q = new URLSearchParams(location.search);
   if (CHAINS.includes(q.get('chain'))) $('l-chain').value = q.get('chain');
   loadFeed();
+
+  /* ── Live: new, nearest to graduating, just graduated, from the launchpads' own events, every 10 seconds while in view ── */
+  const LIVE_MS = 10000;
+  const ago = iso => {
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    return s < 60 ? `${Math.round(s)} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+  };
+  const known = new Set(); // tokens already shown, so the ones that just arrived can be marked
+  let liveChain = null;
+  let liveTimer = null;
+  const label = i => [el('strong', {}, i.symbol || '?'), i.name && i.name !== i.symbol ? el('span', { class: 'small muted' }, ` ${i.name}`) : ''];
+  // A Virtuals token that graduated trades as its new agent token: that's the one to look at and buy.
+  const actions = (chain, i, buy = true) => el('div', { class: 'live-act' },
+    el('a', { class: 'btn small-btn', href: tokenLink(chain, i.agent_token || i.token) }, 'Look closer'),
+    buy ? el('a', { class: 'btn small-btn primary', href: tradeLink(chain, i.agent_token || i.token, 'buy') }, i.agent_token ? 'Buy the new token' : 'Buy') : '');
+
+  function liveItem(chain, i, kind, first) {
+    const fresh = !first && !known.has(`${kind}:${i.token}`);
+    known.add(`${kind}:${i.token}`);
+    const signs = ((i.flags && i.flags.flags) || []).filter(x => x.level !== 'ok').slice(0, 2);
+    const body = [el('div', { class: 'live-top' }, el('span', {}, ...label(i)), el('span', { class: 'small muted' }, i.launchpad_name))];
+    if (kind === 'new') {
+      body.push(el('div', { class: 'small muted' }, `Launched ${ago(i.at)}`, i.creator ? ' by ' : '', i.creator ? el('code', {}, `${i.creator.slice(0, 6)}…${i.creator.slice(-4)}`) : ''));
+      if (signs.length) body.push(el('ul', { class: 'signals' }, signs.map(sign)));
+      else if (i.flags && !i.flags.not_checked) body.push(el('div', { class: 'small muted' }, 'None of GoPlus\'s red flags yet'));
+    }
+    if (kind === 'near') {
+      body.push(el('div', { class: 'bar-row' }, el('span', { class: 'small' }, 'Sold'),
+        el('span', { class: 'bar-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(i.progress_pct), 'aria-label': 'How far the curve is towards graduating' }, el('span', { class: 'bar-fill', style: `width:${Math.max(1, Math.min(100, i.progress_pct))}%` })),
+        el('span', { class: 'bar-value' }, `${i.progress_pct}%`)));
+      if (i.tradable === false) body.push(el('div', { class: 'small muted' }, 'Priced in another token, not BNB: RektBull doesn\'t trade it yet.'));
+    }
+    if (kind === 'grad') {
+      body.push(el('div', { class: 'small muted' }, `Graduated ${ago(i.at)}`, i.agent_token ? '; it now trades as ' : '', i.agent_token ? el('a', { href: tokenLink(chain, i.agent_token) }, el('code', {}, `${i.agent_token.slice(0, 6)}…`)) : ''));
+    }
+    body.push(actions(chain, i, kind !== 'near' || i.tradable !== false));
+    return el('li', { class: fresh ? 'live-item fresh' : 'live-item' }, ...body);
+  }
+
+  async function loadLive() {
+    const chain = $('v-chain').value;
+    const first = liveChain !== chain;
+    if (first) { known.clear(); liveChain = chain; say('v-msg', 'Reading the launchpads\' events…'); }
+    const current = fresh('live');
+    try {
+      const r = await api('GET', `/v1/launches/live?chain=${chain}`);
+      if (!current()) return;
+      const c = r.columns;
+      const before = known.size;
+      const fill = (id, items, kind, empty) => $(id).replaceChildren(...(items.length ? items.map(i => liveItem(chain, i, kind, first)) : [el('li', { class: 'small muted' }, empty)]));
+      fill('v-new', c.new.items, 'new', 'No launches in the last hour.');
+      fill('v-near', c.graduating.items, 'near', c.graduating.not_checked ? `Not checked: ${c.graduating.not_checked}` : 'No curve is being bought just now.');
+      fill('v-grad', c.graduated.items, 'grad', `None in the last ${c.graduated.hours_covered} hours${c.graduated.hours_covered < 24 ? ' (still reading back to 24)' : ''}.`);
+      const arrived = first ? 0 : known.size - before;
+      say('v-msg', r.not_checked ? `Not updated: ${r.not_checked}` : '', r.not_checked ? 'bad' : null);
+      $('v-status').textContent = `Updated ${new Date().toLocaleTimeString()}${arrived ? ` · ${arrived} new` : ''}`;
+      $('v-src').textContent = `Sources: ${c.new.source}; nearest to graduating: ${c.graduating.source || '–'}; just graduated: ${c.graduated.source}. ${r.note}`;
+    } catch (err) { if (current()) say('v-msg', err.message, 'bad'); }
+  }
+  function live() {
+    clearInterval(liveTimer);
+    if (document.visibilityState !== 'visible') return;
+    loadLive();
+    liveTimer = setInterval(loadLive, LIVE_MS);
+  }
+  $('v-chain').addEventListener('change', live);
+  document.addEventListener('visibilitychange', live);
+  if (['base', 'bsc'].includes(q.get('chain'))) $('v-chain').value = q.get('chain');
+  live();
   if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '')) show($('l-chain').value, q.get('token'));
 })();
