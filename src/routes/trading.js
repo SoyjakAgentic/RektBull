@@ -18,12 +18,19 @@ const core = require('@metamask/delegation-core');
 
 const router = express.Router();
 
-/** A blocked trade answers 422 with the reason, and the risks to acknowledge if any. */
+/**
+ * A blocked trade answers 422 with the reason, and the risks to acknowledge if any.
+ * `error` is trade_blocked, or price_moved when a one-click trade's preview no longer holds.
+ */
 function blocked(res, err) {
-  return res.status(422).json({ error: 'trade_blocked', message: err.message, ...(err.needsAcknowledgement ? { needs_acknowledgement: true, risks: err.risks } : {}) });
+  return res.status(422).json({ error: err.code || 'trade_blocked', message: err.message, ...(err.needsAcknowledgement ? { needs_acknowledgement: true, risks: err.risks } : {}) });
 }
 const guard = fn => async (req, res) => {
-  try { await fn(req, res); } catch (err) { if (err.isTradeBlocked) return blocked(res, err); throw err; }
+  try { await fn(req, res); } catch (err) {
+    if (err.isTradeBlocked) return blocked(res, err);
+    if (err.code === 'preview_stale') return res.status(409).json({ error: err.code, message: err.message });
+    throw err;
+  }
 };
 
 router.get('/v1/trading/config', (_req, res) => res.json({
@@ -40,11 +47,15 @@ router.get('/v1/trading/config', (_req, res) => res.json({
 router.get('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.settingsFor(req.account.id)));
 router.put('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.saveSettings(req.account.id, req.body || {})));
 
+// One click: the checks before the click (preview), then the checked trade and its wallet calls in one step (trades).
+router.post('/v1/trading/preview', requireAuth, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
+router.post('/v1/trading/trades', requireAuth, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
+
 router.post('/v1/trading/proposals', requireAuth, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
 router.get('/v1/trading/proposals', requireAuth, async (req, res) => res.json({ proposals: await proposals.list(req.account) }));
 router.get('/v1/trading/proposals/:id', requireAuth, async (req, res) => res.json(await proposals.get(req.account, req.params.id)));
 router.post('/v1/trading/proposals/:id/approve', requireAuth, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
-router.post('/v1/trading/proposals/:id/submitted', requireAuth, async (req, res) => res.json(await proposals.submitted(req.account, req.params.id, req.body?.tx_hash)));
+router.post('/v1/trading/proposals/:id/submitted', requireAuth, async (req, res) => res.json(await proposals.submitted(req.account, req.params.id, req.body?.tx_hash, req.body?.click_to_prompt_ms)));
 router.post('/v1/trading/proposals/:id/cancel', requireAuth, async (req, res) => res.json(await proposals.cancel(req.account, req.params.id)));
 
 /** The signed-in wallet's limits on the Trade Router, and whether it's a MetaMask smart account, read onchain. */

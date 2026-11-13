@@ -24,6 +24,7 @@
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
     showChains();
     prefill();
+    showSide();
     showAutoNetwork();
     await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
   }
@@ -54,34 +55,83 @@
     if (['buy', 'sell'].includes(q.get('side'))) { $('side').value = q.get('side'); $('side').dispatchEvent(new Event('change')); }
     const f = Number(q.get('fraction'));
     if (f > 0 && f <= 100) $('fraction').value = String(f);
-    if (q.get('token')) $('trade-card').scrollIntoView({ block: 'start' });
+    if (q.get('token')) { $('trade-card').scrollIntoView({ block: 'start' }); changed(); }
   }
 
-  /* ── 2. trade ── */
-  $('side').addEventListener('change', () => {
-    const sell = $('side').value === 'sell';
-    $('amount-wrap').hidden = sell; $('fraction-wrap').hidden = !sell;
+  /* ── 2. trade: checked before the click, one click to the wallet ── */
+  // A preview (every check on a firm price) runs as soon as a token is picked, and again when the
+  // trade changes. Clicking within 30 seconds of it sends the trade straight to the wallet; the server
+  // checks everything again on a fresh price, and refuses if the price is now past the preview's worst case.
+  const FRESH_MS = 28 * 1000; // a little under the server's 30 seconds, for the round trip
+  const tradeState = { preview: null, previewing: null, seq: 0, ack: false, presets: { buy: [25, 50, 100], sell: [25, 50, 100] } };
+  const isSell = () => $('side').value === 'sell';
+  const tokenOk = () => /^0x[0-9a-fA-F]{40}$/.test($('token').value.trim());
+  const input = () => ({
+    chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
+    ...(isSell() ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
+    ...(tradeState.ack ? { acknowledge_risks: true } : {}),
   });
+  const matches = (pv, i) => pv && pv.chain === i.chain && pv.side === i.side && pv.base === i.base && pv.token.toLowerCase() === i.token.toLowerCase();
+  const fresh = pv => pv && Date.now() - Date.parse(pv.quoted_at) < FRESH_MS;
 
-  $('check').addEventListener('click', () => propose(false));
+  function showSide() {
+    const sell = isSell();
+    $('amount-wrap').hidden = sell; $('fraction-wrap').hidden = !sell;
+    showPresets(); labelGo();
+  }
+  function showPresets() {
+    const sell = isSell();
+    const list = sell ? tradeState.presets.sell : tradeState.presets.buy;
+    $('presets').replaceChildren(...list.map(v => el('button', { class: 'preset', onclick: () => {
+      $(sell ? 'fraction' : 'amount').value = String(v);
+      labelGo();
+      go();
+    } }, sell ? `Sell ${v}%` : `Buy $${v}`)));
+  }
+  function labelGo() {
+    $('go').textContent = isSell() ? `Sell ${Number($('fraction').value) || 0}%` : `Buy $${Number($('amount').value) || 0}`;
+  }
 
-  async function propose(acknowledge) {
+  let debounce = null;
+  function changed({ keepAck = false } = {}) {
+    if (!keepAck) tradeState.ack = false;
+    labelGo();
+    clearTimeout(debounce);
+    tradeState.preview = null;
+    tradeState.seq++; // a preview still on its way is for the trade as it was
+    $('go').disabled = !(isSell() && tokenOk());
+    if (!tokenOk()) { $('plan').hidden = true; say('trade-msg', ''); return; }
+    debounce = setTimeout(previewNow, 500);
+  }
+  $('side').addEventListener('change', () => { showSide(); changed(); });
+  for (const id of ['token', 'amount', 'fraction']) $(id).addEventListener('input', () => changed({ keepAck: id !== 'token' }));
+  for (const id of ['chain', 'base']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+
+  /** Runs every check on a firm price and shows it. Resolves to the preview, or null if the trade can't go ahead. */
+  async function previewNow() {
+    if (!tokenOk() || !state.config?.enabled) return null;
+    clearTimeout(debounce);
+    const seq = ++tradeState.seq;
+    const i = input();
     say('trade-msg', 'Checking…');
-    $('plan').hidden = true;
-    const sell = $('side').value === 'sell';
-    try {
-      const p = await api('POST', '/v1/trading/proposals', {
-        chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
-        ...(sell ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
-        ...(acknowledge ? { acknowledge_risks: true } : {}),
-      });
-      state.proposal = p;
-      showPlan(p);
+    const run = api('POST', '/v1/trading/preview', i).then(pv => {
+      if (seq !== tradeState.seq) return null;
+      tradeState.preview = pv;
+      showPlan(pv);
+      $('go').disabled = false;
       say('trade-msg', '');
-    } catch (err) {
-      if (err.data?.needs_acknowledgement) return showRisks(err.data);
-      say('trade-msg', err.message, 'bad');
-    }
+      return pv;
+    }, err => {
+      if (seq !== tradeState.seq) return null;
+      tradeState.preview = null;
+      if (err.data?.needs_acknowledgement) showRisks(err.data);
+      else { $('plan').hidden = true; say('trade-msg', err.message, 'bad'); }
+      // A sale is how you get out: its button stays on even when the preview couldn't run.
+      $('go').disabled = !isSell();
+      return null;
+    }).finally(() => { if (tradeState.previewing === run) tradeState.previewing = null; });
+    tradeState.previewing = run;
+    return run;
   }
 
   function showRisks(data) {
@@ -89,40 +139,69 @@
     $('plan').replaceChildren(
       el('p', { class: 'risk' }, data.message),
       el('ul', {}, (data.risks || []).map(r => el('li', { class: 'risk' }, r.title, ' — ', r.evidence || ''))),
-      el('label', {}, el('span', {}, 'I\'ve read these risks and want to go ahead'), el('input', { type: 'checkbox', id: 'ack' })),
-      el('button', { onclick: () => ($('ack').checked ? propose(true) : say('trade-msg', 'Tick the box to confirm you\'ve read the risks.', 'bad')) }, 'Continue'),
+      el('label', {}, el('span', {}, 'I\'ve read these risks and want to go ahead'), el('input', { type: 'checkbox', id: 'ack', onchange: e => { if (e.target.checked) { tradeState.ack = true; previewNow(); } } })),
     );
-    say('trade-msg', '');
+    say('trade-msg', 'Tick the box to confirm you\'ve read the risks, then trade.', 'bad');
   }
 
-  function showPlan(p) {
-    const s = p.plan.summary;
+  function showPlan(pv) {
+    const s = pv.plan.summary;
     $('plan').hidden = false;
     $('plan').replaceChildren(
       el('p', {}, el('strong', {}, s.text)),
-      el('ul', {}, p.plan.checks.map(c => el('li', { class: 'check-ok' }, c.detail))),
+      el('ul', {}, pv.plan.checks.map(c => el('li', { class: 'check-ok' }, c.detail))),
       el('p', {}, s.fee ? `RektBull fee: ${s.fee.amount} ${s.fee.asset} (${s.fee.pct}%), ${s.fee.taken_by || 'taken inside the swap'}.` : 'No RektBull fee on this trade.'),
-      el('p', { class: 'muted' }, 'Approving re-checks everything on a fresh price, then your wallet shows the exact transactions to sign.'),
-      el('div', { class: 'row' },
-        el('button', { class: 'primary', onclick: approveAndSign }, 'Approve and sign in my wallet'),
-        el('button', { onclick: async () => { await api('POST', `/v1/trading/proposals/${p.id}/cancel`).catch(() => {}); $('plan').hidden = true; loadHistory(); } }, 'Cancel')),
+      el('p', { class: 'muted small', id: 'plan-age' }),
     );
+    showAge();
   }
+  function showAge() {
+    const pv = tradeState.preview;
+    if (!pv || !$('plan-age')) return;
+    const secs = Math.max(0, Math.round((Date.now() - Date.parse(pv.quoted_at)) / 1000));
+    $('plan-age').textContent = fresh(pv)
+      ? `Checked ${secs} s ago. A click checks everything again on a fresh price, then your wallet shows the exact transactions to sign.`
+      : `Checked ${secs} s ago, so the price is old: a click checks it again first, then asks you to click once more.`;
+  }
+  setInterval(showAge, 1000);
 
-  async function approveAndSign() {
-    const p = state.proposal;
+  $('go').addEventListener('click', () => go());
+
+  /** One click: the checked trade straight to the wallet, on a preview under 30 seconds old. */
+  async function go() {
+    const clickAt = performance.now();
+    if (!tokenOk()) return say('trade-msg', 'Paste the token\'s address first.', 'bad');
+    if (tradeState.previewing) await tradeState.previewing;
+    const i = input();
+    let pv = tradeState.preview;
+    if (!matches(pv, i) || !fresh(pv)) {
+      // Not a preview of this trade, or an old one: check it now, and let the user look before trading.
+      pv = await previewNow();
+      if (pv) say('trade-msg', 'Checked again on the current price. Click again to trade.');
+      if (pv || !isSell()) return;
+    }
+    $('go').disabled = true;
+    let t = null, txHash = null;
     try {
-      say('trade-msg', 'Re-checking on a fresh price…');
-      const approved = await api('POST', `/v1/trading/proposals/${p.id}/approve`);
-      await switchChain(chainHex(p.chain || $('chain').value));
+      say('trade-msg', 'Checking again on a fresh price…');
+      t = await api('POST', '/v1/trading/trades', { ...i, ...(pv ? { seen: pv.seen } : {}) });
+      await switchChain(chainHex(t.chain || i.chain));
       say('trade-msg', 'Confirm in your wallet…');
-      const txHash = await sendCalls(approved.calls);
-      await api('POST', `/v1/trading/proposals/${p.id}/submitted`, { tx_hash: txHash });
+      const toPrompt = Math.round(performance.now() - clickAt);
+      txHash = await sendCalls(t.calls);
+      await api('POST', `/v1/trading/proposals/${t.id}/submitted`, { tx_hash: txHash, click_to_prompt_ms: toPrompt });
       say('trade-msg', `Sent: ${short(txHash)}. RektBull will confirm it onchain.`, 'ok');
-      $('plan').hidden = true;
       await loadHistory();
-      pollUntilDone(p.id);
-    } catch (err) { say('trade-msg', err.message, 'bad'); loadHistory(); }
+      pollUntilDone(t.id);
+    } catch (err) {
+      if (t && !txHash) await api('POST', `/v1/trading/proposals/${t.id}/cancel`).catch(() => {}); // not sent: nothing is left waiting
+      if (['preview_stale', 'price_moved'].includes(err.data?.error)) { await previewNow(); say('trade-msg', err.message, 'bad'); }
+      else if (err.data?.needs_acknowledgement) showRisks(err.data);
+      else say('trade-msg', err.message, 'bad');
+      loadHistory();
+    } finally {
+      $('go').disabled = !tradeState.preview && !isSell();
+    }
   }
 
   /** Sends the calls: as one batch where the wallet supports it (EIP-5792), else one by one. Returns the swap's hash. */
@@ -184,15 +263,22 @@
     const s = await api('GET', '/v1/trading/settings');
     $('s-max').value = s.max_trade_usd; $('s-tax').value = s.max_tax_bps / 100; $('s-loss').value = s.max_round_trip_loss_pct; $('s-slip').value = s.slippage_bps / 100;
     $('s-stop').value = s.stop_loss_pct; $('s-tp').value = s.take_profit_pct; $('s-auto').value = String(s.auto_exit);
+    $('s-buys').value = s.buy_presets_usd.join(', '); $('s-sells').value = s.sell_presets_pct.join(', ');
+    tradeState.presets = { buy: s.buy_presets_usd, sell: s.sell_presets_pct };
+    showPresets();
   }
+  const list = v => String(v).split(/[\s,]+/).filter(Boolean).map(Number);
   $('s-save').addEventListener('click', async () => {
     try {
       await api('PUT', '/v1/trading/settings', {
         max_trade_usd: Number($('s-max').value), max_tax_bps: Math.round(Number($('s-tax').value) * 100),
         max_round_trip_loss_pct: Number($('s-loss').value), slippage_bps: Math.round(Number($('s-slip').value) * 100),
         stop_loss_pct: Number($('s-stop').value), take_profit_pct: Number($('s-tp').value), auto_exit: $('s-auto').value === 'true',
+        buy_presets_usd: list($('s-buys').value), sell_presets_pct: list($('s-sells').value),
       });
       say('settings-msg', 'Saved.', 'ok');
+      await loadSettings();
+      changed({ keepAck: true }); // the limits a preview checked against may have changed
     } catch (err) { say('settings-msg', err.message, 'bad'); }
   });
 

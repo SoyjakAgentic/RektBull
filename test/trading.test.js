@@ -390,6 +390,77 @@ test('trading', async t => {
     const grad = await proposals.propose(account, { chain: 'bsc', side: 'buy', token: FM, base: 'USDT', amount_usd: 50 });
     assert.deepEqual(grad.plan.checks.map(c => c.check), ['launchpad', 'per_trade_amount', 'token_risk', 'tax', 'sell_back']);
     assert.match(grad.plan.checks[0].detail, /graduated .* PancakeSwap, through 0x/);
+
+    // ── One click (Trade desk, stage 1): preview before the click, then the checked trade in one step ──
+    let buyOut = 1000000n;
+    zeroex.setTransport(async (path, params) => {
+      seen.push({ path, params });
+      if (params.sellToken.toLowerCase() === USDC) {
+        return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(buyOut), minBuyAmount: String(buyOut * 99n / 100n), tokenMetadata: { buyToken: { buyTaxBps: '0', sellTaxBps: '0' } },
+          issues: { allowance: { spender: AH } }, transaction: { to: AH, data: '0xdeadbeef', value: '0', gas: '200000' } };
+      }
+      return { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(BigInt(params.sellAmount) * 97n), minBuyAmount: '1', transaction: { to: AH, data: '0xfeed', value: '0' } };
+    });
+    const count = async () => Number((await db.query('SELECT count(*) FROM trade_proposals WHERE account_id = $1', [account.id])).rows[0].count);
+    const before = await count();
+    const pv = await proposals.preview(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 });
+    assert.equal(await count(), before, 'a preview stores nothing');
+    assert.deepEqual(pv.plan.checks.map(c => c.check), ['per_trade_amount', 'token_risk', 'tax', 'sell_back']);
+    assert.deepEqual({ ...pv.seen, quoted_at: undefined }, { chain: 'base', side: 'buy', token: TOKEN, base: 'USDC', sell_amount: '100000000', buy_amount: '1000000', min_buy_amount: '990000', quoted_at: undefined });
+
+    // The trade on that preview: approved at once, with its wallet calls. The sale back was priced on
+    // the preview's amount, alongside the token check and the firm quote, not after them.
+    seen.length = 0;
+    const one = await proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100, seen: pv.seen });
+    assert.equal(one.status, 'approved');
+    assert.deepEqual(one.calls.calls.map(c => c.step), ['approve', 'swap']);
+    assert.equal(one.plan.one_click, true);
+    assert.equal(one.plan.timing.previewed, true);
+    assert.ok(one.plan.timing.prepare_ms >= 0);
+    assert.deepEqual(seen.map(s => [s.path.split('/').pop(), s.params.sellAmount]).sort(), [['price', '1000000'], ['quote', '100000000']]);
+    // The page says how long the click took to reach the wallet.
+    await proposals.submitted(account, one.id, '0x' + 'c1'.repeat(32), 840);
+    assert.equal((await proposals.get(account, one.id)).plan.timing.click_to_prompt_ms, 840);
+
+    // A preview over 30 seconds old isn't traded on; nor one of another trade; nor a garbled one.
+    const old = { ...pv.seen, quoted_at: new Date(Date.now() - 31000).toISOString() };
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100, seen: old }), e => e.status === 409 && e.code === 'preview_stale');
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'sell', token: TOKEN, sell_fraction: 1, seen: pv.seen }), e => e.status === 400 && /different trade/.test(e.message));
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100, seen: { ...pv.seen, min_buy_amount: '1e6' } }), e => e.status === 400);
+
+    // The price moved past the preview's worst case: refused, and nothing is stored.
+    const fresh = (await proposals.preview(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 })).seen;
+    buyOut = 980000n; // below the preview's minimum of 990,000
+    const stored = await count();
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100, seen: fresh }), e => e.isTradeBlocked && e.code === 'price_moved');
+    assert.equal(await count(), stored);
+    // Within it, the trade goes ahead; a preview of another amount counts by its rate.
+    buyOut = 995000n;
+    assert.equal((await proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 50, seen: fresh })).status, 'approved');
+    // No preview at all: every check still runs, in order, and the sale back is priced after the quote.
+    seen.length = 0;
+    const blind = await proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 });
+    assert.equal(blind.plan.timing.previewed, false);
+    assert.deepEqual(seen.map(s => [s.path.split('/').pop(), s.params.sellAmount]), [['quote', '100000000'], ['price', '995000']]);
+
+    // Running the checks at once doesn't change which one is named: a critical token is refused for
+    // that, even when 0x has no route for it either.
+    risk = { verdict: 'critical', flags: [{ severity: 'critical', title: 'It could not be sold back after a buy' }] };
+    zeroex.setTransport(async () => ({ liquidityAvailable: false }));
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 }), /token check found a critical risk/);
+    risk = { verdict: 'low', flags: [], disagreements: [] };
+    await assert.rejects(proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 100 }), /no liquidity/);
+
+    // The one-click buttons: the user's own, sorted, at most four of each, sells at most 100%.
+    assert.deepEqual((await rules.settingsFor(account.id)).buy_presets_usd, [25, 50, 100]);
+    const saved = await rules.saveSettings(account.id, { buy_presets_usd: [250, 10, 10, 75.5], sell_presets_pct: [100, 33] });
+    assert.deepEqual([saved.buy_presets_usd, saved.sell_presets_pct], [[10, 75.5, 250], [33, 100]]);
+    assert.deepEqual((await rules.settingsFor(account.id)).sell_presets_pct, [33, 100]);
+    assert.equal((await rules.settingsFor(account.id)).max_trade_usd, 1000, 'saving presets leaves the other settings as they were');
+    await assert.rejects(rules.saveSettings(account.id, { sell_presets_pct: [150] }), /at most 100/);
+    await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [1, 2, 3, 4, 5] }), /1 to 4/);
+    await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [] }), /1 to 4/);
+    await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [-5] }), /above 0/);
     await db.getPool().end();
   });
 });
