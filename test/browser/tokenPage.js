@@ -47,6 +47,9 @@ gt.trades = async () => [
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  const asked = [];
+  page.on('request', r => { const m = r.url().match(/\/candles\?size=(\w+)/); if (m) asked.push(m[1]); });
+  await page.clock.install(); // the page's timers, run forward below
   try {
     await page.goto(`${url}/token?chain=base&token=${TOKEN}`);
     await page.getByRole('heading', { name: 'TEST on Base' }).waitFor();
@@ -61,9 +64,24 @@ gt.trades = async () => [
     assert.match(await page.textContent('#tp-chart-src'), /GeckoTerminal/);
     console.log('✔ the chart: candles drawn on the page from GeckoTerminal\'s figures, with a readout on hover');
 
+    assert.deepEqual(await page.$$eval('[data-size]', b => b.map(x => x.textContent)), ['1 min', '5 min', '1 hour', '1 day']);
+    await page.click('[data-size="1m"]');
+    await page.waitForFunction(() => document.querySelector('[data-size="1m"]').getAttribute('aria-pressed') === 'true');
+    for (let i = 0; i < 50 && !asked.includes('1m'); i++) await page.waitForTimeout(50);
+    const n = asked.filter(x => x === '1m').length;
+    assert.equal(n, 1, '1-minute candles asked for');
+    await page.clock.runFor(31000); // 1-minute candles are redrawn every 30 seconds while in view
+    for (let i = 0; i < 50 && asked.filter(x => x === '1m').length === n; i++) await page.waitForTimeout(50);
+    assert.equal(asked.filter(x => x === '1m').length, n + 1, 'redrawn after 30 seconds');
+    await page.click('[data-size="1h"]');
+    await page.clock.runFor(61000);
+    await page.waitForTimeout(200);
+    assert.equal(asked.filter(x => x === '1m').length, n + 1, 'hourly candles aren\'t redrawn, and the 1-minute timer stopped');
+    console.log('✔ 1-minute candles, redrawn every 30 seconds while in view');
+
     await page.locator('#tp-trades tbody tr').first().waitFor();
     assert.equal(await page.locator('#tp-trades tbody tr').count(), 2);
-    assert.match(await page.textContent('#tp-trades tbody tr:first-child'), /s ago.*Buy.*25\.0K.*\$19\.48/s);
+    assert.match(await page.textContent('#tp-trades tbody tr:first-child'), /(s|min) ago.*Buy.*25\.0K.*\$19\.48/s);
     assert.equal(await page.getAttribute('#tp-trades tbody tr:first-child a', 'href'), 'https://basescan.org/tx/0x' + '1'.repeat(64));
     console.log('✔ live trades: newest first, each linked to the explorer');
 

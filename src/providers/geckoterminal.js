@@ -3,7 +3,8 @@
  * newest ones; and for the token page, a pool's latest trades and its price
  * candles. Its free plan allows about 30 calls a minute, so each list is
  * cached for 5 minutes (14 lists at most: a call every ~20 seconds at worst),
- * a pool's trades for 15 seconds and its candles for a minute or more.
+ * a pool's trades for 15 seconds and its candles for 20 seconds (1-minute
+ * candles) up to 30 minutes (daily ones).
  */
 const axios = require('axios');
 const { track } = require('./usage');
@@ -72,7 +73,8 @@ function trades(chain, pool, token) {
 }
 
 // Candle sizes the token page offers: GeckoTerminal's timeframe, aggregate, how many, and how long to cache them.
-const CANDLES = { '5m': ['minute', 5, 144, 60], '1h': ['hour', 1, 168, 300], '1d': ['day', 1, 180, 1800] };
+// 1-minute candles (3 hours) for meme coins' pace, cached 20 seconds.
+const CANDLES = { '1m': ['minute', 1, 180, 20], '5m': ['minute', 5, 144, 60], '1h': ['hour', 1, 168, 300], '1d': ['day', 1, 180, 1800] };
 
 /** A pool's price candles for one token, in dollars, oldest first: [[unix seconds, open, high, low, close, volume], …]. */
 function candles(chain, pool, token, size = '1h') {

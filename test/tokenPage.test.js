@@ -157,7 +157,9 @@ test('the token page', async t => {
     assert.equal(asked.url, `https://api.geckoterminal.com/api/v2/networks/base/pools/${POOL}/ohlcv/minute`);
     assert.deepEqual(asked.params, { aggregate: 5, limit: 144, currency: 'usd', token: TOKEN });
     assert.deepEqual(c.candles.map(r => r[0]), [1794596700, 1794597000], 'oldest first; a malformed row dropped');
-    await assert.rejects(tokenPage.candles({ chain: 'base', token: TOKEN, size: '1w' }), /size must be one of: 5m, 1h, 1d/);
+    await tokenPage.candles({ chain: 'base', token: TOKEN, size: '1m' });
+    assert.deepEqual(asked.params, { aggregate: 1, limit: 180, currency: 'usd', token: TOKEN }, '1-minute candles: the last 3 hours');
+    await assert.rejects(tokenPage.candles({ chain: 'base', token: TOKEN, size: '1w' }), /size must be one of: 1m, 5m, 1h, 1d/);
 
     fresh();
     axios.get = async () => { throw Object.assign(new Error('Request failed with status code 429'), { response: { status: 429 } }); };

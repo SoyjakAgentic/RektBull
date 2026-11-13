@@ -144,10 +144,13 @@
       size = b.dataset.size;
       for (const x of document.querySelectorAll('[data-size]')) x.setAttribute('aria-pressed', String(x === b));
       loadCandles();
+      live();
     });
   }
-  async function loadCandles() {
-    say('tp-chart-msg', 'Reading its price history…');
+  // Short candles go stale fast: 1-minute ones are redrawn every 30 seconds and 5-minute ones every minute, while the page is in view.
+  const REDRAW = { '1m': 30000, '5m': 60000 };
+  async function loadCandles({ quiet = false } = {}) {
+    if (!quiet) say('tp-chart-msg', 'Reading its price history…');
     try {
       const c = await api('GET', `${base}/candles?size=${size}`);
       $('tp-chart-src').textContent = `Source: ${c.source}.`;
@@ -206,8 +209,9 @@
     plot.setAttribute('aria-label', `The token's price from ${when(rows[0][0])} to ${when(rows[rows.length - 1][0])}: from ${price(rows[0][1])} to ${price(rows[rows.length - 1][4])}, between ${price(lo)} and ${price(hi)}. Arrow keys step through the candles.`);
   }
 
-  /* Live trades: every 15 seconds while the page is in view. */
+  /* Live trades: every 15 seconds while the page is in view (and short candles, as above). */
   let timer = null;
+  let chartTimer = null;
   async function loadTrades() {
     try {
       const t = await api('GET', `${base}/trades`);
@@ -226,7 +230,10 @@
   }
   function live() {
     clearInterval(timer);
-    if (document.visibilityState === 'visible') { loadTrades(); timer = setInterval(loadTrades, 15000); }
+    clearInterval(chartTimer);
+    if (document.visibilityState !== 'visible') return;
+    loadTrades(); timer = setInterval(loadTrades, 15000);
+    if (REDRAW[size]) chartTimer = setInterval(() => loadCandles({ quiet: true }), REDRAW[size]);
   }
   document.addEventListener('visibilitychange', live);
 
