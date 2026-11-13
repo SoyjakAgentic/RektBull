@@ -186,16 +186,20 @@ async function tokens({ list = 'trending', chain = 'base' } = {}) {
 }
 
 /** GoPlus's flags for one token, cached 6 hours (its free plan answers one token a call). */
+/** GoPlus's token security report, cached 6 hours (one call per token for the flags and the token page). Throws when it couldn't be read. */
+function goplusReport(chain, token) {
+  return cached(`discover:flags:${chain}:${token}`, 6 * 3600, async () => {
+    const r = await require('./tokenRisk').goplus(chain, token);
+    if (r.not_checked) throw new Error(r.not_checked); // never cache a miss
+    return r;
+  });
+}
+
 async function flags({ chain, token }) {
   if (chain === 'solana') return { chain, token, not_checked: 'Free flags cover EVM tokens. The quick check covers Solana tokens.' };
-  const tokenRisk = require('./tokenRisk');
   let g;
   try {
-    g = await cached(`discover:flags:${chain}:${token}`, 6 * 3600, async () => {
-      const r = await tokenRisk.goplus(chain, token);
-      if (r.not_checked) throw new Error(r.not_checked); // never cache a miss
-      return r;
-    });
+    g = await module.exports.goplusReport(chain, token);
   } catch (err) { return { chain, token, not_checked: err.message }; }
   const out = [];
   const add = (cond, level, text) => { if (cond) out.push({ level, text, source: 'GoPlus' }); };
@@ -219,4 +223,4 @@ async function flags({ chain, token }) {
   };
 }
 
-module.exports = { dapps, categories, chainList, tokens, flags, parseDapps, parseTokens, parseFlags, dappSignals, poolSignals, DiscoverRefused, CHAIN_NAMES };
+module.exports = { dapps, categories, chainList, tokens, flags, goplusReport, parseDapps, parseTokens, parseFlags, dappSignals, poolSignals, DiscoverRefused, CHAIN_NAMES };

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap wide">
+      <span class="eyebrow"><a href="/launches">Launches</a> · Token</span>
+      <h1 id="tp-title">A token</h1>
+      <p id="tp-sub" class="tp-sub"></p>
+      <p class="notice" role="note">Most new tokens go to zero, and many are scams. Everything here is information with its source, not a recommendation or financial advice.</p>
+      <nav class="jump" aria-label="On this page"><a href="#price-card">Price</a><a href="#trades-card">Live trades</a><a href="#holders-card">Holders</a><a href="#signs-card">Warning signs</a></nav>
+    </div>
+  </section>
+
+  <main class="tool wide">
+    <section class="card" id="find-card" hidden>
+      <h2>Open a token</h2>
+      <form class="row" id="tp-form" autocomplete="off">
+        <label class="inline">Network <select id="tp-chain"><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="arbitrum">Arbitrum</option><option value="bsc">BNB Chain</option></select></label>
+        <label class="inline wide-input">Token address <input id="tp-token" placeholder="0x…" spellcheck="false"></label>
+        <button class="btn primary" type="submit">Open</button>
+      </form>
+    </section>
+    <p id="tp-msg" class="msg"></p>
+
+    <div id="tp-body" hidden>
+      <section class="card" id="price-card">
+        <div class="tiles" id="tp-tiles"></div>
+        <div class="chart">
+          <div class="chart-head">
+            <h3>Price in US dollars</h3>
+            <div class="row filters seg" role="group" aria-label="Candle size">
+              <button type="button" data-size="1m">1 min</button><button type="button" data-size="5m">5 min</button><button type="button" data-size="1h" aria-pressed="true">1 hour</button><button type="button" data-size="1d">1 day</button>
+            </div>
+          </div>
+          <div class="plot candles" id="tp-plot" tabindex="0" role="img" aria-label="The token's price in candles"></div>
+          <div class="axis-x small muted"><span id="tp-from"></span><span id="tp-range"></span><span id="tp-to"></span></div>
+          <p id="tp-chart-msg" class="msg"></p>
+          <p id="tp-chart-src" class="source"></p>
+        </div>
+      </section>
+
+      <section class="card" id="act-card">
+        <h2>Buy or sell, checked first</h2>
+        <p class="small muted">A buy runs RektBull's full token check (and, for a token under a week old, the bundle check) on the Trade desk, then your wallet signs. RektBull's fee is 1%.</p>
+        <div class="row" id="tp-buys"></div>
+        <div class="row" id="tp-more"></div>
+      </section>
+
+      <section class="card" id="pad-card" hidden>
+        <h2>Launchpad</h2>
+        <div id="tp-pad"></div>
+      </section>
+
+      <section class="card" id="trades-card">
+        <div class="chart-head"><h2>Live trades</h2><span class="small muted" id="tp-trades-live"></span></div>
+        <p id="tp-trades-msg" class="msg"></p>
+        <div class="tablewrap"><table class="rank compact" id="tp-trades"><thead><tr><th>When</th><th>Side</th><th class="num">Tokens</th><th class="num">US dollars</th><th class="num">Price</th><th>Wallet</th></tr></thead><tbody></tbody></table></div>
+        <p id="tp-trades-src" class="source"></p>
+      </section>
+
+      <section class="card" id="holders-card">
+        <h2>Holders</h2>
+        <p id="tp-creator"></p>
+        <p id="tp-holders-sum" class="small muted"></p>
+        <div class="tablewrap"><table class="rank compact" id="tp-holders"><thead><tr><th>Holder</th><th>What it is</th><th class="num">Share of supply</th></tr></thead><tbody></tbody></table></div>
+        <p id="tp-holders-src" class="source"></p>
+      </section>
+
+      <section class="card" id="signs-card">
+        <h2>Warning signs</h2>
+        <ul class="signals" id="tp-flags"></ul>
+        <h3>The project's links</h3>
+        <ul class="links" id="tp-links"></ul>
+        <p id="tp-links-src" class="source"></p>
+      </section>
+      <p id="tp-note" class="source"></p>
+    </div>
+  </main>
+  <!--#footer:Market data from DexScreener, trades and price history from GeckoTerminal, holders and flags from GoPlus, creator holdings and curves read from the chain, each with its source. Most new tokens go to zero. Not financial advice.-->
+  <script src="/common.js"></script>
+  <script src="/token.js"></script>
+</body>
+</html>

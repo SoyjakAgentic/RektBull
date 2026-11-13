@@ -206,9 +206,13 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
     });
     it('at most one deposit or move per interval; a deposit soon after a withdrawal through the router pays no fee', async function () {
       const fees = await usdcToken.balanceOf(feeWallet);
-      await (await call('deposit', [high, usdc(10)])).wait(); // 100 USDC was withdrawn through the router above
+      // Into the venue paying best now: the setup's own deposits lower that venue's rate, and on a day
+      // two venues pay within a few hundredths of a point, that can put another one ahead of it.
+      const rates = await Promise.all([AAVE, COMP, SPK].map(i => router.rateOf(i)));
+      const best = [AAVE, COMP, SPK].reduce((a, b) => (rates[b] > rates[a] ? b : a));
+      await (await call('deposit', [best, usdc(10)])).wait(); // 100 USDC was withdrawn through the router above
       assert.equal(await usdcToken.balanceOf(feeWallet), fees, 'withdrawing and depositing can\'t churn fees');
-      await fails(call('deposit', [high, usdc(10)]), /TooSoon/);
+      await fails(call('deposit', [best, usdc(10)]), /TooSoon/);
     });
     it('cannot park the user\'s money in a venue paying clearly less than the best (a withdraw, then a deposit)', async function () {
       await advance(DAY + 1);
