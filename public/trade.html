@@ -49,8 +49,10 @@
           <input id="fraction" type="number" min="1" max="100" step="1" value="100">
         </label>
       </div>
-      <button id="check" class="primary">Check this trade</button>
+      <p class="muted small">RektBull checks the trade as soon as you pick a token, so a click goes straight to your wallet. Every check runs again on a fresh price when you click.</p>
+      <div id="presets" class="row presets" aria-label="One-click amounts"></div>
       <div id="plan" class="plan" hidden></div>
+      <div class="row"><button id="go" class="primary" disabled>Buy</button></div>
       <p id="trade-msg" class="msg"></p>
     </section>
 
@@ -71,6 +73,8 @@
         <label>Automatic exits: sell if down (%)<input id="s-stop" type="number" min="1" max="95"></label>
         <label>Automatic exits: sell if up (%)<input id="s-tp" type="number" min="1" max="10000"></label>
         <label>Automatic exits<select id="s-auto"><option value="true">On</option><option value="false">Off</option></select></label>
+        <label>Buy buttons (USD, up to 4, comma-separated)<input id="s-buys" inputmode="decimal" placeholder="25, 50, 100"></label>
+        <label>Sell buttons (% of your holding, up to 4)<input id="s-sells" inputmode="decimal" placeholder="25, 50, 100"></label>
       </div>
       <button id="s-save">Save settings</button>
       <p id="settings-msg" class="msg"></p>

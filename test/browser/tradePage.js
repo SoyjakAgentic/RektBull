@@ -79,48 +79,73 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     console.log('✔ connect and sign in with the wallet');
 
     assert.equal(await page.isVisible('#fraction-wrap'), false, 'the sell share is hidden on a buy');
-    await page.fill('#token', TOKEN);
+    assert.deepEqual(await page.$$eval('#presets button', b => b.map(x => x.textContent)), ['Buy $25', 'Buy $50', 'Buy $100']);
+    const sentNow = async n => { for (let i = 0; i < 100 && sent.length < n; i++) await page.waitForTimeout(100); assert.equal(sent.length, n); };
     await page.fill('#amount', '100');
-    await page.getByRole('button', { name: 'Check this trade' }).click();
+    await page.fill('#token', TOKEN);
+    // The checks run as soon as the token is in; high risks must be read and confirmed before anything can be bought.
     await page.getByText('high risk').first().waitFor();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Tick the box').waitFor();
+    assert.equal(await page.isDisabled('#go'), true, 'nothing to click until the risks are confirmed');
     await page.check('#ack');
-    await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByText('RektBull fee:').waitFor();
     assert.match(await page.textContent('#plan'), /Buy \$100\.00 of 0x7a7a/);
-    console.log('✔ check a trade: high risks must be acknowledged; the plan shows the checks and the 1% fee');
+    assert.match(await page.textContent('#plan-age'), /Checked \d+ s ago/);
+    assert.equal(await page.textContent('#go'), 'Buy $100');
+    assert.equal(sent.length, 0, 'nothing is sent before the click');
+    console.log('✔ preview: the checks run as soon as the token is in; high risks must be confirmed; the plan shows the checks and the 1% fee');
 
-    await page.getByRole('button', { name: 'Approve and sign in my wallet' }).click();
-    await page.getByText('RektBull will confirm it onchain').waitFor();
-    assert.equal(sent.length, 2, 'approve, then swap');
+    await page.click('#go');
+    await sentNow(2);
+    await page.locator('#trade-msg', { hasText: 'RektBull will confirm it onchain' }).waitFor();
     assert.equal(sent[0].to.toLowerCase(), '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913');
     assert.equal(sent[1].to.toLowerCase(), AH);
     assert.equal(sent[1].data, '0xdeadbeef');
     await page.getByText('submitted').first().waitFor();
-    console.log('✔ approve: the wallet is asked for the approval (USDC to AllowanceHolder) and the swap; the trade shows as submitted');
+    const { rows: [first] } = await db.query('SELECT plan FROM trade_proposals ORDER BY created_at DESC LIMIT 1');
+    assert.equal(first.plan.one_click, true);
+    assert.equal(first.plan.timing.previewed, true);
+    assert.ok(first.plan.timing.click_to_prompt_ms >= 0 && first.plan.timing.click_to_prompt_ms < 10000, JSON.stringify(first.plan.timing));
+    console.log(`✔ one click: straight to the wallet (approval of USDC to AllowanceHolder, then the swap) in ${first.plan.timing.click_to_prompt_ms} ms; the trade shows as submitted`);
 
     // BNB Chain: its own base assets; a wallet that doesn't have the chain is asked to add it.
     await page.selectOption('#chain', 'bsc');
     assert.deepEqual(await page.$$eval('#base option', o => o.map(x => x.textContent)), ['USDT', 'USDC', 'BNB', 'WBNB']);
     assert.equal(await page.inputValue('#base'), 'USDC', 'the asset picked on Base is kept where BNB Chain has it too');
     await page.selectOption('#base', 'USDT');
-    await page.getByRole('button', { name: 'Check this trade' }).click();
-    await page.getByText('high risk').first().waitFor();
-    await page.check('#ack');
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('RektBull fee:').waitFor();
-    assert.match(await page.textContent('#plan'), /Buy \$100\.00 of 0x7a7a.* with USDT on BNB Chain/);
-    await page.getByRole('button', { name: 'Approve and sign in my wallet' }).click();
-    await page.waitForFunction(n => document.body.innerText.split('RektBull will confirm it onchain').length > n, 1);
+    await page.locator('#plan', { hasText: /Buy \$100\.00 of 0x7a7a.* with USDT on BNB Chain/ }).waitFor();
+    await page.click('#go');
+    await sentNow(4);
     const added = await page.evaluate(() => window.__added);
     assert.deepEqual(added.map(a => [a.chainId, a.chainName, a.nativeCurrency.symbol]), [['0x38', 'BNB Smart Chain', 'BNB']]);
-    assert.equal(sent.length, 4, 'approve, then swap');
     assert.equal(sent[2].to.toLowerCase(), '0x55d398326f99059ff775485246999027b3197955', 'USDT on BNB Chain approved');
     assert.equal(sent[3].to.toLowerCase(), AH);
-    await page.selectOption('#chain', 'base');
-    sent.splice(2, 2); // the rest of this test counts from the first trade
+    await page.locator('#trade-msg', { hasText: 'RektBull will confirm it onchain' }).waitFor();
     console.log('✔ BNB Chain: USDT, USDC, BNB and WBNB; a wallet without the chain is asked to add it; approve then swap');
+
+    // A preset is one click too: the amount is set and the trade goes to the wallet on the preview just shown.
+    await page.locator('#presets button', { hasText: 'Buy $50' }).click();
+    await sentNow(6);
+    await page.locator('#trade-msg', { hasText: 'RektBull will confirm it onchain' }).waitFor();
+    assert.equal(await page.inputValue('#amount'), '50');
+    const { rows: [preset] } = await db.query('SELECT amount_usd, plan FROM trade_proposals ORDER BY created_at DESC LIMIT 1');
+    assert.equal(Number(preset.amount_usd), 50);
+    assert.equal(preset.plan.timing.previewed, true, 'traded on the preview shown, by its price');
+    console.log('✔ presets: "Buy $50" sends a checked $50 buy to the wallet in one click');
+
+    // The buttons are the user's own.
+    await page.fill('#s-buys', '10, 20');
+    await page.fill('#s-sells', '50, 100');
+    await page.getByRole('button', { name: 'Save settings' }).click();
+    await page.locator('#settings-msg', { hasText: 'Saved.' }).waitFor();
+    await page.locator('#presets button', { hasText: 'Buy $10' }).waitFor();
+    assert.deepEqual(await page.$$eval('#presets button', b => b.map(x => x.textContent)), ['Buy $10', 'Buy $20']);
+    await page.selectOption('#side', 'sell');
+    assert.deepEqual(await page.$$eval('#presets button', b => b.map(x => x.textContent)), ['Sell 50%', 'Sell 100%']);
+    await page.selectOption('#side', 'buy');
+    console.log('✔ settings: the one-click buttons are the user\'s own');
+
+    await page.selectOption('#chain', 'base');
+    sent.splice(2, 4); // the rest of this test counts from the first trade
 
     await page.fill('#l-day', '25000');
     assert.equal(await page.isVisible('#confirm-wrap'), true, 'above the defaults asks for confirmation');

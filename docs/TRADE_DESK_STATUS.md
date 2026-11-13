@@ -16,6 +16,7 @@ automatic trading opens once the Trade Router is deployed on Base
 | 3 | Safe (RektBull Safe Module) and Coinbase Smart Wallet (spend permission to the router) | `contracts/contracts/RektBullSafeModule.sol`, `src/trade/permissions.js` |
 | — | Audit brief and real-wallet checklist | [AUDIT_BRIEF.md](AUDIT_BRIEF.md), [REAL_WALLET_TESTING.md](REAL_WALLET_TESTING.md) |
 | — | Sign-in for Coinbase wallets not deployed yet (EIP-6492) | PR #8, `src/auth/erc6492.js` |
+| Stage 1a | One click (catching up with Axiom, stage 1): the checks run as soon as a token is picked (`POST /v1/trading/preview`, stores nothing); a click within 30 s sends the checked trade to the wallet in one step (`POST /v1/trading/trades`), every check run again on a fresh price, refused if the price is now past the preview's worst case; the token check, bundle check, firm quote and sale back run at the same time; buy and sell buttons each user sets; each trade records how long the click took to reach the wallet (`plan.timing`). Migration 023 | `src/trade/proposals.js`, `src/trade/rules.js`, `public/trade.js` |
 
 Tests: 53 contract tests (fork of Base Sepolia, real MetaMask, Safe and
 Coinbase contracts), the end-to-end test of all three wallets

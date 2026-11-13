@@ -15,6 +15,11 @@
  *      max_round_trip_loss_pct (a token that can't be sold back is a honeypot).
  * A sell skips 3, 4 and 6: it is how a user gets out.
  *
+ * Checks 3 and 5 (and the bundle check) run at the same time; their results
+ * are still weighed in this order, so the first failing check is the one
+ * named. Given `seen` (a preview of the same trade, see proposals.preview),
+ * check 6 runs alongside them too, on what the preview said the buy would get.
+ *
  * The fee (1%, FEE_BPS) is taken by 0x inside the swap, in the base asset.
  */
 const { ethers } = require('ethers');
@@ -29,7 +34,21 @@ const dd = require('../services/dueDiligence');
 const { TradeBlocked } = zeroex;
 const MAX_FEE_BPS = 100;
 
-const DEFAULT_SETTINGS = { max_trade_usd: 500, max_tax_bps: 1000, max_round_trip_loss_pct: 30, slippage_bps: 100, stop_loss_pct: 20, take_profit_pct: 50, auto_exit: true };
+const DEFAULT_SETTINGS = {
+  max_trade_usd: 500, max_tax_bps: 1000, max_round_trip_loss_pct: 30, slippage_bps: 100, stop_loss_pct: 20, take_profit_pct: 50, auto_exit: true,
+  // The one-click buttons: dollar amounts to buy, shares of the holding to sell.
+  buy_presets_usd: [25, 50, 100], sell_presets_pct: [25, 50, 100],
+};
+const PRESETS = 4; // the most buttons of each kind
+const ARRAYS = ['buy_presets_usd', 'sell_presets_pct'];
+
+/** A list of preset buttons, sorted and without repeats, or an error naming what's wrong. */
+function presets(name, list, max) {
+  if (!Array.isArray(list) || !list.length || list.length > PRESETS) throw Object.assign(new Error(`${name} must list 1 to ${PRESETS} amounts`), { status: 400 });
+  const out = [...new Set(list.map(Number))].sort((a, b) => a - b);
+  if (!out.every(x => Number.isFinite(x) && x > 0 && x <= max)) throw Object.assign(new Error(`each of ${name} must be above 0 and at most ${max}`), { status: 400 });
+  return out.map(x => Math.round(x * 100) / 100);
+}
 
 async function settingsFor(accountId) {
   const { rows } = await db.query('SELECT * FROM trade_settings WHERE account_id = $1', [accountId]);
@@ -38,12 +57,16 @@ async function settingsFor(accountId) {
   return {
     max_trade_usd: Number(r.max_trade_usd), max_tax_bps: r.max_tax_bps, max_round_trip_loss_pct: Number(r.max_round_trip_loss_pct), slippage_bps: r.slippage_bps,
     stop_loss_pct: Number(r.stop_loss_pct ?? 20), take_profit_pct: Number(r.take_profit_pct ?? 50), auto_exit: r.auto_exit ?? true,
+    buy_presets_usd: (r.buy_presets_usd || DEFAULT_SETTINGS.buy_presets_usd).map(Number),
+    sell_presets_pct: (r.sell_presets_pct || DEFAULT_SETTINGS.sell_presets_pct).map(Number),
   };
 }
 
 async function saveSettings(accountId, s) {
   const cur = await settingsFor(accountId);
-  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS).filter(k => k !== 'auto_exit')), ...(s?.auto_exit !== undefined ? { auto_exit: !!s.auto_exit } : {}) };
+  const next = { ...cur, ...pick(s, Object.keys(DEFAULT_SETTINGS).filter(k => k !== 'auto_exit' && !ARRAYS.includes(k))), ...(s?.auto_exit !== undefined ? { auto_exit: !!s.auto_exit } : {}) };
+  if (s?.buy_presets_usd !== undefined) next.buy_presets_usd = presets('buy_presets_usd', s.buy_presets_usd, 1000000);
+  if (s?.sell_presets_pct !== undefined) next.sell_presets_pct = presets('sell_presets_pct', s.sell_presets_pct, 100);
   if (!(next.stop_loss_pct >= 1 && next.stop_loss_pct <= 95)) throw Object.assign(new Error('stop_loss_pct must be 1 to 95'), { status: 400 });
   if (!(next.take_profit_pct >= 1 && next.take_profit_pct <= 10000)) throw Object.assign(new Error('take_profit_pct must be 1 to 10000'), { status: 400 });
   if (!(next.max_trade_usd > 0)) throw Object.assign(new Error('max_trade_usd must be above 0'), { status: 400 });
@@ -51,11 +74,11 @@ async function saveSettings(accountId, s) {
   if (!(next.max_round_trip_loss_pct > 0 && next.max_round_trip_loss_pct <= 100)) throw Object.assign(new Error('max_round_trip_loss_pct must be above 0 and at most 100'), { status: 400 });
   if (!(next.slippage_bps >= 10 && next.slippage_bps <= 1000)) throw Object.assign(new Error('slippage_bps must be 10 to 1000'), { status: 400 });
   await db.query(
-    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps, stop_loss_pct, take_profit_pct, auto_exit)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO trade_settings (account_id, max_trade_usd, max_tax_bps, max_round_trip_loss_pct, slippage_bps, stop_loss_pct, take_profit_pct, auto_exit, buy_presets_usd, sell_presets_pct)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (account_id) DO UPDATE SET max_trade_usd = $2, max_tax_bps = $3, max_round_trip_loss_pct = $4, slippage_bps = $5,
-       stop_loss_pct = $6, take_profit_pct = $7, auto_exit = $8, updated_at = now()`,
-    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps, next.stop_loss_pct, next.take_profit_pct, next.auto_exit],
+       stop_loss_pct = $6, take_profit_pct = $7, auto_exit = $8, buy_presets_usd = $9, sell_presets_pct = $10, updated_at = now()`,
+    [accountId, next.max_trade_usd, next.max_tax_bps, next.max_round_trip_loss_pct, next.slippage_bps, next.stop_loss_pct, next.take_profit_pct, next.auto_exit, next.buy_presets_usd, next.sell_presets_pct],
   );
   return next;
 }
@@ -80,7 +103,7 @@ async function tokenBalance(chainName, wallet, token) {
  * Runs every check and gets a firm quote for `wallet`. Returns the plan, or
  * throws TradeBlocked saying which check failed.
  */
-async function prepare({ accountId, wallet, chain: chainName, side, token, base: baseSymbol, amountUsd, sellFraction, acknowledgeRisks = false }) {
+async function prepare({ accountId, wallet, chain: chainName, side, token, base: baseSymbol, amountUsd, sellFraction, acknowledgeRisks = false, seen = null }) {
   if (!env.tradingEnabled) throw new TradeBlocked('Trading is switched off (TRADING_ENABLED).');
   const chain = tradeChain(chainName);
   if (!['buy', 'sell'].includes(side)) throw new TradeBlocked('side must be "buy" or "sell".');
@@ -117,11 +140,25 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
     if (usd > settings.max_trade_usd) throw new TradeBlocked(`$${usd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
     checks.push({ check: 'per_trade_amount', ok: true, detail: `$${usd} of your $${settings.max_trade_usd} per trade` });
 
-    const risk = await dd.quickCheck({ chain: chainName, token });
+    const sellAmount = base.usd ? ethers.parseUnits(usd.toFixed(base.decimals), base.decimals) : usdToUnits(usd, price, base.decimals);
+    // What a sale straight back would return, or null when there's no route back.
+    const sellBack = amount => zeroex.quote({ chainId: chain.chainId, sellToken: token, buyToken: base.address, sellAmount: amount, slippageBps: settings.slippage_bps, fee, indicative: true })
+      .then(r => r.buyAmount, err => { if (err.isTradeBlocked) return null; throw err; });
+    // A preview of this same buy said what it gets: the sale back can be priced now, alongside the rest.
+    const early = seen && seen.base === baseKey && seen.sell_amount === sellAmount.toString() && /^\d+$/.test(String(seen.buy_amount || '')) && BigInt(seen.buy_amount) > 0n ? BigInt(seen.buy_amount) : null;
+    const [riskR, launchR, quoteR, backR] = await Promise.allSettled([
+      dd.quickCheck({ chain: chainName, token }),
+      // A token under a week old also gets the bundle and insider check (services/launches.js).
+      require('../services/launches').forTrade({ chain: chainName, token }),
+      zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: token, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee }),
+      early === null ? Promise.resolve(undefined) : sellBack(early),
+    ]);
+    const take = r => { if (r.status === 'rejected') throw r.reason; return r.value; };
+
+    const risk = take(riskR);
     if (risk.incomplete) throw new TradeBlocked(`RektBull couldn't check whether this token can be sold (${risk.incomplete}) Not buying.`);
     if (risk.verdict === 'critical') throw new TradeBlocked(`RektBull's token check found a critical risk: ${risk.flags.find(f => f.severity === 'critical')?.title}. Not buying.`);
-    // A token under a week old also gets the bundle and insider check (services/launches.js).
-    const launch = await require('../services/launches').forTrade({ chain: chainName, token });
+    const launch = take(launchR);
     if (launch.risk === 'block') {
       throw new TradeBlocked(`RektBull's bundle check found a critical risk: ${launch.flags.find(f => f.severity === 'critical').title}. Not buying.`);
     }
@@ -139,16 +176,18 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
     checks.push({ check: 'token_risk', ok: true, detail: `verdict ${risk.verdict}`, flags: risk.flags, acknowledged: high.length ? high.map(f => f.id) : [] });
     if (launch.young) checks.push({ check: 'bundle', ok: launch.risk !== 'block', detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
 
-    const sellAmount = base.usd ? ethers.parseUnits(usd.toFixed(base.decimals), base.decimals) : usdToUnits(usd, price, base.decimals);
-    const q = await zeroex.quote({ chainId: chain.chainId, sellToken: base.address, buyToken: token, sellAmount, taker: wallet, slippageBps: settings.slippage_bps, fee });
+    const q = take(quoteR);
     if (q.taxBps > settings.max_tax_bps) throw new TradeBlocked(`This token charges a ${q.taxBps / 100}% tax, above your ${settings.max_tax_bps / 100}% limit.`);
     checks.push({ check: 'tax', ok: true, detail: `${q.taxBps / 100}% (limit ${settings.max_tax_bps / 100}%)` });
 
-    let back = null;
-    try {
-      back = (await zeroex.quote({ chainId: chain.chainId, sellToken: token, buyToken: base.address, sellAmount: q.buyAmount, slippageBps: settings.slippage_bps, fee, indicative: true })).buyAmount;
-    } catch (err) {
-      if (!err.isTradeBlocked) throw err;
+    let back;
+    if (early === null) back = await sellBack(q.buyAmount);
+    else {
+      // Priced on the preview's amount. Getting fewer tokens now, the sale back is scaled down with them
+      // (a sale's price per token only improves as it gets smaller, so this never flatters the result);
+      // getting more, the smaller sale's return stands, which understates it.
+      const b = take(backR);
+      back = b === null ? null : (q.buyAmount >= early ? b : b * q.buyAmount / early);
     }
     if (back === null) throw new TradeBlocked('There is no route to sell this token back: it may be a honeypot. Not buying.');
     const lossPct = Number((q.sellAmount - back) * 10000n / q.sellAmount) / 100;
