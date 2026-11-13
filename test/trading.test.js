@@ -273,8 +273,8 @@ test('trading', async t => {
     const [, , approveCurve, curveBuy] = buy.calls.calls;
     assert.equal(approveCurve.to, VIRTUAL);
     const [spender, allowance] = ERC20.decodeFunctionData('approve', approveCurve.data);
-    assert.deepEqual([spender.toLowerCase(), allowance], [lp.ADDR.frouter, 49n * 10n ** 18n], 'VIRTUAL approved to Virtuals\' FRouter, for exactly what the curve buy spends');
-    assert.equal(curveBuy.to, lp.ADDR.bonding);
+    assert.deepEqual([spender.toLowerCase(), allowance], [lp.ADDR.frouterV3, 49n * 10n ** 18n], 'VIRTUAL approved to Virtuals\' FRouterV3, for exactly what the curve buy spends');
+    assert.equal(curveBuy.to, lp.ADDR.bondingV5, 'bought on Virtuals\' current curve, BondingV5');
     const b = lp.BONDING.decodeFunctionData('buy', curveBuy.data);
     assert.equal(b[0], 49n * 10n ** 18n, 'it spends the least the 0x swap delivers');
     assert.equal(b[1].toLowerCase(), CURVE);
@@ -285,7 +285,7 @@ test('trading', async t => {
     assert.deepEqual(out.calls.calls.map(c => c.step), ['approve', 'swap', 'approve', 'from_virtual']);
     const [approveToken, curveSell, approveVirtual] = out.calls.calls;
     assert.equal(approveToken.to, CURVE);
-    assert.equal(ERC20.decodeFunctionData('approve', approveToken.data)[0].toLowerCase(), lp.ADDR.frouter, 'the token is approved to Virtuals\' FRouter only');
+    assert.equal(ERC20.decodeFunctionData('approve', approveToken.data)[0].toLowerCase(), lp.ADDR.frouterV3, 'the token is approved to Virtuals\' FRouterV3 only');
     const sl = lp.BONDING.decodeFunctionData('sell', curveSell.data);
     assert.equal(sl[0], 2000n * 10n ** 18n);
     assert.equal(sl[2], 2000n * 10n ** 18n * 98n / 100n / 1000n * 99n / 100n, 'the VIRTUAL minimum, after your 1% slippage');
@@ -293,11 +293,43 @@ test('trading', async t => {
     assert.deepEqual([ERC20.decodeFunctionData('approve', approveVirtual.data)[0].toLowerCase(), ERC20.decodeFunctionData('approve', approveVirtual.data)[1]], [AH, sl[2]], 'only the VIRTUAL minimum, to 0x\'s AllowanceHolder');
     assert.equal(seen.at(-1).params.swapFeeBps, 100, 'the 1% fee is inside the 0x swap out of VIRTUAL');
 
+    // ── Virtuals' current curve, BondingV5: its anti-sniper tax, "Project 60 days" launches, a token not open yet ──
+    const v5 = { ...pad, version: 5, bonding: lp.ADDR.bondingV5, frouter: lp.ADDR.frouterV3 };
+    const endsAt = new Date(Date.now() + 7 * 60000 + 5000).toISOString();
+    pad = { ...v5, curve: { ...v5.curve, buy_tax_pct: 1 + 62, sell_tax_pct: 1, normal_buy_tax_pct: 1, normal_sell_tax_pct: 1, anti_sniper: { buy_pct: 62, sell_pct: 0, ends_at: endsAt, source: 'test' } } };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /anti-sniper tax is running on this new token: 63% to buy and 1% to sell now, falling to 0 in about 8 minutes\. That's above your 10% limit/);
+    const sellDuring = await proposals.propose(account, { chain: 'base', side: 'sell', token: CURVE, sell_fraction: 1 });
+    assert.match(sellDuring.plan.checks[0].detail, /anti-sniper tax of 62% to buy and 0% to sell/, 'a sale goes ahead, saying what it pays');
+    pad = { ...v5, project_60_days: true };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), e => e.needsAcknowledgement && e.risks[0].id === 'virtuals_project_60_days' && /can withdraw all the money and tokens from its curve/.test(e.message));
+    const confirmed = await proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100, acknowledge_risks: true });
+    assert.ok(confirmed.plan.checks.some(c => c.check === 'drain_risk'));
+    pad = { ...v5, state: 'prelaunch' };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /hasn't opened for trading yet/);
+
+    // ── Virtuals' old curve: only sold on, through its own pair ──
+    pad = { ...pad, state: 'curve', legacy: true, bonding: lp.ADDR.bonding, frouter: lp.ADDR.frouter, version: undefined };
+    await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /old bonding curve.*RektBull only sells on it/);
+    const oldSale = await proposals.approve(account, (await proposals.propose(account, { chain: 'base', side: 'sell', token: CURVE, sell_fraction: 1 })).id);
+    assert.equal(oldSale.calls.calls[1].to, lp.ADDR.bonding, 'sold on the old Bonding');
+    assert.equal(ERC20.decodeFunctionData('approve', oldSale.calls.calls[0].data)[0].toLowerCase(), lp.ADDR.frouter, 'approved to the old FRouter, its own pair');
+
+    // A Virtuals token that graduated as its own agent token trades through 0x like any token.
+    pad = { ...v5, state: 'graduated', agent_token: CURVE, curve: undefined };
+    zeroex.setTransport(async (path, params) => ({ liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: params.sellToken.toLowerCase() === USDC ? '1000000' : String(BigInt(params.sellAmount) * 97n), minBuyAmount: '990000', tokenMetadata: { buyToken: { buyTaxBps: '0', sellTaxBps: '0' } }, transaction: { to: AH, data: '0xdeadbeef', value: '0' } }));
+    const riskBefore = risk;
+    risk = { verdict: 'low', flags: [], disagreements: [] }; // it gets the full token check, like any token
+    const single = await proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 });
+    risk = riskBefore;
+    assert.match(single.plan.checks[0].detail, /graduated from its bonding curve: it trades on Uniswap now, through 0x/);
+
     // A graduated token is refused, naming the token that replaced it; a tampered route is never used.
-    pad = { ...pad, state: 'graduated', agent_token: '0x' + 'a9'.repeat(20) };
+    pad = { ...v5, state: 'graduated', agent_token: '0x' + 'a9'.repeat(20) };
     await assert.rejects(proposals.propose(account, { chain: 'base', side: 'buy', token: CURVE, amount_usd: 100 }), /graduated.*0xa9a9/);
     const { walletCalls: wc } = require('../src/trade/calls');
     assert.throws(() => wc({ chain: 'base', side: 'buy', token: CURVE, route: { kind: 'virtuals_curve', bonding: '0x' + 'ee'.repeat(20), frouter: lp.ADDR.frouter, virtual: VIRTUAL } }), /doesn't use/);
+    assert.throws(() => wc({ chain: 'base', side: 'sell', token: CURVE, route: { kind: 'virtuals_curve', bonding: lp.ADDR.bondingV5, frouter: lp.ADDR.frouter, virtual: VIRTUAL } }), /doesn't use/, 'a contract with another\'s router');
+    assert.throws(() => wc({ chain: 'base', side: 'buy', token: CURVE, route: { kind: 'virtuals_curve', bonding: lp.ADDR.bonding, frouter: lp.ADDR.frouter, virtual: VIRTUAL } }), /only sells on Virtuals' old bonding curve/);
 
     // ── A four.meme token on its bonding curve (BNB Chain): USDT through 0x into BNB, then the curve ──
     const NATIVE = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';

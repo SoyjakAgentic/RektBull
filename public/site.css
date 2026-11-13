@@ -575,3 +575,4 @@ ul.links .bad { color: var(--bad); } .small.warn { color: var(--warn); }
 .protect-net { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .protect-net ul { margin: 4px 0 8px; padding-left: 1.1em; }
 .small.ok { color: var(--ok); }
+#tp-pad .bad { color: var(--bad); }

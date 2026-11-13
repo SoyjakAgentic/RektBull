@@ -37,7 +37,9 @@ function zeroexCalls(plan, ah, sellToken, { step, alwaysApprove = false } = {}) 
 function curveCalls(plan, chain) {
   const lp = require('../services/launchpads');
   const r = plan.route;
-  if (r.bonding !== lp.ADDR.bonding || r.frouter !== lp.ADDR.frouter || r.virtual !== lp.VIRTUAL) throw new TradeBlocked('The curve route names a contract RektBull doesn\'t use: not using it.');
+  // Only Virtuals' own pairs: BondingV5 with FRouterV3, or the old Bonding with its FRouter (sales only).
+  if (!lp.VIRTUALS_PAIRS.some(([b, f]) => r.bonding === b && r.frouter === f) || r.virtual !== lp.VIRTUAL) throw new TradeBlocked('The curve route names a contract RektBull doesn\'t use: not using it.');
+  if (plan.side === 'buy' && r.bonding === lp.ADDR.bonding) throw new TradeBlocked('RektBull only sells on Virtuals\' old bonding curve: not buying on it.');
   const ah = chain.allowanceHolder;
   const calls = [];
   if (plan.side === 'buy') {

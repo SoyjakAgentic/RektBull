@@ -5,7 +5,8 @@
  *
  *   new                 tokens launched in the last hour: Clanker's TokenCreated,
  *                       Zora's CoinCreatedV4 / CreatorCoinCreated / CoinCreated and
- *                       Virtuals' Launched on Base; four.meme's TokenCreate on BNB Chain;
+ *                       Virtuals' Launched (its current BondingV5) on Base; four.meme's
+ *                       TokenCreate on BNB Chain;
  *   close to graduating curve tokens bought in the last hour, nearest to graduating:
  *                       four.meme's TokenPurchase (how much each curve has raised),
  *                       confirmed with four.meme's helper; on Base, Virtuals' curves;
@@ -45,7 +46,11 @@ const ZORA = new ethers.Interface([
   'event CreatorCoinCreated(address indexed caller, address indexed payoutRecipient, address indexed platformReferrer, address currency, string uri, string name, string symbol, address coin, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes32 poolKeyHash, string version)',
   'event CoinCreated(address indexed caller, address indexed payoutRecipient, address indexed platformReferrer, address currency, string uri, string name, string symbol, address coin, address pool, string version)',
 ]);
-const VIRTUALS = new ethers.Interface(['event Launched(address indexed token, address indexed pair, uint256)', 'event Graduated(address indexed token, address agentToken)']);
+// Virtuals' current launchpad, BondingV5 (verified on Sourcify); its old Bonding contract has had no launches since.
+const VIRTUALS = new ethers.Interface([
+  'event Launched(address indexed token, address indexed pair, uint256 virtualId, uint256 initialPurchase, uint256 initialPurchasedAmount, (uint8 launchMode, uint16 airdropBips, bool needAcf, uint8 antiSniperTaxType, bool isProject60days) launchParams)',
+  'event Graduated(address indexed token, address agentToken)',
+]);
 const FOURMEME = new ethers.Interface([
   'event TokenCreate(address creator, address token, uint256 requestId, string name, string symbol, uint256 totalSupply, uint256 launchTime, uint256 launchFee)',
   'event TokenPurchase(address token, address account, uint256 price, uint256 amount, uint256 cost, uint256 fee, uint256 offers, uint256 funds)',
@@ -57,7 +62,7 @@ const PADS = {
   base: [
     { id: 'clanker', name: 'Clanker', address: launchpads.ADDR.clanker, iface: CLANKER, events: { TokenCreated: 'new' } },
     { id: 'zora', name: 'Zora', address: launchpads.ADDR.zora, iface: ZORA, events: { CoinCreatedV4: 'new', CreatorCoinCreated: 'new', CoinCreated: 'new' } },
-    { id: 'virtuals', name: 'Virtuals', address: launchpads.ADDR.bonding, iface: VIRTUALS, events: { Launched: 'new', Graduated: 'graduated' } },
+    { id: 'virtuals', name: 'Virtuals', address: launchpads.ADDR.bondingV5, iface: VIRTUALS, events: { Launched: 'new', Graduated: 'graduated' } },
   ],
   bsc: [
     { id: 'fourmeme', name: 'four.meme', address: launchpads.FOURMEME.tokenManager, iface: FOURMEME, events: { TokenCreate: 'new', TokenPurchase: 'buy', LiquidityAdded: 'graduated' } },
@@ -113,7 +118,7 @@ function decode(chain, log, at) {
   switch (parsed.name) {
     case 'TokenCreated': return { kind: 'new', ...base, token: lower(a.tokenAddress), name: a.tokenName, symbol: a.tokenSymbol, creator: lower(a.tokenAdmin) };
     case 'CoinCreatedV4': case 'CreatorCoinCreated': case 'CoinCreated': return { kind: 'new', ...base, token: lower(a.coin), name: a.name, symbol: a.symbol, creator: lower(a.caller) };
-    case 'Launched': return { kind: 'new', ...base, token: lower(a.token), name: null, symbol: null, creator: null };
+    case 'Launched': return { kind: 'new', ...base, token: lower(a.token), name: null, symbol: null, creator: null, ...(a.launchParams?.isProject60days ? { project_60_days: true } : {}) };
     case 'TokenCreate': return { kind: 'new', ...base, token: lower(a.token), name: a.name, symbol: a.symbol, creator: lower(a.creator) };
     case 'TokenPurchase': return { kind: 'buy', ...base, token: lower(a.token), funds: a.funds.toString(), offers: a.offers.toString() };
     case 'LiquidityAdded': return { kind: 'graduated', ...base, token: lower(a.base), quote: lower(a.quote), funds: a.funds.toString() };
@@ -190,7 +195,7 @@ async function graduating(chain, st) {
   return {
     items: list.map(t => ({ token: t.token, symbol: t.ticker, name: null, launchpad: 'virtuals', launchpad_name: 'Virtuals', progress_pct: t.curve.progress_pct, in_curve: t.curve.in_curve, symbol_in_curve: t.curve.in_curve_symbol, tradable: true }))
       .sort((a, b) => b.progress_pct - a.progress_pct).slice(0, SHOW.graduating),
-    source: 'Virtuals\' Bonding contract (the newest tokens still on its curve)',
+    source: 'Virtuals\' BondingV5 contract (the newest tokens still on its curve)',
   };
 }
 

@@ -9,7 +9,16 @@
  *   Zora coins    factory 0x777777751622c0d3258f214F9DF38E35BF45baF3 (ZoraFactory, a proxy to
  *                 ZoraFactoryImpl): getVersionForDeployedCoin(coin) is its coin version.
  *                 Coins trade on Uniswap v4 from launch, through 0x.
- *   Virtuals      Bonding 0xF66DeA7b3e897cD44A5a231c61B6B4423d613259 (a proxy to Bonding) and
+ *   Virtuals      Virtuals' current launchpad (their docs' contract-addresses page, checked 13 November
+ *                 2026): BondingV5 0x1A540088125d00dD3990f9dA45CA0859af4d3B01 (a proxy to
+ *                 contracts/launchpadv2/BondingV5.sol) and FRouterV3 0x02FE8eC3d9BBf7318eb54590bcC39198a8b47deD
+ *                 (a proxy to FRouterV3.sol), both verified on Sourcify. Buys and sells as before
+ *                 (Bonding.buy / sell, approving the router), with two additions read from the contracts:
+ *                 an anti-sniper tax of up to 99% that falls to 0 over 60 seconds, 10 or 98 minutes
+ *                 after launch (on buys, sells or both, set per token), and "Project 60 days" tokens,
+ *                 whose curve Virtuals' operators can drain (FRouterV3.drainPrivatePool). Each token
+ *                 graduates at its own tokenGradThreshold, not while its anti-sniper tax runs.
+ *   Virtuals (old) Bonding 0xF66DeA7b3e897cD44A5a231c61B6B4423d613259 (a proxy to Bonding) and
  *                 FRouter 0x8292B43aB73EfAC11FAF357419C38ACF448202C5 (a proxy to FRouter), priced
  *                 in VIRTUAL 0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b. A token starts on
  *                 Virtuals' bonding curve (Bonding.buy / sell, approving FRouter, 1% buy and
@@ -33,19 +42,27 @@
  */
 const { ethers } = require('ethers');
 const rpc = require('../providers/rpc');
-const { cached } = require('../lib/cache');
+const cache = require('../lib/cache');
+const { cached } = cache;
 
 const VIRTUAL = '0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b';
 const ADDR = {
   clanker: '0xe85a59c628f7d27878aceb4bf3b35733630083a9',
   zora: '0x777777751622c0d3258f214f9df38e35bf45baf3',
+  // Virtuals' old curve: no launches and no buys in the 30 days to 13 November 2026. Read only to sell
+  // tokens still on it (a sale is how a holder gets out); new launches are on BondingV5.
   bonding: '0xf66dea7b3e897cd44a5a231c61b6b4423d613259',
   frouter: '0x8292b43ab73efac11faf357419c38acf448202c5',
+  bondingV5: '0x1a540088125d00dd3990f9da45ca0859af4d3b01',
+  frouterV3: '0x02fe8ec3d9bbf7318eb54590bcc39198a8b47ded',
 };
+/** The bonding contract and its router, as pairs: a Virtuals route must name one of these. */
+const VIRTUALS_PAIRS = [[ADDR.bondingV5, ADDR.frouterV3], [ADDR.bonding, ADDR.frouter]];
 const SOURCE = {
   clanker: 'Clanker\'s factory onchain (deploymentInfoForToken)',
   zora: 'Zora\'s coin factory onchain (getVersionForDeployedCoin)',
-  virtuals: 'Virtuals\' Bonding contract onchain (tokenInfo)',
+  virtuals: 'Virtuals\' BondingV5 contract onchain (tokenInfo, tokenLaunchParams; taxes from its FRouterV3 and factory)',
+  virtualsOld: 'Virtuals\' old Bonding contract onchain (tokenInfo)',
   fourmeme: 'four.meme\'s TokenManagerHelper3 contract onchain (getTokenInfo)',
 };
 
@@ -59,6 +76,19 @@ const BONDING = new ethers.Interface([
   'function sell(uint256 amountIn, address tokenAddress, uint256 amountOutMin, uint256 deadline) returns (bool)',
 ]);
 const FROUTER = new ethers.Interface(['function getAmountsOut(address token, address assetToken_, uint256 amountIn) view returns (uint256)', 'function factory() view returns (address)']);
+const BONDING_V5 = new ethers.Interface([
+  'function tokenInfo(address) view returns (address creator, address token, address pair, address agentToken, (address token, string name, string _name, string ticker, uint256 supply, uint256 price, uint256 marketCap, uint256 liquidity, uint256 volume, uint256 volume24H, uint256 prevPrice, uint256 lastUpdated) data, string description, string image, string twitter, string telegram, string youtube, string website, bool trading, bool tradingOnUniswap, uint256 applicationId, uint256 initialPurchase, uint256 virtualId, bool launchExecuted)',
+  'function tokenInfos(uint256) view returns (address)',
+  'function tokenGradThreshold(address) view returns (uint256)',
+  'function tokenLaunchParams(address) view returns (uint8 launchMode, uint16 airdropBips, bool needAcf, uint8 antiSniperTaxType, bool isProject60days)',
+  'function factory() view returns (address)',
+  'function bondingConfig() view returns (address)',
+  'function buy(uint256 amountIn, address tokenAddress, uint256 amountOutMin, uint256 deadline) payable returns (bool)',
+  'function sell(uint256 amountIn, address tokenAddress, uint256 amountOutMin, uint256 deadline) returns (bool)',
+]);
+const FFACTORY_V3 = new ethers.Interface(['function buyTax() view returns (uint256)', 'function sellTax() view returns (uint256)', 'function antiSniperBuyTaxStartValue() view returns (uint256)']);
+const BONDING_CONFIG = new ethers.Interface(['function getAntiSniperDuration(uint8) view returns (uint256)', 'function appliesAntiSniperOnBuy(uint8) view returns (bool)', 'function appliesAntiSniperOnSell(uint8) view returns (bool)']);
+const FPAIR_V2 = new ethers.Interface(['function getReserves() view returns (uint256, uint256)', 'function startTime() view returns (uint256)', 'function taxStartTime() view returns (uint256)']);
 const FFACTORY = new ethers.Interface(['function buyTax() view returns (uint256)', 'function sellTax() view returns (uint256)']);
 const PAIR = new ethers.Interface(['function getReserves() view returns (uint256, uint256)']);
 
@@ -106,7 +136,9 @@ async function virtualsCurve(token) {
     launchpad: 'virtuals', name: 'Virtuals', ticker: info.data.ticker, creator: String(info.creator).toLowerCase(),
     state: info.trading ? 'curve' : info.tradingOnUniswap ? 'graduated' : 'closed',
     agent_token: info.agentToken && info.agentToken !== ZERO ? String(info.agentToken).toLowerCase() : null,
-    link: LINKS.virtuals(token), source: SOURCE.virtuals,
+    link: LINKS.virtuals(token), source: SOURCE.virtualsOld,
+    // Virtuals' old contract: sold on, never bought on (see ADDR).
+    legacy: true, bonding: ADDR.bonding, frouter: ADDR.frouter,
     // The links the creator gave Virtuals (unchecked here; the token page checks them before showing them).
     links: require('../providers/dexscreener').links({ websites: info.website ? [{ label: 'Website', url: info.website }] : [], socials: [['twitter', info.twitter], ['telegram', info.telegram], ['youtube', info.youtube]].filter(([, u]) => u).map(([type, url]) => ({ type, url })) }),
   };
@@ -124,6 +156,72 @@ async function virtualsCurve(token) {
       tokens_left: Number(ethers.formatEther(reserveToken)), graduates_at: Number(ethers.formatEther(threshold)),
       progress_pct: Math.min(100, Math.round(Number(sold * 10000n / toSell)) / 100),
       buy_tax_pct: Number(buyTax), sell_tax_pct: Number(sellTax),
+    };
+  }
+  return out;
+}
+
+/** The latest block's time, by the chain's own clock (cached 2 seconds): what the router's taxes are worked out against. */
+const chainNow = () => cached('launchpad:base:now', 2, async () => Number((await rpc.evmRpc('base', 'eth_getBlockByNumber', ['latest', false])).timestamp));
+
+/**
+ * The anti-sniper tax FRouterV3 would charge now on a buy or a sell, in whole percent, worked out the
+ * way the router does (_calculateAntiSniperTaxForSide): the factory's start value (99%), falling in a
+ * straight line to 0 over the token's duration, counted from the pair's taxStartTime (or startTime);
+ * the full start value before trading starts. Capped so the normal tax plus this is at most 99%.
+ */
+function antiSniperPct({ startTax, duration, applies, taxStart, now, normalTax }) {
+  if (!applies || duration === 0) return 0;
+  let t = now < taxStart ? startTax : now - taxStart >= duration ? 0 : Math.floor(startTax * (duration - (now - taxStart)) / duration);
+  if (normalTax + t > 99) t = 99 - normalTax;
+  return t;
+}
+
+/** Virtuals' current curve (BondingV5): whether it trades, its taxes now (anti-sniper included), and how far it is towards graduating. */
+async function virtualsV5Curve(token) {
+  const info = await call(ADDR.bondingV5, BONDING_V5, 'tokenInfo', [token]);
+  if (String(info.token).toLowerCase() !== token) return null;
+  const params = await call(ADDR.bondingV5, BONDING_V5, 'tokenLaunchParams', [token]);
+  const out = {
+    launchpad: 'virtuals', name: 'Virtuals', ticker: info.data.ticker, creator: String(info.creator).toLowerCase(),
+    state: info.tradingOnUniswap ? 'graduated' : info.trading ? (info.launchExecuted ? 'curve' : 'prelaunch') : 'closed',
+    agent_token: info.agentToken && info.agentToken !== ZERO ? String(info.agentToken).toLowerCase() : null,
+    link: LINKS.virtuals(token), source: SOURCE.virtuals, version: 5, bonding: ADDR.bondingV5, frouter: ADDR.frouterV3,
+    project_60_days: params.isProject60days,
+    links: require('../providers/dexscreener').links({ websites: info.website ? [{ label: 'Website', url: info.website }] : [], socials: [['twitter', info.twitter], ['telegram', info.telegram], ['youtube', info.youtube]].filter(([, u]) => u).map(([type, url]) => ({ type, url })) }),
+  };
+  if (out.state === 'curve' || out.state === 'prelaunch') {
+    // The router's own settings: its factory's taxes, and its config's anti-sniper rules (these change rarely: cached 10 minutes).
+    const setup = await cached('launchpad:virtuals:v5:setup', 600, async () => {
+      const [[factory], [config]] = await Promise.all([call(ADDR.bondingV5, BONDING_V5, 'factory'), call(ADDR.bondingV5, BONDING_V5, 'bondingConfig')]);
+      const [[buyTax], [sellTax], [startTax]] = await Promise.all(['buyTax', 'sellTax', 'antiSniperBuyTaxStartValue'].map(fn => call(factory, FFACTORY_V3, fn)));
+      return { config: String(config).toLowerCase(), buy_tax: Number(buyTax), sell_tax: Number(sellTax), start_tax: Number(startTax) };
+    });
+    const type = Number(params.antiSniperTaxType);
+    const rules = await cached(`launchpad:virtuals:v5:antisniper:${type}`, 86400, async () => {
+      const [[duration], [onBuy], [onSell]] = await Promise.all([
+        call(setup.config, BONDING_CONFIG, 'getAntiSniperDuration', [type]), call(setup.config, BONDING_CONFIG, 'appliesAntiSniperOnBuy', [type]), call(setup.config, BONDING_CONFIG, 'appliesAntiSniperOnSell', [type])]);
+      return { duration: Number(duration), on_buy: onBuy, on_sell: onSell };
+    });
+    const [[reserveToken, reserveVirtual], [threshold], [startTime], taxStartRaw, now] = await Promise.all([
+      call(info.pair, FPAIR_V2, 'getReserves'), call(ADDR.bondingV5, BONDING_V5, 'tokenGradThreshold', [token]), call(info.pair, FPAIR_V2, 'startTime'),
+      tryCall(info.pair, FPAIR_V2, 'taxStartTime'), chainNow()]);
+    const taxStart = taxStartRaw && Number(taxStartRaw[0]) > 0 ? Number(taxStartRaw[0]) : Number(startTime);
+    const anti = side => antiSniperPct({ startTax: setup.start_tax, duration: rules.duration, applies: side === 'buy' ? rules.on_buy : rules.on_sell, taxStart, now, normalTax: side === 'buy' ? setup.buy_tax : setup.sell_tax });
+    const [antiBuy, antiSell] = [anti('buy'), anti('sell')];
+    const supply = BigInt(info.data.supply); // the curve's starting reserve
+    const sold = supply > reserveToken ? supply - reserveToken : 0n;
+    const toSell = supply > threshold ? supply - threshold : 1n;
+    const endsAt = rules.duration ? taxStart + rules.duration : null;
+    out.curve = {
+      pair: String(info.pair).toLowerCase(), virtual_in_curve: Number(ethers.formatEther(reserveVirtual)),
+      in_curve: Number(ethers.formatEther(reserveVirtual)), in_curve_symbol: 'VIRTUAL',
+      tokens_left: Number(ethers.formatEther(reserveToken)), graduates_at: Number(ethers.formatEther(threshold)),
+      progress_pct: Math.min(100, Math.round(Number(sold * 10000n / toSell)) / 100),
+      // What a trade pays now, all in: the launchpad's tax plus any anti-sniper tax still running.
+      buy_tax_pct: setup.buy_tax + antiBuy, sell_tax_pct: setup.sell_tax + antiSell,
+      normal_buy_tax_pct: setup.buy_tax, normal_sell_tax_pct: setup.sell_tax,
+      anti_sniper: { buy_pct: antiBuy, sell_pct: antiSell, on_buy: rules.on_buy, on_sell: rules.on_sell, duration_s: rules.duration, ends_at: endsAt && endsAt > now ? new Date(endsAt * 1000).toISOString() : null, starts_at: now < taxStart ? new Date(taxStart * 1000).toISOString() : null, source: 'FRouterV3\'s anti-sniper rule (its factory\'s start value, the token\'s type from BondingConfig), worked out by the chain\'s clock' },
     };
   }
   return out;
@@ -181,13 +279,15 @@ async function identify(chain, token) {
   }
   if (chain !== 'base') return { launchpad: null };
   const who = await cached(`launchpad:id:${token}`, 86400, async () => {
-    const [c, z, v] = await Promise.all([
+    const [c, z, v5, v] = await Promise.all([
       tryCall(ADDR.clanker, CLANKER, 'deploymentInfoForToken', [token]),
       tryCall(ADDR.zora, ZORA, 'getVersionForDeployedCoin', [token]),
+      tryCall(ADDR.bondingV5, BONDING_V5, 'tokenInfo', [token]),
       tryCall(ADDR.bonding, BONDING, 'tokenInfo', [token]),
     ]);
     if (c && String(c.token).toLowerCase() === token) return { launchpad: 'clanker', hook: String(c.hook).toLowerCase(), locker: String(c.locker).toLowerCase() };
     if (z && Number(z[0]) > 0) return { launchpad: 'zora', version: Number(z[0]) };
+    if (v5 && String(v5.token).toLowerCase() === token) return { launchpad: 'virtuals', version: 5 };
     if (v && String(v.token).toLowerCase() === token) return { launchpad: 'virtuals' };
     return { launchpad: null };
   });
@@ -199,35 +299,50 @@ async function identify(chain, token) {
     return { ...who, name: 'Zora', state: 'pool', link: LINKS.zora(token), source: SOURCE.zora,
       facts: [`A Zora coin (version ${who.version}): it trades on Uniswap v4 from launch.`] };
   }
+  // A V5 curve's taxes change by the second while its anti-sniper tax runs: read again after 10 seconds, else 2 minutes.
+  if (who.launchpad === 'virtuals' && who.version === 5) {
+    const key = `launchpad:virtuals:v5:${token}`;
+    const hit = await cache.get(key);
+    if (hit) return hit;
+    const v = await virtualsV5Curve(token);
+    if (v) await cache.set(key, v, v.curve?.anti_sniper?.ends_at || v.curve?.anti_sniper?.starts_at ? 10 : 120);
+    return v || { launchpad: null };
+  }
   if (who.launchpad === 'virtuals') return cached(`launchpad:virtuals:${token}`, 120, () => virtualsCurve(token));
   return { launchpad: null };
 }
 
-/** What a buy of amountIn VIRTUAL on the curve gives now, after the launchpad's buy tax. */
-async function curveBuyQuote(token, amountIn, buyTaxPct) {
-  const net = amountIn - amountIn * BigInt(buyTaxPct) / 100n;
-  return BigInt((await call(ADDR.frouter, FROUTER, 'getAmountsOut', [token, VIRTUAL, net]))[0]);
+/** The tax a router takes from an amount: the launchpad's tax and any anti-sniper tax, each rounded down on its own, as FRouterV3 does. */
+const taxed = (amount, pad, side) => {
+  const a = pad?.curve?.anti_sniper;
+  if (!a) return amount - amount * BigInt(pad.curve[`${side}_tax_pct`]) / 100n;
+  return amount - amount * BigInt(pad.curve[`normal_${side}_tax_pct`]) / 100n - amount * BigInt(a[`${side}_pct`]) / 100n;
+};
+
+/** What a buy of amountIn VIRTUAL on the token's curve gives now, after its taxes (pad: what identify() read). */
+async function curveBuyQuote(token, amountIn, pad) {
+  return BigInt((await call(pad.frouter || ADDR.frouter, FROUTER, 'getAmountsOut', [token, VIRTUAL, taxed(amountIn, pad, 'buy')]))[0]);
 }
 
-/** What selling amountIn of the token on the curve gives now, in VIRTUAL, after the launchpad's sell tax. */
-async function curveSellQuote(token, amountIn, sellTaxPct) {
-  const out = BigInt((await call(ADDR.frouter, FROUTER, 'getAmountsOut', [token, ZERO, amountIn]))[0]);
-  return out - out * BigInt(sellTaxPct) / 100n;
+/** What selling amountIn of the token on its curve gives now, in VIRTUAL, after its taxes. */
+async function curveSellQuote(token, amountIn, pad) {
+  return taxed(BigInt((await call(pad.frouter || ADDR.frouter, FROUTER, 'getAmountsOut', [token, ZERO, amountIn]))[0]), pad, 'sell');
 }
 
-/** The newest tokens launched on Virtuals' curve, read from Bonding (newest first). */
+/** The newest tokens launched on Virtuals' current curve, read from BondingV5's own list (newest first). */
 async function newestOnCurve(n = 10) {
-  return cached('launchpad:virtuals:newest', 120, async () => {
+  return cached('launchpad:virtuals:v5:newest', 120, async () => {
     // The list's length isn't exposed: find it by doubling, then halving.
-    const exists = async i => !!(await tryCall(ADDR.bonding, BONDING, 'tokenInfos', [i]));
+    const exists = async i => !!(await tryCall(ADDR.bondingV5, BONDING_V5, 'tokenInfos', [i]));
+    if (!(await exists(0))) return [];
     let lo = 0, hi = 1;
     while (await exists(hi)) { lo = hi; hi *= 2; if (hi > 1e7) break; }
     while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); if (await exists(m)) lo = m; else hi = m; }
     const out = [];
     for (let i = lo; i >= 0 && out.length < n && i > lo - n * 3; i--) {
-      const t = await tryCall(ADDR.bonding, BONDING, 'tokenInfos', [i]);
+      const t = await tryCall(ADDR.bondingV5, BONDING_V5, 'tokenInfos', [i]);
       if (!t) continue;
-      const v = await virtualsCurve(String(t[0]).toLowerCase()).catch(() => null);
+      const v = await virtualsV5Curve(String(t[0]).toLowerCase()).catch(() => null);
       if (v?.state === 'curve') out.push({ token: String(t[0]).toLowerCase(), ...v });
     }
     return out;
@@ -273,6 +388,6 @@ async function newestOnFourMeme(n = 10, scan = 80) {
 }
 
 module.exports = {
-  identify, virtualsCurve, curveBuyQuote, curveSellQuote, newestOnCurve, BONDING, ADDR, VIRTUAL, LINKS,
+  identify, virtualsCurve, virtualsV5Curve, antiSniperPct, curveBuyQuote, curveSellQuote, newestOnCurve, BONDING, BONDING_V5, ADDR, VIRTUALS_PAIRS, VIRTUAL, LINKS,
   fourMemeCurve, fourMemeBuyQuote, fourMemeSellQuote, newestOnFourMeme, FOURMEME, TOKEN_MANAGER, HELPER, FOURMEME_MAX_FEE_BPS, FOURMEME_SELL_UNIT,
 };

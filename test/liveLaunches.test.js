@@ -124,12 +124,13 @@ test('the live launch feed', async t => {
     const p = pad('base', 'clanker');
     chain.emit('base', 'clanker', 'TokenCreated', [addr(0xa1), addr(0x501), addr(0xa2), 'ipfs://x', 'Clank', 'CLK', '{}', '{}', 0, addr(0), ethers.ZeroHash, addr(0x4200), addr(0), addr(0), 0, []], H - 100);
     chain.emit('base', 'zora', 'CoinCreatedV4', [addr(0xb1), addr(0xb2), addr(0), addr(0), 'ipfs://y', 'Zed', 'ZED', addr(0x502), [addr(0), addr(1), 0, 0, addr(0)], ethers.ZeroHash, '1'], H - 50);
-    chain.emit('base', 'virtuals', 'Launched', [addr(0x503), addr(0x504), 1], H - 20);
+    chain.emit('base', 'virtuals', 'Launched', [addr(0x503), addr(0x504), 50000000001n, 0, 0, [0, 0, false, 1, true]], H - 20); // BondingV5's: a "Project 60 days" launch
     chain.emit('base', 'virtuals', 'Graduated', [addr(0x505), addr(0x506)], H - 30);
     launchpads.newestOnCurve = async () => [{ token: addr(0x507), ticker: 'CURVE', curve: { progress_pct: 61.2, in_curve: 4000, in_curve_symbol: 'VIRTUAL' } }];
     assert.ok(p);
     const r = await L.live({ chain: 'base' });
     assert.deepEqual(r.columns.new.items.map(i => [i.launchpad, i.symbol, i.creator]), [['virtuals', 'VIRT', null], ['zora', 'ZED', addr(0xb1)], ['clanker', 'CLK', addr(0xa2)]]);
+    assert.equal(r.columns.new.items[0].project_60_days, true, 'its card says Virtuals\' operators can drain it');
     assert.deepEqual(r.columns.graduated.items.map(i => [i.token, i.agent_token]), [[addr(0x505), addr(0x506)]]);
     assert.deepEqual(r.columns.graduating.items.map(i => [i.symbol, i.progress_pct]), [['CURVE', 61.2]]);
     assert.match(r.columns.graduated.source, /Clanker and Zora coins trade on Uniswap from launch/);
