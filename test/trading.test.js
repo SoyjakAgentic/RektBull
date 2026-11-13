@@ -461,6 +461,29 @@ test('trading', async t => {
     await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [1, 2, 3, 4, 5] }), /1 to 4/);
     await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [] }), /1 to 4/);
     await assert.rejects(rules.saveSettings(account.id, { buy_presets_usd: [-5] }), /above 0/);
+
+    // ── Protected sending: the speed setting, and the fee a one-click trade carries for the wallet ──
+    assert.equal((await rules.settingsFor(account.id)).send_speed, 'standard', 'the wallet chooses the fee unless the user says otherwise');
+    await assert.rejects(rules.saveSettings(account.id, { send_speed: 'warp' }), /standard, fast or fastest/);
+    assert.equal((await rules.saveSettings(account.id, { send_speed: 'fast' })).send_speed, 'fast');
+    assert.deepEqual((await rules.settingsFor(account.id)).buy_presets_usd, [10, 75.5, 250], 'saving the speed leaves the rest as it was');
+    zeroex.setTransport(async (path, params) => (params.sellToken.toLowerCase() === USDC
+      ? { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: '1000000', minBuyAmount: '990000', tokenMetadata: { buyToken: { buyTaxBps: '0', sellTaxBps: '0' } }, issues: { allowance: { spender: AH } }, transaction: { to: AH, data: '0xdeadbeef', value: '0', gas: '200000' } }
+      : { liquidityAvailable: true, sellAmount: params.sellAmount, buyAmount: String(BigInt(params.sellAmount) * 97n), minBuyAmount: '1', transaction: { to: AH, data: '0xfeed', value: '0' } }));
+    const feesMod = require('../src/trade/fees');
+    const realSuggest = feesMod.suggest;
+    const askedFees = [];
+    feesMod.suggest = async (chain, speed) => { askedFees.push([chain, speed]); return { speed, max_fee_per_gas: '0x2540be400', max_priority_fee_per_gas: '0x3b9aca00', base_fee_per_gas: '0x12a05f200' }; };
+    const fastTrade = await proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 50 });
+    assert.deepEqual(askedFees, [['base', 'fast']]);
+    assert.equal(fastTrade.fees.max_priority_fee_per_gas, '0x3b9aca00', 'the wallet is offered the fee for the user\'s speed');
+    assert.equal((await proposals.get(account, fastTrade.id)).plan.fees.speed, 'fast', 'and it\'s kept with the trade');
+    feesMod.suggest = async () => { throw new Error('the node didn\'t answer'); };
+    const noFee = await proposals.trade(account, { chain: 'base', side: 'buy', token: TOKEN, amount_usd: 50 });
+    assert.equal(noFee.status, 'approved', 'a fee that couldn\'t be read never stops a trade');
+    assert.match(noFee.fees.none, /couldn't be read from base \(the node didn't answer\), so your wallet chooses it/);
+    feesMod.suggest = realSuggest;
+    await rules.saveSettings(account.id, { send_speed: 'standard' });
     await db.getPool().end();
   });
 });

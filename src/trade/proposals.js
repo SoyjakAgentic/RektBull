@@ -98,13 +98,16 @@ async function trade(account, input) {
   }
   const calls = walletCalls(p);
   const timing = { prepare_ms: prepareMs, previewed: !!seen };
+  // The fee to offer the wallet, by the user's speed setting; a fee that couldn't be read leaves it to the wallet, saying why.
+  const { send_speed: speed } = await rules.settingsFor(account.id);
+  const fees = await require('./fees').suggest(p.chain, speed).catch(err => ({ speed, none: `The fee couldn't be read from ${p.chain} (${err.message}), so your wallet chooses it.` }));
   const { rows } = await db.query(
     `INSERT INTO trade_proposals (id, account_id, wallet, chain, side, token, base, amount_usd, sell_fraction, plan, calls, status, approved_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'approved', now()) RETURNING *`,
     [crypto.randomUUID(), account.id, account.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
-      json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount, one_click: true, timing }), json(calls)],
+      json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount, one_click: true, timing, fees }), json(calls)],
   );
-  return present(rows[0]);
+  return { ...present(rows[0]), fees };
 }
 
 async function propose(account, input) {

@@ -57,6 +57,16 @@
       <p id="trade-msg" class="msg"></p>
     </section>
 
+    <section class="card" id="protect-card" hidden>
+      <h2>Protected sending on <span id="p-chain">Base</span></h2>
+      <p id="p-note" class="small muted"></p>
+      <div id="p-networks"></div>
+      <h3>Speed</h3>
+      <p class="small muted">How fast your trades get into a block, set under Safety settings below. Standard leaves the fee to your wallet; Fast and Fastest offer the fee shown, read from the chain's last 20 blocks, and your wallet shows it before you sign. They send each step of a trade on its own, with that fee.</p>
+      <p id="p-fees" class="small"></p>
+      <p id="p-msg" class="msg"></p>
+    </section>
+
     <section class="card" id="history-card" hidden>
       <h2>Your trades</h2>
       <table><thead><tr><th>When</th><th>Trade</th><th>Status</th></tr></thead><tbody id="history"></tbody></table>
@@ -74,6 +84,7 @@
         <label>Automatic exits: sell if down (%)<input id="s-stop" type="number" min="1" max="95"></label>
         <label>Automatic exits: sell if up (%)<input id="s-tp" type="number" min="1" max="10000"></label>
         <label>Automatic exits<select id="s-auto"><option value="true">On</option><option value="false">Off</option></select></label>
+        <label>Speed for trades you sign<select id="s-speed"><option value="standard">Standard: my wallet chooses the fee</option><option value="fast">Fast</option><option value="fastest">Fastest</option></select></label>
         <label>Buy buttons (USD, up to 4, comma-separated)<input id="s-buys" inputmode="decimal" placeholder="25, 50, 100"></label>
         <label>Sell buttons (% of your holding, up to 4)<input id="s-sells" inputmode="decimal" placeholder="25, 50, 100"></label>
       </div>

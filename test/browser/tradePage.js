@@ -31,6 +31,10 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
   // No launchpad and no young-token check here (both would read live chains).
   require('../../src/services/launchpads').identify = async () => ({ launchpad: null });
   require('../../src/services/launches').forTrade = async () => ({ young: false, risk: 'ok', detail: 'its first pool opened 30 days ago (test)' });
+  // The chain's fees, as a stand-in: Fast offers 1 gwei on top of a 5 gwei base fee.
+  require('../../src/trade/fees').suggest = async (chain, speed) => (speed === 'standard' ? { speed, none: 'Your wallet chooses the fee.' } : chain === 'arbitrum'
+    ? { speed, none: 'Arbitrum orders transactions as they arrive.' }
+    : { speed, max_priority_fee_per_gas: speed === 'fast' ? '0x3b9aca00' : '0x77359400', max_fee_per_gas: '0x2cb417800', base_fee_per_gas: '0x12a05f200', source: 'stand-in' });
   const { createApp } = require('../../src/app');
   const server = createApp().listen(0);
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -144,8 +148,41 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', TRADING_ENABL
     await page.selectOption('#side', 'buy');
     console.log('✔ settings: the one-click buttons are the user\'s own');
 
+    // Protected sending: Base needs nothing; Ethereum adds Flashbots Protect in one click; BNB Chain offers two.
+    await page.selectOption('#side', 'buy');
     await page.selectOption('#chain', 'base');
-    sent.splice(2, 4); // the rest of this test counts from the first trade
+    await page.locator('#p-note', { hasText: 'no public mempool' }).waitFor();
+    assert.equal(await page.locator('#p-networks button').count(), 0);
+    await page.selectOption('#chain', 'ethereum');
+    await page.getByRole('button', { name: 'Add Flashbots Protect to my wallet' }).waitFor();
+    assert.match(await page.textContent('#p-fees'), /Fast: 1\.00 gwei priority fee/);
+    await page.getByRole('button', { name: 'Add Flashbots Protect to my wallet' }).click();
+    await page.locator('#p-msg', { hasText: 'Added.' }).waitFor();
+    const fb = (await page.evaluate(() => window.__added)).at(-1);
+    assert.deepEqual(fb, { chainId: '0x1', chainName: 'Flashbots Protect', rpcUrls: ['https://rpc.flashbots.net/fast'], nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: ['https://etherscan.io'] });
+    assert.match(await page.textContent('#p-networks'), /Don't switch your wallet's network before a trade confirms/);
+    await page.selectOption('#chain', 'bsc');
+    await page.getByRole('button', { name: 'Add PancakeSwap MEV Guard to my wallet' }).waitFor();
+    assert.equal(await page.locator('#p-networks button').count(), 2, 'PancakeSwap MEV Guard and 48 Club');
+    console.log('✔ protected sending: nothing to add on Base; Flashbots Protect added in one click on Ethereum, with its caveats; two choices on BNB Chain');
+
+    // Fast: the wallet is asked to send each step with the fee read from the chain.
+    await page.selectOption('#s-speed', 'fast');
+    await page.getByRole('button', { name: 'Save settings' }).click();
+    await page.locator('#settings-msg', { hasText: 'Saved.' }).waitFor();
+    await page.selectOption('#chain', 'base');
+    await page.locator('#p-chain', { hasText: 'Base' }).waitFor();
+    await page.fill('#amount', '20');
+    await page.locator('#ack').waitFor(); // the stand-in token check's high risk, confirmed again after the side switch above
+    await page.check('#ack');
+    await page.locator('#plan', { hasText: 'Buy $20.00' }).waitFor();
+    await page.click('#go');
+    await sentNow(8);
+    assert.deepEqual(sent.slice(6).map(t => [t.maxPriorityFeePerGas, t.maxFeePerGas]), [['0x3b9aca00', '0x2cb417800'], ['0x3b9aca00', '0x2cb417800']], 'both steps carry the fee');
+    await page.locator('#trade-msg', { hasText: 'RektBull will confirm it onchain' }).waitFor();
+    console.log('✔ speed: with Fast saved, both steps of a trade go to the wallet with the fee read from the chain');
+
+    sent.splice(2, 6); // the rest of this test counts from the first trade
 
     await page.fill('#l-day', '25000');
     assert.equal(await page.isVisible('#confirm-wrap'), true, 'above the defaults asks for confirmation');
