@@ -1,9 +1,9 @@
 # The Solana order program: automatic meme trades without holding keys
 
 *Status: the program and its tests are built
-(`solana/programs/rektbull-orders`, 21 break-it tests, a random-sequence
-invariant test, and a check against pump.fun's real program on a copy of
-mainnet). **Not audited, not deployed, and the trade service doesn't use it
+(`solana/programs/rektbull-orders`, 23 break-it tests, a random-sequence
+invariant test, and checks against pump.fun's, PumpSwap's and Jupiter's real
+programs on copies of mainnet). **Not audited, not deployed, and the trade service doesn't use it
 yet.** Nothing may hold real funds through it until an external audit is done
 and every finding is fixed or explicitly accepted.*
 
@@ -74,7 +74,9 @@ Revoking the delegate on the token account stops every sell order at once.
    only. The delegate's address may not appear in it at all.
 5. The output to the owner: native SOL (everything transit holds, less a 1%
    fee when the output is the base asset) or tokens to the owner's own
-   account. Unused input goes back: tokens to the account they came from, SOL
+   account. PumpSwap and Jupiter pay wrapped SOL, so for an order paying out
+   native SOL through them, transit's wrapped-SOL account is closed into SOL
+   first (its rent goes back to the executor who opened it). Unused input goes back: tokens to the account they came from, SOL
    to the owner.
 6. **The user's price, on what actually reached them** (the owner's SOL or
    token balance, before and after), and transit must end holding nothing.
@@ -111,7 +113,7 @@ market is higher. The order screen says so in plain words.
 
 `solana/programs/rektbull-orders/tests/orders.rs` runs the compiled program
 on LiteSVM (an in-process Solana chain), with a stand-in exchange
-(`programs/mock-venue`) loaded at Jupiter's address. **21 break-it tests:**
+(`programs/mock-venue`) loaded at Jupiter's address. **23 break-it tests:**
 - honest fills: a sale for SOL (99% to the user, 1% to the fee wallet, the
   order closed), a buy paid in wrapped SOL and sent as SOL (unused SOL back),
   a buy paid in USDC (the fee in USDC, never in the meme coin), unused token
@@ -129,7 +131,10 @@ on LiteSVM (an in-process Solana chain), with a stand-in exchange
 - the fee sent anywhere but the fee wallet; the output sent to an account the
   owner doesn't hold;
 - stray SOL and tokens sent to transit (they can't jam fills; the next fill
-  sweeps them).
+  sweeps them);
+- a sale paid in wrapped SOL and delivered as native SOL (the account's rent
+  back to the executor), and that unwrapping only works on transit's own
+  wrapped-SOL account.
 
 **Random sequences** (the counterpart of the EVM routers' invariant fuzzing):
 64 fixed-seed sequences of 40 steps each, covering two users placing orders
@@ -172,6 +177,42 @@ current v3 instructions and transit as pump.fun's trader, on 12 November 2026:
   same for an ordinary wallet. The trade service simulates each fill and
   leaves that headroom; the unused part comes back to the user.
 
+**Against PumpSwap's and Jupiter's real programs** (`tests/venues.rs`, run by
+hand: `python3 -I scripts/venue_fixtures.py` copies a live PumpSwap pool from a
+recent buy, and asks Jupiter's public API for two real routes with transit as
+the trader, then copies every account and program they touch; then
+`cargo test -p rektbull-orders --test venues -- --ignored`). On 13 November 2026:
+- **PumpSwap** (a graduated pump.fun coin): a 0.1 wrapped-SOL limit buy, 1% to
+  the fee wallet in wrapped SOL, the coin to the user, the unused wrapped SOL
+  back; then a stop-loss sale of all of it, delivered as native SOL, 1% to the
+  fee wallet. Transactions of 452 and 414 bytes, with RektBull's own address
+  lookup table.
+- **Jupiter**: wrapped SOL to USDC (routed through Orca Whirlpool): first a
+  limit above Jupiter's own quote, refused (`BelowLimit`), then a fill at or
+  above the quote. Then USDC back to native SOL (through Raydium CLMM), the
+  fee in USDC. Transactions of 821 and 731 bytes, with Jupiter's lookup
+  tables.
+- Transit left with nothing after each.
+
+**Found on the way:**
+- **Fills need address lookup tables.** A fill names the order program's own
+  19 accounts plus the exchange's (17 for pump.fun, about 26 for PumpSwap,
+  23–25 for Jupiter). A PumpSwap fill without a table is 1,317 bytes, over
+  Solana's 1,232-byte limit; pump.fun's fit (1,018 bytes) but with little room
+  for priority-fee instructions. So the trade service sends every fill as a
+  version-0 transaction, with RektBull's own lookup table of the fixed
+  accounts (the program's addresses, the fee wallet, mints, the exchanges'
+  global accounts) plus Jupiter's tables for Jupiter routes. All the checks
+  now assert their transactions fit.
+- **PumpSwap's volume account,** like pump.fun's: created once for transit by
+  the executor (`init_user_volume_accumulator`), so no user's SOL pays its rent.
+- **Proprietary AMMs can't be checked on a copy.** Jupiter first routed
+  through ZeroFi and BisonFi, whose prices are pushed onchain every slot: a
+  copy is stale at once, and their swaps failed in the exchange itself, before
+  the order program's checks. The check therefore asks Jupiter for classic
+  pools only (Orca, Raydium, Meteora). On mainnet, Jupiter may route through
+  any of them; the order program's checks are the same whatever the route.
+
 ## Checks before the audit
 
 - **Clippy** (Rust's linter) with every warning an error, in CI.
@@ -193,8 +234,7 @@ current v3 instructions and transit as pump.fun's trader, on 12 November 2026:
   - pump.fun's volume rewards for trades through the program accrue to
     transit's volume account, which nobody can claim. Users trading by hand
     keep their own.
-- These are not an audit. Not yet covered: a check against a real Jupiter route
-  and a real PumpSwap pool on a copy of mainnet (to do before the audit).
+- These are not an audit.
 
 ## Building
 
@@ -213,7 +253,8 @@ version is a choice to make at deployment.
    the deployed bytes match a reproducible build of the audited commit.
 4. Remove the upgrade authority (`solana program set-upgrade-authority
    --final`).
-5. One-time setup by the executor: pump.fun's volume account for transit.
+5. One-time setup by the executor: pump.fun's and PumpSwap's volume accounts
+   for transit, and RektBull's address lookup table for fills.
 6. No private key, seed phrase or program keypair ever goes into the
    repository, a chat or an issue.
 
@@ -222,6 +263,6 @@ version is a choice to make at deployment.
 1. **The trade service:** an `orders` table; an order screen that states the
    worst case before the user signs; the place-and-approve transaction (with
    the buy, for exits); a watcher that fills through the KMS trade key
-   (Ed25519), simulating each fill first and sizing pump.fun's headroom.
-2. **Jupiter and PumpSwap checks** on a copy of mainnet, like the pump.fun one.
-3. **The audit**, with the EVM contracts or on its own ([AUDIT_BRIEF.md](AUDIT_BRIEF.md)).
+   (Ed25519), simulating each fill first and sizing pump.fun's headroom, and
+   sending fills as version-0 transactions with lookup tables.
+2. **The audit**, with the EVM contracts or on its own ([AUDIT_BRIEF.md](AUDIT_BRIEF.md)).

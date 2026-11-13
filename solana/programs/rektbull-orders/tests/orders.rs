@@ -203,7 +203,7 @@ impl World {
         let mut metas = rektbull_orders::accounts::Fill {
             executor: key(executor), order: f.order, owner: f.owner, delegate: f.delegate, transit: transit(),
             source: f.source, input_mint: f.input_mint, transit_in: f.transit_in, input_token_program: TOKEN,
-            output_mint: f.output_mint, transit_out: f.transit_out, owner_out: f.owner_out, output_token_program: if out { Some(TOKEN) } else { None },
+            output_mint: f.output_mint, transit_out: f.transit_out, owner_out: f.owner_out, output_token_program: if out || f.transit_out.is_some() { Some(TOKEN) } else { None },
             fee_wallet: f.fee_wallet, fee_in: f.fee_in, fee_out: None, venue: f.venue, system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -274,6 +274,46 @@ fn honest_sale_for_sol() {
     assert!(wd.order(order).is_none(), "a fully filled order is closed");
     assert_eq!(wd.lamports(transit()), 0, "transit holds nothing");
     assert_eq!(wd.balance(wd.transit_meme), Some(0));
+}
+
+/// A sale through an exchange that pays wrapped SOL (as PumpSwap and Jupiter do), delivered as native SOL.
+fn wrapped_sol_sale(wd: &mut World, order: Pubkey, sol_out: u64) -> (Fill, Pubkey) {
+    let vault_wsol = wd.token_account(WSOL_MINT, vault(), 10 * SOL);
+    let transit_wsol = wd.token_account(WSOL_MINT, transit(), 0); // opened by the executor; its rent comes back to them
+    let mut f = wd.sale(order, 100_000 * MEME, 0, transit());
+    f.transit_out = Some(transit_wsol);
+    f.venue_data = venue_data(0, 100_000 * MEME, sol_out);
+    f.venue_accounts = vec![w(transit()), w(wd.transit_meme), r(wd.meme), w(wd.vault_meme), w(vault_wsol), r(WSOL_MINT), w(transit_wsol), r(vault()), r(TOKEN), r(TOKEN)];
+    (f, transit_wsol)
+}
+
+#[test]
+fn sale_paid_in_wrapped_sol_delivered_as_sol() {
+    let mut wd = World::new();
+    let order = wd.sell_order(1, 99 * SOL / 100);
+    let (f, transit_wsol) = wrapped_sol_sale(&mut wd, order, SOL);
+    let (user0, fee0, exec0) = (wd.lamports(key(&wd.user)), wd.lamports(FEE_WALLET), wd.lamports(key(&wd.exec)));
+    wd.fill(&f).unwrap();
+    assert_eq!(wd.lamports(FEE_WALLET) - fee0, SOL / 100, "the fee: 1% of the SOL out, as SOL");
+    assert_eq!(wd.lamports(key(&wd.user)) - user0, 99 * SOL / 100 + wd.order_rent(), "99% to the user as native SOL, and the order's rent");
+    let account_rent = wd.rent(spl_token::state::Account::LEN);
+    assert_eq!(wd.lamports(key(&wd.exec)), exec0 + account_rent - 5000, "the executor got the wrapped-SOL account's rent back");
+    assert!(!wd.exists(transit_wsol), "transit's wrapped-SOL account was closed");
+    assert_eq!(wd.lamports(transit()), 0);
+}
+
+#[test]
+fn unwrapping_the_output_needs_transits_own_wrapped_sol_account() {
+    let mut wd = World::new();
+    let order = wd.sell_order(1, 99 * SOL / 100);
+    let (mut f, _) = wrapped_sol_sale(&mut wd, order, SOL);
+    f.transit_out = Some(wd.transit_meme); // not wrapped SOL
+    fails(wd.fill(&f), "BadFill");
+    f.transit_out = Some(wd.token_account(WSOL_MINT, key(&wd.exec), 0)); // not transit's
+    fails(wd.fill(&f), "BadFill");
+    f.transit_out = None; // the wrapped SOL stays in transit's account: nothing reached the user
+    f.owner_out = None;
+    fails(wd.fill(&f), "BadFill|BelowLimit|AccountNotInitialized|missing");
 }
 
 #[test]
