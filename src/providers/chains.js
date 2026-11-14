@@ -28,6 +28,16 @@ const EXTRA_RPC = { 'base-sepolia': 'https://sepolia.base.org' };
 // 13 November 2026). Your own RPC_URLS_<CHAIN> are asked first, as for every call.
 const LOGS_RPC = { base: 'https://base-rpc.publicnode.com', bsc: 'https://bsc-rpc.publicnode.com', ethereum: 'https://ethereum-rpc.publicnode.com', arbitrum: 'https://arbitrum-one-rpc.publicnode.com' };
 
+// Logs filtered only by topics, with no contract address (the wallet tracker: any token's Transfer to
+// or from a followed wallet): publicnode refuses those ("Please specify an address"), and so do Base's
+// and BNB Chain's own endpoints; these keyless ones answered them on 13 November 2026.
+const TOPIC_LOGS_RPC = {
+  base: ['https://base.drpc.org', 'https://1rpc.io/base', 'https://base-pokt.nodies.app'],
+  bsc: ['https://bsc.drpc.org', 'https://1rpc.io/bnb', 'https://bsc.blockrazor.xyz'], // blockrazor: 10 wallets a query at most
+  ethereum: ['https://eth.drpc.org', 'https://eth-pokt.nodies.app', 'https://rpc.mevblocker.io'],
+  arbitrum: ['https://arb1.arbitrum.io/rpc', 'https://arbitrum.drpc.org'],
+};
+
 function rpcUrls(chain) {
   const own = String(process.env[`RPC_URLS_${chain.toUpperCase().replace(/-/g, '_')}`] || '').split(',').map(s => s.trim()).filter(Boolean);
   const pub = chain === 'solana' ? SOLANA.publicRpc : EVM[chain]?.publicRpc || EXTRA_RPC[chain];
@@ -40,4 +50,10 @@ function logsRpcUrls(chain) {
   return [...new Set([...own, ...(LOGS_RPC[chain] ? [LOGS_RPC[chain]] : rpcUrls(chain).slice(own.length))])];
 }
 
-module.exports = { EVM, SOLANA, ALL, rpcUrls, logsRpcUrls, LOGS_RPC };
+/** Where to ask for logs filtered by topics alone: your own endpoints, then keyless ones that answer them. */
+function topicLogsRpcUrls(chain) {
+  const own = String(process.env[`RPC_URLS_${chain.toUpperCase().replace(/-/g, '_')}`] || '').split(',').map(s => s.trim()).filter(Boolean);
+  return [...new Set([...own, ...(TOPIC_LOGS_RPC[chain] || [])])];
+}
+
+module.exports = { EVM, SOLANA, ALL, rpcUrls, logsRpcUrls, topicLogsRpcUrls, LOGS_RPC, TOPIC_LOGS_RPC };

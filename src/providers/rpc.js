@@ -6,7 +6,7 @@
  * log query for its size or rate ("limit exceeded") is tried elsewhere too.
  */
 const axios = require('axios');
-const { rpcUrls, logsRpcUrls } = require('./chains');
+const { rpcUrls, logsRpcUrls, topicLogsRpcUrls } = require('./chains');
 const { track } = require('./usage');
 
 class RpcError extends Error {}
@@ -47,6 +47,8 @@ async function call(chain, method, params, { timeout = 12000, urls = rpcUrls(cha
 const evmRpc = (chain, method, params, opts) => call(chain, method, params, opts);
 /** eth_getLogs for a filter, from endpoints that answer log queries. */
 const evmLogs = (chain, filter, opts = {}) => call(chain, 'eth_getLogs', [filter], { ...opts, urls: logsRpcUrls(chain), retryRefusals: true });
+// Logs filtered by topics alone (no contract address): only some keyless endpoints answer them.
+const evmTopicLogs = (chain, filter, opts = {}) => call(chain, 'eth_getLogs', [filter], { ...opts, urls: topicLogsRpcUrls(chain), retryRefusals: true });
 const solanaRpc = (method, params, opts) => call('solana', method, params, opts);
 
-module.exports = { evmRpc, evmLogs, solanaRpc, RpcError };
+module.exports = { evmRpc, evmLogs, evmTopicLogs, solanaRpc, RpcError };

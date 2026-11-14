@@ -15,7 +15,7 @@
       <h1>New tokens, <em>checked before you trade them</em></h1>
       <p>The newest tokens on Base, Ethereum, Arbitrum and BNB Chain, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
       <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
-      <nav class="jump" aria-label="On this page"><a href="#live-card">Live</a><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#watch-card">Meme Watch</a></nav>
+      <nav class="jump" aria-label="On this page"><a href="#live-card">Live</a><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#follow-card">Wallets you follow</a><a href="#watch-card">Meme Watch</a></nav>
     </div>
   </section>
 
@@ -77,6 +77,26 @@
       <div id="t-card"></div>
     </section>
 
+    <section class="card" id="follow-card">
+      <div class="chart-head">
+        <h2>Wallets you follow</h2>
+        <span class="small muted" id="f-status" role="status"></span>
+      </div>
+      <p class="small muted">Follow up to 5 wallets for free (25 with Safety Pro) on Base, Ethereum, Arbitrum and BNB Chain. When one buys or sells a token, the free <a href="/agents/wallet-tracker">Wallet Tracker</a> sends you an alert within seconds by Telegram, email or browser notification (<a href="/safety#monitor-card">choose where</a>), with RektBull's token check already run and the buy ready for your wallet to sign. A wallet's trades are information, not advice: some wallets trade to be copied.</p>
+      <div id="f-off"><p>Sign in to follow wallets.</p></div>
+      <div id="f-on" hidden>
+        <form class="row" id="f-form" autocomplete="off">
+          <label class="inline wide-input">Wallet <input id="f-address" placeholder="0x…" spellcheck="false"></label>
+          <label class="inline">Name <input id="f-label" maxlength="40" placeholder="optional"></label>
+          <button class="btn" type="submit">Follow</button>
+        </form>
+        <p id="f-msg" class="msg"></p>
+        <div id="f-wallets"></div>
+        <h3>Their latest trades</h3>
+        <ol class="live-list" id="f-trades"></ol>
+        <p id="f-src" class="source"></p>
+      </div>
+    </section>
     <section class="card" id="watch-card">
       <h2>Meme Watch</h2>
       <p>After you buy, the free <a href="/agents/meme-watch">Meme Watch agent</a> keeps an eye on each token: launch-bundle and insider wallets selling, a new honeypot or tax flag, liquidity pulled from its pools, and your take-profit or stop-loss. Each alert, by Telegram, email or browser notification, comes with a sell ready for your wallet to sign. It never sells for you.</p>
@@ -87,5 +107,6 @@
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/launches.js"></script>
+  <script src="/follow.js"></script>
 </body>
 </html>

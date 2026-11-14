@@ -89,6 +89,12 @@ const AGENTS = [
     plan: 'free', every: [1, 6], default_every: 1, default_on: false, runs_here: true, wallets: 'signed_in',
   },
   {
+    id: 'wallet_tracker', name: 'Wallet Tracker', was: 'Copy-trading signals', desk: { name: 'Launches', href: '/launches#follow-card' },
+    does: 'Follows up to 5 wallets you choose (25 with Safety Pro) on Base, Ethereum, Arbitrum and BNB Chain. When one buys or sells a token, you get an alert within seconds, with RektBull\'s token check (and, for a token under a week old, the bundle check) already run, and the buy ready on the Trade desk for your wallet to sign. It never buys for you.',
+    alerts: 'Each buy and sell, as it happens, with what was paid and the checks\' results.',
+    plan: 'free', every: [], default_every: 0, default_on: true, runs_here: false, wallets: 'none',
+  },
+  {
     id: 'trading_agent', name: 'Trading Agent', was: 'Meme Coin Trader', desk: { name: 'Trade', href: '/trade' },
     does: 'Buys and sells within the limits your wallet signed onchain (a session key), and exits at your stop-loss or take-profit. It can only send the result back to your wallet.',
     alerts: 'When it sells a position at your stop-loss or take-profit.',
@@ -97,7 +103,7 @@ const AGENTS = [
 ];
 const BY_ID = Object.fromEntries(AGENTS.map(a => [a.id, a]));
 
-const scheduleText = h => (h === null ? 'When a trade or exit is due' : h < 1 ? 'Every 5 minutes' : h === 1 ? 'Every hour' : h === 168 ? 'Every week' : h === 24 ? 'Every day' : `Every ${h} hours`);
+const scheduleText = h => (h === null ? 'When a trade or exit is due' : h === 0 ? 'Within seconds of each trade' : h < 1 ? 'Every 5 minutes' : h === 1 ? 'Every hour' : h === 168 ? 'Every week' : h === 24 ? 'Every day' : `Every ${h} hours`);
 
 /**
  * The agents as the page and the API describe them (no account needed). Only
@@ -142,6 +148,7 @@ async function list(accountId) {
     db.query('SELECT kind FROM alert_channels WHERE account_id = $1 AND verified_at IS NOT NULL AND disabled_at IS NULL', [accountId]),
   ]);
   const trading = await db.query(`SELECT count(*)::int AS n FROM trade_permissions WHERE account_id = $1 AND status = 'active'`, [accountId]).catch(() => ({ rows: [{ n: 0 }] }));
+  const followed = await db.query('SELECT count(*)::int AS n FROM followed_wallets WHERE account_id = $1', [accountId]).catch(() => ({ rows: [{ n: 0 }] }));
   // A hidden agent still shows for an account that uses it; one that's off shows as paused to an account that had it on.
   const agents = catalog({ all: true }).filter(c => c.state === 'active' || (rows[c.id]?.enabled ?? (BY_ID[c.id].default_on && c.state === 'off'))).map(c => {
     const a = BY_ID[c.id];
@@ -154,6 +161,7 @@ async function list(accountId) {
     else if (a.wallets === 'watched' && !watched.rows[0].n) status = { state: 'needs_wallets', text: 'Watch a wallet on the Safety page first' };
     else if (a.id === 'trading_agent' && !trading.rows[0].n) status = { state: 'needs_setup', text: 'Set limits on the Trade desk first' };
     else if (TOKEN_LISTS[a.id] && !(r?.settings?.tokens || []).length) status = { state: 'needs_setup', text: 'Add a token to watch' };
+    else if (a.id === 'wallet_tracker' && !followed.rows[0].n) status = { state: 'needs_setup', text: 'Follow a wallet on the Launches page' };
     else status = on ? { state: 'on', text: 'On' } : { state: 'off', text: 'Off' };
     return {
       ...c, enabled: on, every_hours: every, schedule: scheduleText(every), status,

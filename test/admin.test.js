@@ -51,7 +51,7 @@ test('admin panel: prices, agents and emergency stops', { skip: !DB && 'set TEST
   assert.equal(ov.status, 200, 'reading is fine with an older sign-in');
   assert.deepEqual(ov.body.stops.map(s => [s.id, s.on]), [['auto_trading', false], ['auto_yield', false]]);
   assert.equal(ov.body.prices.products.find(p => p.id === 'yield_move').editable.length, 0, 'the yield fee is fixed');
-  assert.equal(ov.body.agents.length, 12);
+  assert.equal(ov.body.agents.length, 13);
   assert.match(await page('/admin'), /<meta name="robots" content="noindex">/);
 
   /* ── prices: checked, logged, and everywhere at once ── */

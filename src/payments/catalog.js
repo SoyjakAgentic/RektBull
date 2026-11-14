@@ -42,8 +42,9 @@ const SAFETY_PRO = {
     cents_per_30_days: { enumerable: true, get: () => settings.get('ai_allowance')?.cents_per_30_days ?? DEFAULT_AI_ALLOWANCE_CENTS },
   }),
   monitor: { wallets: 3, every_hours: 24 },
+  follow: { wallets: 25 }, // the wallet tracker: 5 wallets free, 25 with Safety Pro (src/services/walletTracker.js)
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for full token reports and proposal summaries (about 20 reports; an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), and DAO votes: alerts when a vote opens or is about to close for a wallet you watch.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for full token reports and proposal summaries (about 20 reports; an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), DAO votes: alerts when a vote opens or is about to close for a wallet you watch, and the wallet tracker for up to 25 wallets instead of 5.';
 
 const PRODUCTS = {
   token_quick_check: {

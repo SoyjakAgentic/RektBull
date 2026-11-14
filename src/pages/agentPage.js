@@ -97,6 +97,21 @@ const PAGES = {
       ['What does it cost?', 'Nothing: it\'s free for any signed-in wallet. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
     ],
   },
+  wallet_tracker: {
+    title: 'Crypto Wallet Tracker With Copy-Trade Alerts | RektBull',
+    description: 'Follow any wallet on Base, Ethereum, Arbitrum or BNB Chain and get an alert within seconds of each buy or sell, with the token already checked.',
+    lead: 'an alert within seconds when a wallet you follow trades',
+    checks: [
+      ['Did a wallet you follow buy or sell a token, what for, and about how much was it worth?', 'Its token transfers, read from the chain every few seconds; prices from DefiLlama'],
+      ['Can the token it bought be sold, does it have a tax or owner powers, is it flagged?', 'RektBull\'s token check (0x, GoPlus, verified source)'],
+      ['Was a token under a week old launched with a bundle of linked wallets?', 'The bundle check (early buyers\' funding, read from the chain and its explorer)'],
+    ],
+    faq: [
+      ['Does it copy trades for me?', 'No. Each alert links the buy on the Trade desk, where every check runs again before your own wallet is asked to sign. RektBull never trades for you from an alert.'],
+      ['Which trades does it see?', 'Buys and sells of tokens on Base, Ethereum, Arbitrum and BNB Chain, read from the token transfers in each block. A trade paid in ETH from a smart-contract wallet isn\'t seen, and Solana wallets come with RektBull\'s Solana trading.'],
+      ['What does it cost?', 'Following up to 5 wallets is free for any signed-in wallet; Safety Pro follows up to 25. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
+    ],
+  },
   launch_safety: {
     title: 'Rug Pull Detector: Bundled Launch Checks | RektBull',
     description: 'An AI agent that checks new tokens for a bundled launch: early buyers sharing a funder, links to the deployer, and alerts when those wallets start selling.',

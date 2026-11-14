@@ -21,7 +21,7 @@ const graph = html => [...html.matchAll(/<script type="application\/ld\+json">([
 const plain = html => html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/&#39;/g, '\'').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 test('a page for each agent, written for a real search', async () => {
-  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'meme-watch', 'trading-agent', 'group-guard', 'channel-poster', 'contract-audit']);
+  assert.deepEqual(agentPage.list().map(a => a.slug), ['wallet-checkup', 'wallet-guardian', 'claim-assistant', 'token-watch', 'launch-safety', 'dao-votes', 'yield-watch', 'meme-watch', 'wallet-tracker', 'trading-agent', 'group-guard', 'channel-poster', 'contract-audit']);
   const titles = new Set();
   for (const { id, slug } of agentPage.list()) {
     const p = agentPage.PAGES[id];
