@@ -28,7 +28,7 @@ owner, no admin and no upgrade path, and enforces onchain:
 | It can only call the Yield Router's deposit, move and withdraw | AllowedTargets and AllowedMethods caveats | Can't call a token, a venue or anything else |
 | Positions are opened only for the user; withdrawals pay only the user | The router: every pull is from the caller, every deposit is on the caller's behalf, every withdrawal is to the caller | **Can't withdraw to itself or anyone else** |
 | A move only goes to a venue for the same asset paying at least 1 point more, read from both venues' contracts before and again after the move, and never to one paying over 25% APR (a venue in distress shows the highest rate) | The router (`rateOf`: Aave's liquidity rate, Comet's supply rate, the Sky Savings Rate; `MAX_RATE`) | Can't move money to a worse venue as rates stand; a flash loan can still push rates within a transaction (see the fee cooldown) |
-| At most one fee per account and asset per 7 days, however many deposits and moves | The router (`FEE_COOLDOWN`) | **Churning can cost at most 0.1% a week per asset** (about 0.4-0.5% over a 30-day permission) |
+| At most one fee per account and asset per break-even period (`FEE_BPS / MIN_GAIN_BPS` of a year: 36.5 days at 0.1% and 1 point), however many deposits and moves | The router (`FEE_COOLDOWN`) | RektBull can't charge again before the smallest allowed move has earned its fee back: **at most one 0.1% fee per asset per 30-day permission**, about 1% a year at most |
 | A deposit only goes to the best-paying venue for the asset, or one within 1 point of it | The router (`NotBestVenue`) | Can't stand in for a move the rule above refuses, by withdrawing and depositing |
 | Putting back what was withdrawn through the router, within 7 days and up to the same amount of that asset, pays no fee | The router (`REDEPOSIT_WINDOW`, a credit per asset) | Withdraw + deposit can't earn a fee a move wouldn't |
 | A withdrawal from Aave that lowers the health factor of a user who borrows there can't leave it under 1.5; one that doesn't lower it (the position backs nothing) always goes through | The router (`MIN_HEALTH_FACTOR`, read from Aave before and after the withdrawal) | Can't push a borrowing user toward liquidation by taking out their collateral; the automatic exit isn't blocked by it |
@@ -49,9 +49,12 @@ Someone with a large flash loan can briefly change a lending market's rate (by
 supplying a lot in the same transaction) so that a venue looks better than it
 is. The second AI audit (15 November 2026) showed a hacked key doing this
 every day on a copy of Base, 0.1% each time. The fix: at most one fee per
-account and asset per 7 days (`FEE_COOLDOWN`), so churning can cost at most
-0.1% a week per asset, about 0.4-0.5% over a 30-day permission, whatever the
-rates do. The rates are also checked again after the move; on Base's real
+account and asset per `FEE_COOLDOWN`, the user's break-even period: the time
+the smallest allowed move (1 point more) takes to earn back the 0.1% fee, 36.5
+days. So churning can cost at most one fee per asset per 30-day permission,
+whatever the rates do, and even RektBull acting honestly can't charge again
+before a move has paid for itself (decided 15 November 2026: with yields of
+5-6% a year, a shorter cooldown would let fees eat most of the yield). The rates are also checked again after the move; on Base's real
 markets that alone refused every leg of the same attack, but it depends on the
 markets, so the cooldown is the bound.
 
