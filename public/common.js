@@ -179,6 +179,16 @@
   }
 
   const b64 = bytes => btoa(String.fromCharCode(...bytes));
+  /** Base58 (Bitcoin's alphabet), how Solana writes signatures and addresses. */
+  function base58(bytes) {
+    const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    let n = 0n;
+    for (const b of bytes) n = (n << 8n) | BigInt(b);
+    let out = '';
+    while (n > 0n) { out = A[Number(n % 58n)] + out; n /= 58n; }
+    for (const b of bytes) { if (b !== 0) break; out = '1' + out; }
+    return out;
+  }
   /** The signature for a challenge, from the connected wallet of that kind. */
   async function signChallenge(ch) {
     if (ch.kind === 'solana') {
@@ -404,6 +414,6 @@
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,
-    connect, signIn, link, SOL_CHAIN,
+    connect, signIn, link, SOL_CHAIN, base58,
   };
 })();

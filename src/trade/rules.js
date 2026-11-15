@@ -186,7 +186,11 @@ async function prepare({ accountId, wallet, chain: chainName, side, token, base:
       throw err;
     }
     checks.push({ check: 'token_risk', ok: true, detail: `verdict ${risk.verdict}`, flags: risk.flags, acknowledged: high.length ? high.map(f => f.id) : [] });
-    if (launch.young) checks.push({ check: 'bundle', ok: launch.risk !== 'block', detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
+    if (launch.young) {
+      checks.push(launch.risk === 'unknown'
+        ? { check: 'bundle', ok: false, detail: `the bundle check couldn't run (${launch.detail}); you confirmed going ahead without it`, flags: [] }
+        : { check: 'bundle', ok: true, detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
+    }
 
     const q = take(quoteR);
     if (q.taxBps > settings.max_tax_bps) throw new TradeBlocked(`This token charges a ${q.taxBps / 100}% tax, above your ${settings.max_tax_bps / 100}% limit.`);

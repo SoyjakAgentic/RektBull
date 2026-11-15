@@ -1,6 +1,6 @@
 /**
  * Chains RektBull trades on when the user signs each trade: Base, Ethereum and
- * Arbitrum (milestone 4), and BNB Chain (Launches phase 3); Solana comes later. Automatic trading has
+ * Arbitrum (milestone 4), and BNB Chain (Launches phase 3); Solana has its own module (trade/solana.js). Automatic trading has
  * its own list (trade/networks.js), one Trade Router per chain.
  *
  * Every 0x trade goes through 0x's AllowanceHolder: a quote naming any other

@@ -122,6 +122,7 @@ main.tool { max-width: 920px; margin: 0 auto; padding: 24px var(--gutter-r) 56px
 .plan { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
 .plan ul { padding-left: 18px; margin: 6px 0; }
 .check-ok::marker { content: "✓ "; color: var(--ok); }
+.check-warn::marker { content: "! "; color: var(--warn); font-weight: 700; }
 .risk { color: var(--warn); }
 .worst { background: var(--soft); border-radius: 12px; padding: 12px 14px; margin: 8px 0; }
 .limits-now { font-size: 14px; margin: 6px 0; }

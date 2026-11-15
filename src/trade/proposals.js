@@ -22,7 +22,18 @@
 const crypto = require('crypto');
 const db = require('../config/db');
 const rules = require('./rules');
-const { walletCalls } = require('./calls');
+const solana = require('./solana');
+const { walletCalls: evmCalls } = require('./calls');
+
+const isSolana = chain => String(chain || '').toLowerCase() === 'solana';
+/** Every check and a firm quote: Solana trades in trade/solana.js, the rest in rules.js. */
+const prepare = x => (isSolana(x.chain) ? solana.prepare(x) : rules.prepare(x));
+/** What the wallet signs: EVM calls, or one Solana transaction. */
+const walletCalls = p => (p.chain === 'solana'
+  ? { chain: 'solana', transaction: p.solana.transaction, last_valid_block_height: p.solana.last_valid_block_height, bytes: p.solana.bytes }
+  : evmCalls(p));
+/** The wallet a trade on this chain is made from. */
+const walletFor = (account, chain) => (isSolana(chain) ? account.solana_wallet : account.wallet);
 
 const APPROVE_WINDOW_MINUTES = 30; // a proposal not approved by then expires
 const PREVIEW_MAX_AGE_MS = 30 * 1000; // one click trades on a preview at most this old
@@ -42,7 +53,7 @@ function present(row) {
 const planView = p => ({ summary: p.summary, checks: p.checks, value_usd: p.valueUsd });
 
 const inputOf = (account, input) => ({
-  accountId: account.id, wallet: account.wallet, chain: input.chain, side: input.side, token: input.token,
+  accountId: account.id, wallet: walletFor(account, input.chain), chain: isSolana(input.chain) ? 'solana' : input.chain, side: input.side, token: input.token,
   base: input.base, amountUsd: input.amount_usd, sellFraction: input.sell_fraction, acknowledgeRisks: !!input.acknowledge_risks,
 });
 
@@ -51,7 +62,7 @@ const inputOf = (account, input) => ({
  * is stored; `seen` is what to send back with the trade.
  */
 async function preview(account, input) {
-  const p = await rules.prepare(inputOf(account, input));
+  const p = await prepare(inputOf(account, input));
   const quotedAt = new Date().toISOString();
   return {
     chain: p.chain, side: p.side, token: p.token, base: p.base,
@@ -70,7 +81,9 @@ function seenPreview(input) {
   if (!digits(s.sell_amount) || !digits(s.buy_amount) || !digits(s.min_buy_amount) || BigInt(s.sell_amount) === 0n || !Number.isFinite(quotedAt)) {
     throw Object.assign(new Error('seen must be the preview the trade was made on, as /v1/trading/preview returned it'), { status: 400 });
   }
-  const same = String(s.chain) === String(input.chain) && String(s.side) === String(input.side) && String(s.token || '').toLowerCase() === String(input.token || '').toLowerCase();
+  // Solana mints are case-sensitive; EVM addresses aren't.
+  const sameToken = isSolana(input.chain) ? String(s.token || '') === String(input.token || '') : String(s.token || '').toLowerCase() === String(input.token || '').toLowerCase();
+  const same = String(s.chain) === String(input.chain) && String(s.side) === String(input.side) && sameToken;
   if (!same) throw Object.assign(new Error('seen is a preview of a different trade'), { status: 400 });
   if (Date.now() - quotedAt > PREVIEW_MAX_AGE_MS) {
     throw Object.assign(new Error('The price you saw is over 30 seconds old. Look at the new one, then click again.'), { status: 409, code: 'preview_stale' });
@@ -86,7 +99,7 @@ function seenPreview(input) {
 async function trade(account, input) {
   const seen = seenPreview(input);
   const started = Date.now();
-  const p = await rules.prepare({ ...inputOf(account, input), seen });
+  const p = await prepare({ ...inputOf(account, input), seen });
   const prepareMs = Date.now() - started;
   if (seen && seen.base === p.base) {
     // Compared as rates (what's received per unit spent), so a preview of another amount still counts.
@@ -100,23 +113,25 @@ async function trade(account, input) {
   const timing = { prepare_ms: prepareMs, previewed: !!seen };
   // The fee to offer the wallet, by the user's speed setting; a fee that couldn't be read leaves it to the wallet, saying why.
   const { send_speed: speed } = await rules.settingsFor(account.id);
-  const fees = await require('./fees').suggest(p.chain, speed).catch(err => ({ speed, none: `The fee couldn't be read from ${p.chain} (${err.message}), so your wallet chooses it.` }));
+  // On Solana the priority fee is already in the transaction (trade/solana.js).
+  const fees = p.chain === 'solana' ? p.summary.priority_fee
+    : await require('./fees').suggest(p.chain, speed).catch(err => ({ speed, none: `The fee couldn't be read from ${p.chain} (${err.message}), so your wallet chooses it.` }));
   const { rows } = await db.query(
     `INSERT INTO trade_proposals (id, account_id, wallet, chain, side, token, base, amount_usd, sell_fraction, plan, calls, status, approved_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'approved', now()) RETURNING *`,
-    [crypto.randomUUID(), account.id, account.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
+    [crypto.randomUUID(), account.id, p.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
       json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount, one_click: true, timing, fees }), json(calls)],
   );
   return { ...present(rows[0]), fees };
 }
 
 async function propose(account, input) {
-  const p = await rules.prepare(inputOf(account, input));
+  const p = await prepare(inputOf(account, input));
   const id = crypto.randomUUID();
   const { rows } = await db.query(
     `INSERT INTO trade_proposals (id, account_id, wallet, chain, side, token, base, amount_usd, sell_fraction, plan)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-    [id, account.id, account.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
+    [id, account.id, p.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
       json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks })],
   );
   return present(rows[0]);
@@ -135,10 +150,14 @@ async function approve(account, id) {
     await db.query(`UPDATE trade_proposals SET status = 'expired', finished_at = now() WHERE id = $1`, [id]);
     throw Object.assign(new Error('this proposal has expired; propose the trade again'), { status: 409 });
   }
+  // Made from the wallet it was proposed from, and only while that is still the account's wallet.
+  if (walletFor(account, row.chain) !== row.wallet && String(walletFor(account, row.chain) || '').toLowerCase() !== String(row.wallet).toLowerCase()) {
+    throw Object.assign(new Error('This trade was proposed from a wallet that is no longer linked to your account.'), { status: 409 });
+  }
   let p;
   try {
-    p = await rules.prepare({
-      accountId: account.id, wallet: account.wallet, chain: row.chain, side: row.side, token: row.token, base: row.base,
+    p = await prepare({
+      accountId: account.id, wallet: row.wallet, chain: row.chain, side: row.side, token: row.token, base: row.base,
       amountUsd: row.amount_usd, sellFraction: row.sell_fraction, acknowledgeRisks: !!row.plan?.acknowledge_risks,
     });
   } catch (err) {
@@ -159,14 +178,16 @@ async function approve(account, id) {
  * the click until the wallet was asked to sign (kept on one-click trades).
  */
 async function submitted(account, id, txHash, clickToPromptMs = null) {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(String(txHash || ''))) throw Object.assign(new Error('tx_hash must be a transaction hash'), { status: 400 });
+  const row = await load(account, id);
+  const ok = row.chain === 'solana' ? solana.isSignature(txHash) : /^0x[0-9a-fA-F]{64}$/.test(String(txHash || ''));
+  if (!ok) throw Object.assign(new Error(row.chain === 'solana' ? 'tx_hash must be the transaction\'s signature' : 'tx_hash must be a transaction hash'), { status: 400 });
   const ms = Number(clickToPromptMs);
   const timed = clickToPromptMs !== null && clickToPromptMs !== undefined && Number.isFinite(ms) && ms >= 0 && ms <= 10 * 60 * 1000 ? Math.round(ms) : null;
   const { rows } = await db.query(
     `UPDATE trade_proposals SET status = 'submitted', tx_hash = $3, submitted_at = now(),
        plan = CASE WHEN $4::int IS NULL OR plan->'timing' IS NULL THEN plan ELSE jsonb_set(plan, '{timing,click_to_prompt_ms}', to_jsonb($4::int)) END
      WHERE id = $1 AND account_id = $2 AND status = 'approved' RETURNING *`,
-    [id, account.id, txHash.toLowerCase(), timed],
+    [id, account.id, row.chain === 'solana' ? txHash : txHash.toLowerCase(), timed],
   );
   if (!rows.length) throw Object.assign(new Error('only an approved proposal can be marked as sent'), { status: 409 });
   return present(rows[0]);

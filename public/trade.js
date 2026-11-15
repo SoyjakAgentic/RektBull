@@ -18,7 +18,7 @@
 
   RB.onSignedIn(afterSignIn);
   async function afterSignIn() {
-    if (!state.provider) return; // signed in on an earlier page: wait until the wallet is connected here
+    if (!state.provider && !state.sol) return; // signed in on an earlier page: wait until a wallet is connected here
     state.config = await api('GET', '/v1/trading/config');
     for (const id of ['trade-card', 'protect-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
@@ -27,7 +27,12 @@
     showSide();
     showProtect();
     showAutoNetwork();
-    await Promise.all([loadSettings(), loadHistory(), loadLimits()]);
+    // Automatic trading is EVM-only for now: an account with no EVM wallet doesn't see its card.
+    const me = await api('GET', '/v1/me').catch(() => null);
+    state.solanaWallet = me?.account?.solana_wallet || null;
+    $('limits-card').hidden = !me?.account?.wallet;
+    if (!me?.account?.wallet && state.config.chains.solana) { $('chain').value = 'solana'; showBases(); showProtect(); }
+    await Promise.all([loadSettings(), loadHistory(), me?.account?.wallet ? loadLimits().catch(() => {}) : null]);
   }
 
   /* The networks for trades the user signs, and each one's base assets (from the server's config). */
@@ -46,7 +51,8 @@
     $('base').replaceChildren(...c.bases.map(b => el('option', {}, b)));
     $('base').value = c.bases.includes(keep) ? keep : c.default_base;
   }
-  $('chain').addEventListener('change', () => { showBases(); showProtect(); });
+  $('chain').addEventListener('change', () => { showBases(); showProtect(); $('token').placeholder = isSolanaChain() ? 'The token\'s mint address' : '0x…'; });
+  const isSolanaChain = () => $('chain').value === 'solana';
 
   /* ── Protected sending: private networks that keep trades out of the public mempool, and what each speed pays ── */
   const gwei = hex => { const g = Number(BigInt(hex)) / 1e9; return `${g < 0.01 ? g.toFixed(4) : g < 1 ? g.toFixed(3) : g.toFixed(2)} gwei`; };
@@ -54,6 +60,15 @@
     const chain = $('chain').value;
     const p = state.config?.protected_networks?.[chain];
     if (!p) return;
+    if (chain === 'solana') {
+      // No networks to add: the priority fee goes in the transaction itself, by the speed setting.
+      $('p-chain').textContent = 'Solana';
+      $('p-note').textContent = p.note;
+      $('p-networks').replaceChildren();
+      $('p-fees').textContent = '';
+      say('p-msg', '');
+      return;
+    }
     $('p-chain').textContent = state.config.chains[chain]?.label || chain;
     $('p-note').textContent = p.note || 'Trades you sign go to the public mempool unless your wallet uses a private network, where front-running and sandwich bots can\'t see them coming. Add one with a click; your wallet asks you to confirm.';
     say('p-msg', '');
@@ -96,7 +111,7 @@
   function prefill() {
     const q = new URLSearchParams(location.search);
     if (q.get('chain') && state.config?.chains?.[q.get('chain')]) { $('chain').value = q.get('chain'); showBases(); }
-    if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '')) $('token').value = q.get('token');
+    if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '') || (q.get('chain') === 'solana' && SOL_MINT.test(q.get('token') || ''))) $('token').value = q.get('token');
     if (['buy', 'sell'].includes(q.get('side'))) { $('side').value = q.get('side'); $('side').dispatchEvent(new Event('change')); }
     const f = Number(q.get('fraction'));
     if (f > 0 && f <= 100) $('fraction').value = String(f);
@@ -112,13 +127,16 @@
   const FRESH_MS = 28 * 1000; // a little under the server's 30 seconds, for the round trip
   const tradeState = { preview: null, previewing: null, seq: 0, ack: false, presets: { buy: [25, 50, 100], sell: [25, 50, 100] } };
   const isSell = () => $('side').value === 'sell';
-  const tokenOk = () => /^0x[0-9a-fA-F]{40}$/.test($('token').value.trim());
+  const SOL_MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const tokenOk = () => (isSolanaChain() ? SOL_MINT : /^0x[0-9a-fA-F]{40}$/).test($('token').value.trim());
   const input = () => ({
     chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
     ...(isSell() ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
     ...(tradeState.ack ? { acknowledge_risks: true } : {}),
   });
-  const matches = (pv, i) => pv && pv.chain === i.chain && pv.side === i.side && pv.base === i.base && pv.token.toLowerCase() === i.token.toLowerCase();
+  // Solana mints are case-sensitive.
+  const sameToken = (a, b, chain) => (chain === 'solana' ? a === b : a.toLowerCase() === b.toLowerCase());
+  const matches = (pv, i) => pv && pv.chain === i.chain && pv.side === i.side && pv.base === i.base && sameToken(pv.token, i.token, i.chain);
   const fresh = pv => pv && Date.now() - Date.parse(pv.quoted_at) < FRESH_MS;
 
   function showSide() {
@@ -198,7 +216,7 @@
     $('plan').hidden = false;
     $('plan').replaceChildren(
       el('p', {}, el('strong', {}, s.text)),
-      el('ul', {}, pv.plan.checks.map(c => el('li', { class: 'check-ok' }, c.detail))),
+      el('ul', {}, pv.plan.checks.map(c => el('li', { class: c.ok === false ? 'check-warn' : 'check-ok' }, c.detail))),
       el('p', {}, s.fee ? `RektBull fee: ${s.fee.amount} ${s.fee.asset} (${s.fee.pct}%), ${s.fee.taken_by || 'taken inside the swap'}.` : 'No RektBull fee on this trade.'),
       el('p', { class: 'muted small', id: 'plan-age' }),
     );
@@ -222,6 +240,8 @@
     if (!tokenOk()) return say('trade-msg', 'Paste the token\'s address first.', 'bad');
     if (tradeState.previewing) await tradeState.previewing;
     const i = input();
+    if (i.chain === 'solana' && !state.sol) return say('trade-msg', 'Connect your Solana wallet first (above: Phantom, Solflare, or MetaMask with Solana).', 'bad');
+    if (i.chain === 'solana' && state.solanaWallet && state.sol.address !== state.solanaWallet) return say('trade-msg', `Your account's Solana wallet is ${short(state.solanaWallet)}, but ${short(state.sol.address)} is connected. Switch accounts in your wallet.`, 'bad');
     let pv = tradeState.preview;
     if (!matches(pv, i) || !fresh(pv)) {
       // Not a preview of this trade, or an old one: check it now, and let the user look before trading.
@@ -234,10 +254,13 @@
     try {
       say('trade-msg', 'Checking again on a fresh price…');
       t = await api('POST', '/v1/trading/trades', { ...i, ...(pv ? { seen: pv.seen } : {}) });
-      await switchChain(chainHex(t.chain || i.chain));
       say('trade-msg', 'Confirm in your wallet…');
       const toPrompt = Math.round(performance.now() - clickAt);
-      txHash = await sendCalls(t.calls, t.fees);
+      if (t.chain === 'solana') txHash = await sendSolana(t.calls);
+      else {
+        await switchChain(chainHex(t.chain || i.chain));
+        txHash = await sendCalls(t.calls, t.fees);
+      }
       await api('POST', `/v1/trading/proposals/${t.id}/submitted`, { tx_hash: txHash, click_to_prompt_ms: toPrompt });
       say('trade-msg', `Sent: ${short(txHash)}. RektBull will confirm it onchain.`, 'ok');
       await loadHistory();
@@ -282,6 +305,15 @@
       if (i < bundle.calls.length - 1) await waitFor(last);
     }
     return confirm || last;
+  }
+
+  /** The one Solana transaction, signed and sent by the wallet (Wallet Standard). Returns its signature. */
+  async function sendSolana(calls) {
+    const send = state.sol.wallet.features['solana:signAndSendTransaction'];
+    if (!send) throw new Error('This wallet can\'t send Solana transactions from a web page. Try Phantom, Solflare or MetaMask.');
+    const transaction = Uint8Array.from(atob(calls.transaction), c => c.charCodeAt(0));
+    const [out] = await send.signAndSendTransaction({ account: state.sol.account, chain: RB.SOL_CHAIN, transaction, options: { preflightCommitment: 'confirmed' } });
+    return RB.base58(out.signature);
   }
 
   async function waitFor(hash) {
