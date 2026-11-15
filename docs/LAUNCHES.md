@@ -191,12 +191,46 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
   BondingV5's events: its `Launched` has a new layout (it carries the launch's
   settings, so a "Project 60 days" card says so).
 
+## Phase 4: built (Solana and pump.fun, Trade desk stage 2)
+
+- **Sign in and trade:** a Solana wallet signs in, or is linked to an EVM
+  account; trades are signed in Phantom, Solflare or MetaMask, through
+  Jupiter's Router (pump.fun's curve, PumpSwap, Raydium LaunchLab and the
+  rest), with RektBull's 1% as a SOL transfer in the same transaction
+  (`src/trade/solana.js`, docs/PAYMENTS.md).
+- **The Live card on Solana** (`src/services/solanaLaunches.js`): reading
+  pump.fun's own events would mean fetching thousands of transactions a
+  minute, so the feed reads instead:
+  - **New:** GeckoTerminal's newest pools on Solana, two pages every 20
+    seconds, kept for an hour: the ones on pump.fun's curve priced in SOL
+    (GeckoTerminal's `pump-fun` dex; its pool address is the coin's bonding
+    curve, checked against the curve's address derived from the mint). Each
+    of the newest six cards says what the mint says: a freeze or mint
+    authority still set (Solana RPC, one call).
+  - **Nearest to graduating:** the busiest pump.fun curves (GeckoTerminal, by
+    transactions in 24 hours, cached a minute) and the new ones, each curve
+    read from the chain in one call: how much of the 793.1 million tokens for
+    sale is sold, and the SOL in it. That figure is read once a day from
+    pump.fun's Global account (offset 89; its fee, 0.95%, at 105). Curves
+    priced in other tokens (pump.fun also runs USDC- and coin-priced curves)
+    are left out.
+  - **Just graduated:** PumpSwap pools, the newest and the day's busiest,
+    whose coin's pump.fun curve the chain shows as `complete`.
+  - **Cost:** about 2 GeckoTerminal calls every 20 seconds plus 2 a minute
+    (its free plan: about 30 a minute), and 2 RPC calls every 20 seconds,
+    about 260,000 a month on `RPC_URLS_SOLANA`, shared by every visitor.
+  - "Look closer" on a Solana card opens the Safety desk's check (the token
+    page reads EVM chains only).
+- **Meme Watch on Solana:** positions bought on Solana are watched like the
+  rest: liquidity, the stop-loss and take-profit, launch-bundle wallets
+  selling; the mint's authorities in place of GoPlus's flags (GoPlus doesn't
+  cover Solana here); one alert when the coin's pump.fun curve completes.
+- **Seen on 15 November 2026:** pump.fun coins reach GeckoTerminal's new
+  pools within seconds; a live read built the three columns in about 2
+  seconds (22 new coins, 10 curves, 7 graduations in the day).
+
 ## Phases to come
 
-4. **Solana and pump.fun:** trades the user signs with Phantom, through
-   Jupiter. Needs a reliable Solana data source first: the free public RPC
-   rate-limits the bundle check. A paid RPC such as QuickNode (a month's free
-   trial) or Helius (about $50 a month) goes in `RPC_URLS_SOLANA`.
 5. **The Meme Router:** automatic meme trading. *Contract and break-it tests
    built, not audited: [MEME_ROUTER.md](MEME_ROUTER.md). It bounds each fill by
    the price the user signed instead of a TWAP.* The original plan: The audited Trade Router

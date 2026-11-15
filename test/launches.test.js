@@ -191,6 +191,33 @@ test('Meme Watch: liquidity pulled, a new flag, the stop-loss and insiders selli
   assert.match(fmGot[0].title, new RegExp(`on bsc: it graduated from four\\.meme's bonding curve`));
   assert.match(fmGot[0].detail.reasons[0].text, /now trades on PancakeSwap, the same token/);
   assert.equal(fmGot[0].detail.sell, `/trade?chain=bsc&token=${FMT}&side=sell&fraction=100#trade-card`);
+
+  // A pump.fun coin (Solana): the mint's authorities in place of GoPlus's flags, and one alert when its curve completes.
+  const PUMPCOIN = '3QkTHofooopp7XkBDqjRDC2k1mbkG1d1QTdU8NDRpump';
+  await db.query(`INSERT INTO positions (account_id, chain, token, amount_raw, cost_usd) VALUES ($1, 'solana', $2, $3, 70)`, [a.id, PUMPCOIN, (1000n * 10n ** 6n).toString()]); // $70 at $0.07: no stop or target
+  const curveAt = await require('../src/services/solanaLaunches').curveOf(PUMPCOIN);
+  let complete = 0, freeze = null;
+  const curveData = () => { const b = Buffer.alloc(150); b.writeBigUInt64LE(100n, 24); b[48] = complete; return [b.toString('base64'), 'base64']; };
+  require('../src/providers/rpc').solanaRpc = async (method, params) => {
+    if (method === 'getTokenSupply') return { value: { decimals: 6 } };
+    if (method === 'getAccountInfo') { assert.equal(params[0], curveAt, 'its bonding curve'); return { value: { owner: '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P', data: curveData() } }; }
+    if (method === 'getMultipleAccounts') return { value: [{ data: { parsed: { info: { mintAuthority: null, freezeAuthority: freeze } } } }] };
+    throw new Error(`unexpected ${method}`);
+  };
+  const solAlerts = async () => (await alerts()).filter(x => / on solana: /.test(x.title));
+  await run();
+  assert.equal((await solAlerts()).length, 0, 'a baseline: nothing to say');
+  freeze = 'Fr33zeAuthor1ty1111111111111111111111111111';
+  complete = 1;
+  await run();
+  await run();
+  const solGot = await solAlerts();
+  assert.deepEqual(solGot.map(x => x.title).sort(), [
+    'MEME on solana: Its issuer can freeze any holder\'s tokens',
+    'MEME on solana: it graduated from pump.fun\'s bonding curve',
+  ].sort(), 'each told once');
+  assert.ok(solGot.every(x => x.detail.sell === `/trade?chain=solana&token=${PUMPCOIN}&side=sell&fraction=100#trade-card`));
+  assert.ok(solGot.every(x => x.detail.reasons.every(re => /Solana RPC/.test(re.source))), 'sources: the chain itself');
 });
 
 test('four.meme (BNB Chain): recognised from its helper contract; its curve; the newest tokens on it', async () => {

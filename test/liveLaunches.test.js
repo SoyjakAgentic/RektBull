@@ -153,7 +153,7 @@ test('the live launch feed', async t => {
   });
 
   await t.test('a chain it doesn\'t read launchpads on is refused, naming the ones it does', async () => {
-    await assert.rejects(L.live({ chain: 'ethereum' }), e => e.status === 400 && /Base and BNB Chain/.test(e.message));
+    await assert.rejects(L.live({ chain: 'ethereum' }), e => e.status === 400 && /Base, BNB Chain and Solana/.test(e.message));
   });
 
   await t.test('flags are asked for once per token, not on every read', async () => {
