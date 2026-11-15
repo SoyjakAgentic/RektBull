@@ -75,9 +75,12 @@ interface ISsrOracle {
  *             best venue for that asset, before and after the deposit;
  *           - the fee is FEE_BPS (at most 0.1%) of what's deposited or moved,
  *             paid only to FEE_WALLET, at most once per account and asset per
- *             FEE_COOLDOWN: rates can be pushed within a transaction (a flash
- *             loan), so this, not the rate rule, is what caps what churning
- *             can cost a user (second AI audit, M-1). Withdrawals to the
+ *             FEE_COOLDOWN, the user's break-even: the time the smallest move
+ *             allowed (MIN_GAIN_BPS more) takes to earn back the fee, so
+ *             RektBull can't charge again before a move has paid for itself,
+ *             and churning (rates can be pushed within a transaction with a
+ *             flash loan: second AI audit, M-1) costs at most one fee per
+ *             break-even period. Withdrawals to the
  *             caller are free, and putting the same amount back within
  *             REDEPOSIT_WINDOW pays no fee;
  *           - an Aave withdrawal (or move out of Aave) that lowers the health
@@ -107,8 +110,9 @@ contract RektBullYieldRouter is ReentrancyGuard {
     uint256 private constant SECONDS_PER_YEAR = 31_536_000;
     /// @notice Putting back what was withdrawn through this router, within this long, pays no fee.
     uint256 public constant REDEPOSIT_WINDOW = 7 days;
-    /// @notice At most one fee per account and asset per this long, however many deposits and moves.
-    uint256 public constant FEE_COOLDOWN = 7 days;
+    /// @notice At most one fee per account and asset per this long, however many deposits and moves: the user's
+    ///         break-even, FEE_BPS / MIN_GAIN_BPS of a year (0.1% / 1 point = 36.5 days).
+    uint256 public immutable FEE_COOLDOWN;
     /// @notice No deposit or move into a venue paying more than this (APR, 18 decimals): 25%.
     uint256 public constant MAX_RATE = 0.25e18;
     /// @notice The lowest Aave health factor (1e18 = 1.0) a router-driven Aave exit may leave a borrowing account at.
@@ -167,6 +171,7 @@ contract RektBullYieldRouter is ReentrancyGuard {
         FEE_BPS = feeBps;
         MIN_GAIN_BPS = minGainBps;
         MIN_INTERVAL = minInterval;
+        FEE_COOLDOWN = uint256(feeBps) * 365 days / minGainBps;
         for (uint256 i; i < list.length; ++i) {
             Venue memory v = list[i];
             if (v.kind == Kind.None || v.target == address(0) || v.asset == address(0) || v.position == address(0)) revert BadConfig();
