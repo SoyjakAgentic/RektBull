@@ -48,7 +48,7 @@ const TABLES = {
 
 /** Everything RektBull holds about the account, as one JSON document. */
 async function exportAll(account) {
-  const { rows: [acct] } = await db.query('SELECT wallet, email, created_at FROM accounts WHERE id = $1', [account.id]);
+  const { rows: [acct] } = await db.query('SELECT wallet, solana_wallet, email, created_at FROM accounts WHERE id = $1', [account.id]);
   const out = { exported_at: new Date().toISOString(), account: acct };
   for (const [name, sql] of Object.entries(TABLES)) {
     try { out[name] = (await db.query(sql, [account.id])).rows; } catch (err) { out[name] = { not_exported: err.message }; }

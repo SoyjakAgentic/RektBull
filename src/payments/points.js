@@ -7,7 +7,9 @@
  * (NEW_WALLET_CHECK_CHAINS, default Ethereum and Base) gets the smaller
  * allowance, so fresh wallets can't be farmed for points. The allowance is
  * fixed when a month's row is first made. If the check can't run, the wallet
- * gets the full allowance: our outage is not the user's fault.
+ * gets the full allowance: our outage is not the user's fault. A Solana
+ * wallet is new when it has no transactions on Solana; an account with both
+ * kinds of wallet is new only if both are.
  *
  * The same table also counts what a pass includes per month (e.g. 5 reports).
  */
@@ -43,6 +45,26 @@ async function isNewWallet(wallet) {
   }
 }
 
+/** True when the Solana wallet has no transactions; null when it couldn't be read. */
+async function isNewSolanaWallet(wallet) {
+  try {
+    const sigs = await rpc.solanaRpc('getSignaturesForAddress', [wallet, { limit: 1 }], { timeout: 5000 });
+    return Array.isArray(sigs) ? sigs.length === 0 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The account is new when every wallet it has is new; null when one couldn't be read and none was found old. */
+async function isNewAccount(account) {
+  const answers = await Promise.all([
+    account.wallet ? isNewWallet(account.wallet) : true,
+    account.solana_wallet ? isNewSolanaWallet(account.solana_wallet) : true,
+  ]);
+  if (answers.includes(false)) return false;
+  return answers.includes(null) ? null : true;
+}
+
 /** Makes the row for a counter this month if it isn't there; returns it. */
 async function ensure(subject, key, allowanceFn, c = db) {
   const p = period();
@@ -67,15 +89,15 @@ async function take(subject, key, amount, allowanceFn) {
 const giveBack = (subject, key, amount) =>
   db.query('UPDATE period_usage SET used = GREATEST(used - $4, 0) WHERE subject = $1 AND key = $2 AND period = $3', [subject, key, period(), amount]);
 
-const pointsAllowance = wallet => async () => ((await isNewWallet(wallet)) === true ? FREE_POINTS.new_wallet : FREE_POINTS.per_month);
+const pointsAllowance = account => async () => ((await isNewAccount(account)) === true ? FREE_POINTS.new_wallet : FREE_POINTS.per_month);
 
 /** Spends free points for a run; false when there aren't enough left this month. */
-const spend = (account, amount) => take(subjectOf(account.id), 'points', amount, pointsAllowance(account.wallet));
+const spend = (account, amount) => take(subjectOf(account.id), 'points', amount, pointsAllowance(account));
 const refund = (account, amount) => giveBack(subjectOf(account.id), 'points', amount);
 
 /** This month's free points for the account: { allowance, used, left, new_wallet, resets_at }. */
 async function status(account) {
-  const row = await ensure(subjectOf(account.id), 'points', pointsAllowance(account.wallet));
+  const row = await ensure(subjectOf(account.id), 'points', pointsAllowance(account));
   return {
     period: period(), allowance: row.allowance, used: row.used, left: Math.max(row.allowance - row.used, 0),
     new_wallet: row.allowance < FREE_POINTS.per_month, resets_at: nextPeriodStart(),
@@ -91,4 +113,4 @@ async function includedLeft(accountId, productId, allowance) {
   return { allowance: r.allowance, used: r.used, left: Math.max(r.allowance - r.used, 0) };
 }
 
-module.exports = { spend, refund, status, isNewWallet, takeIncluded, giveBackIncluded, includedLeft, period };
+module.exports = { spend, refund, status, isNewWallet, isNewSolanaWallet, isNewAccount, takeIncluded, giveBackIncluded, includedLeft, period };
