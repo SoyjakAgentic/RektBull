@@ -5,7 +5,7 @@
  */
 const express = require('express');
 const env = require('../config/env');
-const { requireAuth, requireEvmWallet } = require('../middleware/auth');
+const { requireAuth, requireEvmWallet, requireTradeWallet, currentWallets } = require('../middleware/auth');
 const { TRADE_CHAINS } = require('../trade/chains');
 const rules = require('../trade/rules');
 const proposals = require('../trade/proposals');
@@ -36,7 +36,11 @@ const guard = fn => async (req, res) => {
 router.get('/v1/trading/config', (_req, res) => res.json({
   enabled: env.tradingEnabled,
   fee_pct: Math.min(env.swapFeeBps, 100) / 100,
-  chains: Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, label: c.label, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
+  chains: {
+    ...Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, label: c.label, bases: Object.keys(c.bases), default_base: c.defaultBase }])),
+    // Solana (trade/solana.js): signed in a Solana wallet, against SOL, through Jupiter.
+    solana: { chain_id: null, label: 'Solana', bases: ['SOL'], default_base: 'SOL', wallet: 'solana' },
+  },
   defaults: { ...rules.DEFAULT_SETTINGS, router_limits: { per_trade_usd: 500, per_day_usd: 10000, days: 7 } },
   // Private networks that keep trades out of the public mempool, per chain (trade/fees.js).
   protected_networks: require('../trade/fees').PROTECTED,
@@ -61,13 +65,13 @@ router.get('/v1/trading/settings', requireAuth, async (req, res) => res.json(awa
 router.put('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.saveSettings(req.account.id, req.body || {})));
 
 // One click: the checks before the click (preview), then the checked trade and its wallet calls in one step (trades).
-router.post('/v1/trading/preview', requireEvmWallet, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
-router.post('/v1/trading/trades', requireEvmWallet, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
+router.post('/v1/trading/preview', requireTradeWallet, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
+router.post('/v1/trading/trades', requireTradeWallet, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
 
-router.post('/v1/trading/proposals', requireEvmWallet, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
+router.post('/v1/trading/proposals', requireTradeWallet, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
 router.get('/v1/trading/proposals', requireAuth, async (req, res) => res.json({ proposals: await proposals.list(req.account) }));
 router.get('/v1/trading/proposals/:id', requireAuth, async (req, res) => res.json(await proposals.get(req.account, req.params.id)));
-router.post('/v1/trading/proposals/:id/approve', requireEvmWallet, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
+router.post('/v1/trading/proposals/:id/approve', currentWallets, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
 router.post('/v1/trading/proposals/:id/submitted', requireAuth, async (req, res) => res.json(await proposals.submitted(req.account, req.params.id, req.body?.tx_hash, req.body?.click_to_prompt_ms)));
 router.post('/v1/trading/proposals/:id/cancel', requireAuth, async (req, res) => res.json(await proposals.cancel(req.account, req.params.id)));
 

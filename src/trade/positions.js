@@ -34,7 +34,21 @@ async function settle(row, receipt) {
     await db.query(`UPDATE trade_proposals SET status = 'failed', error = 'the transaction reverted onchain', finished_at = now() WHERE id = $1`, [row.id]);
     return;
   }
-  const amount = moved(receipt, row.token, wallet, row.side === 'buy' ? 'in' : 'out');
+  await record(row, moved(receipt, row.token, wallet, row.side === 'buy' ? 'in' : 'out'));
+}
+
+/** A Solana trade: the transaction's own token balances for the wallet and the mint (trade/solana.js). */
+async function settleSolana(row, seen) {
+  if (seen.failed) {
+    await db.query(`UPDATE trade_proposals SET status = 'failed', error = 'the transaction failed onchain', finished_at = now() WHERE id = $1`, [row.id]);
+    return;
+  }
+  const amount = row.side === 'buy' ? seen.amount : -seen.amount;
+  await record(row, amount > 0n ? amount : 0n);
+}
+
+/** Records what a confirmed trade moved: a buy adds to the position, a sale shrinks it. */
+async function record(row, amount) {
   if (amount === 0n) {
     await db.query(`UPDATE trade_proposals SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [row.id, `that transaction didn't move ${row.token} for this wallet`]);
     return;
@@ -65,8 +79,8 @@ async function tick() {
   const { rows } = await db.query(`SELECT * FROM trade_proposals WHERE status = 'submitted' ORDER BY submitted_at LIMIT 50`);
   for (const row of rows) {
     try {
-      const receipt = await evmRpc(row.chain, 'eth_getTransactionReceipt', [row.tx_hash]);
-      if (receipt) await settle(row, receipt);
+      const seen = row.chain === 'solana' ? await require('./solana').moved(row.tx_hash, row.wallet, row.token) : await evmRpc(row.chain, 'eth_getTransactionReceipt', [row.tx_hash]);
+      if (seen) await (row.chain === 'solana' ? settleSolana(row, seen) : settle(row, seen));
       else if (Date.now() - new Date(row.submitted_at).getTime() > NOT_SEEN_MINUTES * 60 * 1000) {
         await db.query(`UPDATE trade_proposals SET status = 'failed', error = 'the transaction was not seen onchain within 30 minutes', finished_at = now() WHERE id = $1`, [row.id]);
       }
@@ -82,4 +96,4 @@ async function list(accountId) {
   return rows.map(r => ({ chain: r.chain, token: r.token, amount_raw: r.amount_raw, cost_usd: Number(r.cost_usd), updated_at: r.updated_at }));
 }
 
-module.exports = { tick, settle, moved, list };
+module.exports = { tick, settle, settleSolana, moved, list };

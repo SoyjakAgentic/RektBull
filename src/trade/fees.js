@@ -45,6 +45,7 @@ const PROTECTED = {
   },
   base: { networks: [], note: 'Base has no public mempool: trades go straight to its sequencer, so sandwich bots can\'t see them coming. Nothing to add.' },
   arbitrum: { networks: [], note: 'Arbitrum has no public mempool: trades go straight to its sequencer in the order they arrive. Nothing to add.' },
+  solana: { networks: [], note: 'Solana has no public mempool to add a network for. Your speed setting sets the priority fee inside the transaction itself: Standard takes Jupiter\'s suggestion, Fast and Fastest what the swap\'s accounts paid lately (75th and 95th percentile), at most 0.005 SOL. Your wallet may add its own protection.' },
 };
 
 const median = xs => { const s = [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)); return s[Math.floor(s.length / 2)]; };
