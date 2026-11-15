@@ -84,7 +84,7 @@ const AGENTS = [
   },
   {
     id: 'meme_watch', name: 'Meme Watch', was: 'Meme Coin Trader (alerts and a ready-made sell)', desk: { name: 'Launches', href: '/launches' },
-    does: `Watches up to ${MEME_WATCH_MAX} tokens you bought on the Trade or Launches desk, on Base, Ethereum and Arbitrum: launch-bundle and insider wallets selling, a new GoPlus flag (a honeypot, a tax, owner powers), liquidity pulled from its pools, and your take-profit or stop-loss price. Each alert comes with a sell ready for your wallet to sign.`,
+    does: `Watches up to ${MEME_WATCH_MAX} tokens you bought on the Trade or Launches desk, on Base, Ethereum, Arbitrum, BNB Chain and Solana: launch-bundle and insider wallets selling, a new red flag (GoPlus's: a honeypot, a tax, owner powers; on Solana, a freeze or mint authority on the mint), liquidity pulled from its pools, a curve graduating, and your take-profit or stop-loss price. Each alert comes with a sell ready for your wallet to sign.`,
     alerts: 'When one of those happens, with the reasons, their sources, and a sell to review and sign.',
     plan: 'free', every: [1, 6], default_every: 1, default_on: false, runs_here: true, wallets: 'signed_in',
   },
@@ -276,7 +276,7 @@ const RUNNERS = {
     const { rows } = await db.query(
       `SELECT chain, token, amount_raw::text AS amount_raw, cost_usd FROM positions
         WHERE account_id = $1 AND amount_raw > 0 AND chain = ANY($2::text[]) ORDER BY updated_at DESC`,
-      [account.id, CHAINS],
+      [account.id, [...CHAINS, 'solana']],
     );
     const held = rows.filter(r => !bases.has(r.token.toLowerCase())).slice(0, MEME_WATCH_MAX);
     const prev = row?.snapshot?.positions || {};
@@ -307,7 +307,12 @@ const RUNNERS = {
           p.liquidity_usd = m.liquidity_usd_total;
           // Take-profit and stop-loss, against what it cost (the Trade desk's settings).
           if (m.price_usd && Number(pos.cost_usd) > 0) {
-            if (p.decimals === undefined) p.decimals = Number(BigInt(await require('../providers/rpc').evmRpc(pos.chain, 'eth_call', [{ to: pos.token, data: '0x313ce567' }, 'latest'])));
+            if (p.decimals === undefined) {
+              const rpc = require('../providers/rpc');
+              p.decimals = pos.chain === 'solana'
+                ? Number((await rpc.solanaRpc('getTokenSupply', [pos.token]))?.value?.decimals)
+                : Number(BigInt(await rpc.evmRpc(pos.chain, 'eth_call', [{ to: pos.token, data: '0x313ce567' }, 'latest'])));
+            }
             const value = Number(pos.amount_raw) / 10 ** p.decimals * m.price_usd;
             const change = Math.round((value / Number(pos.cost_usd) - 1) * 1000) / 10;
             p.change_pct = change;
@@ -333,13 +338,32 @@ const RUNNERS = {
             p.graduated_alerted = true;
           }
         }
-        // New GoPlus flags (a honeypot, a tax, owner powers) since the last check.
-        const f = await discover.flags(token);
-        if (f.not_checked) notChecked.push(`${name()}: GoPlus ${f.not_checked}`);
+        // A pump.fun coin: told once when its curve completes and it moves to PumpSwap.
+        if (pos.chain === 'solana' && p.launchpad !== 'none') {
+          const sl = require('./solanaLaunches');
+          const r = await require('../providers/rpc').solanaRpc('getAccountInfo', [await sl.curveOf(pos.token), { encoding: 'base64' }]).catch(() => undefined);
+          if (r !== undefined) {
+            const c = sl.decodeCurve(r?.value);
+            p.launchpad = c ? 'pumpfun' : 'none';
+            if (c?.complete && !p.graduated_alerted) {
+              alert('medium', 'graduated', 'it graduated from pump.fun\'s bonding curve', [
+                { text: 'Its curve sold out and it now trades on PumpSwap, the same token: a sale goes through Jupiter as before. Prices often swing hard right after graduating.', source: 'Solana RPC (its pump.fun bonding curve: complete)' },
+              ]);
+              p.graduated_alerted = true;
+            }
+          }
+        }
+        // New red flags since the last check: GoPlus's (a honeypot, a tax, owner powers) on EVM chains; on Solana,
+        // what the mint says (a freeze or mint authority set again, or still set).
+        const f = pos.chain === 'solana'
+          ? { ...((await require('./solanaLaunches').mintFlags([pos.token]))[pos.token] || { not_checked: 'the mint couldn\'t be read' }) }
+          : await discover.flags(token);
+        const flagSource = pos.chain === 'solana' ? 'Solana RPC (the mint)' : 'GoPlus';
+        if (f.not_checked) notChecked.push(`${name()}: ${flagSource} ${f.not_checked}`);
         else {
           const bad = f.flags.filter(x => x.level === 'bad').map(x => x.text);
           const fresh = p.flags ? bad.filter(x => !p.flags.includes(x)) : [];
-          if (fresh.length) alert('high', `flags:${fresh.join('|')}`, fresh[0], fresh.map(text => ({ text, source: 'GoPlus' })));
+          if (fresh.length) alert('high', `flags:${fresh.join('|')}`, fresh[0], fresh.map(text => ({ text, source: flagSource })));
           p.flags = bad;
         }
         // Launch-bundle and insider wallets: found once, then their balances re-read every few hours.

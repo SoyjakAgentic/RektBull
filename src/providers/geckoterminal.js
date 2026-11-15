@@ -100,4 +100,28 @@ function pools(kind, chain) {
   });
 }
 
-module.exports = { pools, trades, candles, NETWORKS, KINDS, CANDLES, RETRY_MS: 3000 };
+/**
+ * The newest pools on a chain, one page of 20, not cached (the live launch
+ * feed keeps its own state and reads this every 20 seconds). Each with its dex
+ * and its base token's address, symbol and name.
+ */
+async function newPoolsPage(chain, page = 1) {
+  const net = NETWORKS[chain];
+  if (!net) throw new Error(`no new pools for ${chain}`);
+  const data = await get(`/networks/${net}/new_pools`, { include: 'base_token,quote_token', page });
+  const tokens = Object.fromEntries((data.included || []).filter(i => i.type === 'token').map(i => [i.id, i.attributes || {}]));
+  return (data.data || []).map(p => pool(p, tokens));
+}
+
+/** One dex's busiest pools on a chain (by transactions in 24 hours), cached a minute. */
+function dexPools(chain, dex) {
+  const net = NETWORKS[chain];
+  if (!net || !/^[a-z0-9-]+$/.test(String(dex))) throw new Error(`no pools for ${dex} on ${chain}`);
+  return cached(`gt:dex:${chain}:${dex}`, 60, async () => {
+    const data = await get(`/networks/${net}/dexes/${dex}/pools`, { include: 'base_token,quote_token', sort: 'h24_tx_count_desc' });
+    const tokens = Object.fromEntries((data.included || []).filter(i => i.type === 'token').map(i => [i.id, i.attributes || {}]));
+    return (data.data || []).map(p => pool(p, tokens));
+  });
+}
+
+module.exports = { pools, trades, candles, newPoolsPage, dexPools, NETWORKS, KINDS, CANDLES, RETRY_MS: 3000 };

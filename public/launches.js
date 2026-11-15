@@ -11,7 +11,8 @@
   };
   const sign = s => el('li', { class: s.level === 'bad' ? 'bad' : s.level === 'warn' ? 'warn' : 'muted' }, s.text, ' ', el('span', { class: 'source' }, `(${s.source})`));
   const tradeLink = (chain, token, side) => `/trade?chain=${chain}&token=${token}&side=${side}#trade-card`;
-  const tokenLink = (chain, token) => `/token?chain=${chain}&token=${token}`; // the token page: chart, live trades, holders
+  // The token page (chart, live trades, holders) reads EVM chains; a Solana token goes to the Safety desk's checks.
+  const tokenLink = (chain, token) => (chain === 'solana' ? `/safety?chain=solana&token=${token}#check-card` : `/token?chain=${chain}&token=${token}`);
   const CHAINS = ['base', 'ethereum', 'arbitrum', 'bsc'];
   const PAD_CHAINS = ['base', 'bsc']; // chains whose launchpads RektBull reads
   const NAMES = { base: 'Base', ethereum: 'Ethereum', arbitrum: 'Arbitrum', bsc: 'BNB Chain' };
@@ -137,13 +138,14 @@
     if (kind === 'new') {
       body.push(el('div', { class: 'small muted' }, `Launched ${ago(i.at)}`, i.creator ? ' by ' : '', i.creator ? el('code', {}, `${i.creator.slice(0, 6)}…${i.creator.slice(-4)}`) : ''));
       if (signs.length) body.push(el('ul', { class: 'signals' }, signs.map(sign)));
-      else if (i.flags && !i.flags.not_checked) body.push(el('div', { class: 'small muted' }, 'None of GoPlus\'s red flags yet'));
+      else if (i.flags && !i.flags.not_checked) body.push(el('div', { class: 'small muted' }, chain === 'solana' ? 'No mint or freeze authority left (the mint, read from Solana)' : 'None of GoPlus\'s red flags yet'));
     }
     if (kind === 'near') {
       body.push(el('div', { class: 'bar-row' }, el('span', { class: 'small' }, 'Sold'),
         el('span', { class: 'bar-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(i.progress_pct), 'aria-label': 'How far the curve is towards graduating' }, el('span', { class: 'bar-fill', style: `width:${Math.max(1, Math.min(100, i.progress_pct))}%` })),
         el('span', { class: 'bar-value' }, `${i.progress_pct}%`)));
       if (i.tradable === false) body.push(el('div', { class: 'small muted' }, 'Priced in another token, not BNB: RektBull doesn\'t trade it yet.'));
+      if (chain === 'solana' && i.in_curve) body.push(el('div', { class: 'small muted' }, `${i.in_curve.toFixed(1)} SOL in the curve`));
     }
     if (kind === 'grad') {
       body.push(el('div', { class: 'small muted' }, `Graduated ${ago(i.at)}`, i.agent_token ? '; it now trades as ' : '', i.agent_token ? el('a', { href: tokenLink(chain, i.agent_token) }, el('code', {}, `${i.agent_token.slice(0, 6)}…`)) : ''));
@@ -155,7 +157,7 @@
   async function loadLive() {
     const chain = $('v-chain').value;
     const first = liveChain !== chain;
-    if (first) { known.clear(); liveChain = chain; say('v-msg', 'Reading the launchpads\' events…'); }
+    if (first) { known.clear(); liveChain = chain; say('v-msg', chain === 'solana' ? 'Reading pump.fun\'s newest coins…' : 'Reading the launchpads\' events…'); }
     const current = fresh('live');
     try {
       const r = await api('GET', `/v1/launches/live?chain=${chain}`);
@@ -165,7 +167,8 @@
       const fill = (id, items, kind, empty) => $(id).replaceChildren(...(items.length ? items.map(i => liveItem(chain, i, kind, first)) : [el('li', { class: 'small muted' }, empty)]));
       fill('v-new', c.new.items, 'new', 'No launches in the last hour.');
       fill('v-near', c.graduating.items, 'near', c.graduating.not_checked ? `Not checked: ${c.graduating.not_checked}` : 'No curve is being bought just now.');
-      fill('v-grad', c.graduated.items, 'grad', `None in the last ${c.graduated.hours_covered} hours${c.graduated.hours_covered < 24 ? ' (still reading back to 24)' : ''}.`);
+      const h = c.graduated.hours_covered;
+      fill('v-grad', c.graduated.items, 'grad', `None in the last ${h === 1 ? 'hour' : `${h} hours`}${h < 24 ? ' (still reading back to 24)' : ''}.`);
       const arrived = first ? 0 : known.size - before;
       say('v-msg', r.not_checked ? `Not updated: ${r.not_checked}` : '', r.not_checked ? 'bad' : null);
       $('v-status').textContent = `Updated ${new Date().toLocaleTimeString()}${arrived ? ` · ${arrived} new` : ''}`;
@@ -180,7 +183,7 @@
   }
   $('v-chain').addEventListener('change', live);
   document.addEventListener('visibilitychange', live);
-  if (['base', 'bsc'].includes(q.get('chain'))) $('v-chain').value = q.get('chain');
+  if (['base', 'bsc', 'solana'].includes(q.get('chain'))) $('v-chain').value = q.get('chain');
   live();
   if (/^0x[0-9a-fA-F]{40}$/.test(q.get('token') || '')) show($('l-chain').value, q.get('token'));
 })();

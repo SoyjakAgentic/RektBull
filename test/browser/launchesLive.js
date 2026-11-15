@@ -23,8 +23,20 @@ const items = [
   { chain: 'base', launchpad: 'clanker', launchpad_name: 'Clanker', token: addr(0x501), symbol: 'CLK', name: 'Clank', creator: addr(0xa2), at: ago(40), flags: { flags: [{ level: 'warn', text: 'More can be minted', source: 'GoPlus' }] } },
   { chain: 'base', launchpad: 'zora', launchpad_name: 'Zora', token: addr(0x502), symbol: 'ZED', name: 'Zed', creator: addr(0xb1), at: ago(90), flags: { flags: [{ level: 'ok', text: 'None of GoPlus\'s red flags', source: 'GoPlus' }] } },
 ];
+const SOLMINT = '9irvvAqqWs2kaN6xzgiknSwJQt21x9FYuH5sZceUpump';
 require('../../src/services/liveLaunches').live = async ({ chain }) => {
   reads++;
+  if (chain === 'solana') {
+    return {
+      chain, chain_name: 'Solana', read_at: new Date().toISOString(), refresh_seconds: 20,
+      columns: {
+        new: { items: [{ chain, launchpad: 'pumpfun', launchpad_name: 'pump.fun', token: SOLMINT, symbol: 'PUMPY', name: 'Pumpy', at: ago(12), flags: { flags: [{ level: 'ok', text: 'No mint or freeze authority left', source: 'Solana RPC (the mint)' }] } }], source: 'stand-in pools' },
+        graduating: { items: [{ token: SOLMINT, symbol: 'PUMPY', launchpad: 'pumpfun', launchpad_name: 'pump.fun', progress_pct: 89.4, in_curve: 58.5, symbol_in_curve: 'SOL', tradable: true }], source: 'stand-in curves' },
+        graduated: { items: [], hours_covered: 1, source: 'stand-in graduations' },
+      },
+      note: 'Not financial advice.',
+    };
+  }
   const fresh = reads > 1 && chain === 'base' ? [{ chain, launchpad: 'virtuals', launchpad_name: 'Virtuals', token: addr(0x503), symbol: 'NEWB', name: 'Brand new', creator: null, at: ago(3) }] : [];
   return {
     chain, chain_name: chain === 'bsc' ? 'BNB Chain' : 'Base', read_at: new Date().toISOString(), refresh_seconds: 10,
@@ -76,6 +88,15 @@ require('../../src/services/liveLaunches').live = async ({ chain }) => {
     await page.locator('#v-new .live-top strong', { hasText: 'FOUR' }).waitFor();
     assert.equal(await page.locator('#v-new li.fresh').count(), 0, 'switching network isn\'t "new"');
     console.log('✔ BNB Chain: four.meme\'s launches');
+
+    await page.selectOption('#v-chain', 'solana');
+    await page.locator('#v-new .live-top strong', { hasText: 'PUMPY' }).waitFor();
+    assert.match(await page.textContent('#v-new li:first-child'), /pump\.fun.*No mint or freeze authority left/s);
+    assert.equal(await page.getAttribute('#v-new li:first-child a.primary', 'href'), `/trade?chain=solana&token=${SOLMINT}&side=buy#trade-card`, 'a Solana buy on the Trade desk');
+    assert.equal(await page.getAttribute('#v-new li:first-child a:not(.primary)', 'href'), `/safety?chain=solana&token=${SOLMINT}#check-card`, 'a Solana token is looked at on the Safety desk');
+    assert.match(await page.textContent('#v-near li:first-child'), /89\.4%.*58\.5 SOL in the curve/s);
+    if (process.env.SCREENSHOT_SOLANA) await page.locator('#live-card').screenshot({ path: process.env.SCREENSHOT_SOLANA });
+    console.log('✔ Solana: pump.fun\'s new coins with what the mint says, curves with SOL raised, links to Solana trades and checks');
 
     if (process.env.SCREENSHOT_DESKTOP) { await page.selectOption('#v-chain', 'base'); await page.locator('#v-new .live-top strong', { hasText: 'CLK' }).waitFor(); await page.locator('#live-card').screenshot({ path: process.env.SCREENSHOT_DESKTOP }); }
     await page.setViewportSize({ width: 375, height: 800 });

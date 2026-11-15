@@ -223,7 +223,8 @@ const flagsFor = (chain, token) => cache.cached(`launches:live:flags:${chain}:${
 /** The three live columns for a chain (the same answer for everyone for 5 seconds). */
 async function live({ chain = 'base' } = {}) {
   chain = String(chain).toLowerCase();
-  if (!PADS[chain]) throw new LiveRefused(`The live feed reads the launchpads on ${Object.values(CHAIN_NAMES).join(' and ')}: chain must be one of ${Object.keys(PADS).join(', ')}.`);
+  if (chain === 'solana') return require('./solanaLaunches').live(); // pump.fun, read another way (solanaLaunches.js)
+  if (!PADS[chain]) throw new LiveRefused(`The live feed reads the launchpads on ${Object.values(CHAIN_NAMES).join(', ')} and Solana: chain must be one of ${[...Object.keys(PADS), 'solana'].join(', ')}.`);
   return cache.cached(`launches:live:view:${chain}`, 5, () => view(chain));
 }
 
