@@ -140,7 +140,8 @@ describe('Safe and Coinbase Smart Wallet: break-it tests', function () {
     });
     it('the module can only ever call the router\'s swap: it has no other way to act for a Safe', async function () {
       const writes = mod.interface.fragments.filter(f => f.type === 'function' && !['view', 'pure'].includes(f.stateMutability)).map(f => f.name).sort();
-      assert.deepEqual(writes, ['revoke', 'setSession', 'swap']);
+      // renounce and revokeFor only ever end a session (the second AI audit's I-1); test/safeModuleAudit.test.js.
+      assert.deepEqual(writes, ['renounce', 'revoke', 'revokeFor', 'setSession', 'swap']);
     });
     it('the router\'s rules still apply: over the Safe\'s per-trade limit, output sent elsewhere, a bad price', async function () {
       await fails(mod.connect(session).swap(safe.target, await swapParams({ amountIn: usdc(600) })), /SafeCallFailed > OverTradeLimit/);

@@ -63,7 +63,7 @@ describe('RektBull Meme Router: break-it tests', function () {
    */
   function viaVenue({ amountIn, tokenIn = MEME.target, tokenOut = USDC.target, rate, to = router.target }) {
     const traded = [USDC.target, WNAT.target].includes(tokenOut) ? amountIn : amountIn - amountIn / 100n;
-    return { amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('swap', [tokenIn, tokenOut, traded, rate, to]), unwrapIn: false };
+    return { amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('swap', [tokenIn, tokenOut, traded, rate, to]), unwrapIn: false, minAmountOut: 0n };
   }
   const PER_1000 = usdc => usdc * E18 / (1000n * E18); // a rate paying `usdc` for 1,000 MEME
 
@@ -127,7 +127,7 @@ describe('RektBull Meme Router: break-it tests', function () {
   it('partial fills: pro rata at the user\'s price, never more than the order in all', async () => {
     const { o, sig } = await order(user, {});
     const rate = usdc(100) * E18 / (1000n * E18);
-    const part = (amountIn) => ({ amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('swap', [MEME.target, USDC.target, amountIn, rate, router.target]), unwrapIn: false });
+    const part = (amountIn) => ({ amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('swap', [MEME.target, USDC.target, amountIn, rate, router.target]), unwrapIn: false, minAmountOut: 0n });
     await (await router.connect(executor).fill(o, sig, part(400n * E18))).wait();
     await (await router.connect(executor).fill(o, sig, part(600n * E18))).wait();
     await fails(router.connect(executor).fill(o, sig, part(1n)), /Overfilled/);
@@ -161,7 +161,7 @@ describe('RektBull Meme Router: break-it tests', function () {
     const t = await now();
     // Buy with 100 USDC: 99 traded at 10 TAX each = 990 TAX to the router, 940.5 after the 5% tax reach the user.
     const base = { account: user.address, executor: executor.address, tokenIn: USDC.target, tokenOut: TAX.target, amountIn: usdc(100), validAfter: 0, validUntil: t + 3600, epoch: 0 };
-    const fillFor = () => ({ amountIn: usdc(100), venue: venue.target, spender: venue.target, unwrapIn: false, venueCalldata: venue.interface.encodeFunctionData('swap', [USDC.target, TAX.target, usdc(99), 10n * E18 * E18 / usdc(1), taxRouter.target]) });
+    const fillFor = () => ({ amountIn: usdc(100), venue: venue.target, spender: venue.target, unwrapIn: false, minAmountOut: 0n, venueCalldata: venue.interface.encodeFunctionData('swap', [USDC.target, TAX.target, usdc(99), 10n * E18 * E18 / usdc(1), taxRouter.target]) });
     const tooHigh = { ...base, minAmountOut: 950n * E18, salt: 1n };
     await fails(taxRouter.connect(executor).fill(tooHigh, await user.signTypedData(taxDomain, types, tooHigh), fillFor()), /BelowLimit/);
     const fair = { ...base, minAmountOut: 940n * E18, salt: 2n };
@@ -207,7 +207,7 @@ describe('RektBull Meme Router: break-it tests', function () {
 
   it('an exchange can\'t take more than this fill\'s input', async () => {
     const { o, sig } = await order(user, { epoch: 1 });
-    const greedy = { amountIn: o.amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('greedy', [MEME.target, USDC.target, o.amountIn, PER_1000(usdc(200))]), unwrapIn: false };
+    const greedy = { amountIn: o.amountIn, venue: venue.target, spender: venue.target, venueCalldata: venue.interface.encodeFunctionData('greedy', [MEME.target, USDC.target, o.amountIn, PER_1000(usdc(200))]), unwrapIn: false, minAmountOut: 0n };
     const before = await MEME.balanceOf(user.address);
     await fails(router.connect(executor).fill(o, sig, greedy), /VenueFailed|allowance|ERC20InsufficientAllowance/);
     assert.equal(await MEME.balanceOf(user.address), before, 'nothing moved');
@@ -230,7 +230,7 @@ describe('RektBull Meme Router: break-it tests', function () {
 
   it('a sale for the native coin: the user gets native, 1% of it to the fee wallet', async () => {
     const { o, sig } = await order(user, { tokenOut: NATIVE, amountIn: 1000n * E18, minAmountOut: E18 * 99n / 100n, epoch: 1 });
-    const f = { amountIn: o.amountIn, venue: nativeVenue.target, spender: nativeVenue.target, venueCalldata: nativeVenue.interface.encodeFunctionData('sellForNative', [MEME.target, o.amountIn, E18 / 1000n, router.target]), unwrapIn: false };
+    const f = { amountIn: o.amountIn, venue: nativeVenue.target, spender: nativeVenue.target, venueCalldata: nativeVenue.interface.encodeFunctionData('sellForNative', [MEME.target, o.amountIn, E18 / 1000n, router.target]), unwrapIn: false, minAmountOut: 0n };
     const before = { user: await ethers.provider.getBalance(user.address), fee: await ethers.provider.getBalance(feeWallet.address) };
     await (await router.connect(executor).fill(o, sig, f)).wait(); // the executor pays the gas, not the user
     assert.equal((await ethers.provider.getBalance(user.address)) - before.user, E18 * 99n / 100n);
@@ -244,12 +244,16 @@ describe('RektBull Meme Router: break-it tests', function () {
     const { o, sig } = await order(user, { tokenIn: WNAT.target, tokenOut: MEME.target, amountIn: E18, minAmountOut: 800n * E18, epoch: 1 });
     const toTrade = E18 * 99n / 100n;
     const refund = E18 / 10n; // the exchange hands some back
-    const f = { amountIn: E18, venue: nativeVenue.target, spender: nativeVenue.target, venueCalldata: nativeVenue.interface.encodeFunctionData('buyWithNative', [MEME.target, 1000n * E18, router.target, refund]), unwrapIn: true };
+    const f = { amountIn: E18, venue: nativeVenue.target, spender: nativeVenue.target, venueCalldata: nativeVenue.interface.encodeFunctionData('buyWithNative', [MEME.target, 1000n * E18, router.target, refund]), unwrapIn: true, minAmountOut: 0n };
     const before = { meme: await MEME.balanceOf(user.address), wnat: await WNAT.balanceOf(user.address), fee: await WNAT.balanceOf(feeWallet.address) };
     await (await router.connect(executor).fill(o, sig, f)).wait();
     assert.equal((await MEME.balanceOf(user.address)) - before.meme, (toTrade - refund) * 1000n, 'tokens for the native it used');
-    assert.equal(before.wnat - await WNAT.balanceOf(user.address), E18 - refund, 'the unused native came back, wrapped');
-    assert.equal((await WNAT.balanceOf(feeWallet.address)) - before.fee, E18 / 100n, '1% of the input, in wrapped native');
+    // The fee is charged on what the exchange used (1% of used + fee), not on the native it handed back
+    // (second AI audit: fee on unused input).
+    const used = toTrade - refund;
+    const fee = used * 100n / 9900n;
+    assert.equal((await WNAT.balanceOf(feeWallet.address)) - before.fee, fee, '1% of what was traded, in wrapped native');
+    assert.equal(before.wnat - await WNAT.balanceOf(user.address), used + fee, 'everything unused came back, wrapped');
     assert.deepEqual([await WNAT.balanceOf(router.target), await ethers.provider.getBalance(router.target)], [0n, 0n]);
     // Unwrapping is only for the wrapped native coin as input.
     const bad = await order(user, { tokenIn: USDC.target, tokenOut: MEME.target, amountIn: usdc(1), minAmountOut: 1n, epoch: 1 });

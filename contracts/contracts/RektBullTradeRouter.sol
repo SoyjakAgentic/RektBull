@@ -99,9 +99,18 @@ contract RektBullTradeRouter is ReentrancyGuard {
     mapping(address => Limits) public limits;
     mapping(address => uint256) public periodStartedAt;
     mapping(address => uint256) public spentThisPeriodUsd;
-    /// @notice account => token => how much of it this router has bought for the account and
-    ///         not yet sold. Selling up to this amount is exempt from the limits.
-    mapping(address => mapping(address => uint256)) public boughtByRouter;
+    /// @dev account => token => how much of it this router bought for the account under its current grant and
+    ///      hasn't sold back. Selling up to this amount is exempt from the limits. A credit belongs to the grant it
+    ///      was earned under: setLimits() and revoke() move the account's epoch on, and older credits stop counting
+    ///      (second AI audit, M-1: a stale credit could otherwise cover tokens the user got elsewhere).
+    struct Credit {
+        uint64 epoch;
+        uint192 amount;
+    }
+    mapping(address => mapping(address => Credit)) internal credits;
+    mapping(address => uint64) public creditEpoch;
+    /// @notice The longest a grant may run (setLimits' validUntil), as the permissions themselves.
+    uint256 public constant MAX_GRANT = 30 days;
     /// @notice account => who may start trades for it through swapWithSpendPermission.
     ///         Set only by the account itself; cleared by revoke().
     mapping(address => address) public operatorOf;
@@ -162,14 +171,17 @@ contract RektBullTradeRouter is ReentrancyGuard {
         MAX_SLIPPAGE_BPS = maxSlippageBps;
         SEQUENCER_UPTIME_FEED = IPriceFeed(sequencerUptimeFeed);
         SPEND_PERMISSION_MANAGER = ISpendPermissionManager(spendPermissionManager);
-        for (uint256 i; i < venues.length; ++i) {
-            if (venues[i] == address(0)) revert BadConfig();
-            isVenue[venues[i]] = true;
-        }
         for (uint256 i; i < tokens.length; ++i) {
             if (tokens[i] == address(0) || feeds[i] == address(0) || maxAges[i] == 0) revert BadConfig();
+            if (address(priceFeed[tokens[i]]) != address(0)) revert BadConfig(); // listed twice
             priceFeed[tokens[i]] = IPriceFeed(feeds[i]);
             maxPriceAge[tokens[i]] = maxAges[i];
+        }
+        // A venue is called with calldata the trader chooses, so it must never be a token users approve to the
+        // router (second AI audit, I-2).
+        for (uint256 i; i < venues.length; ++i) {
+            if (venues[i] == address(0) || address(priceFeed[venues[i]]) != address(0)) revert BadConfig();
+            isVenue[venues[i]] = true;
         }
     }
 
@@ -178,7 +190,9 @@ contract RektBullTradeRouter is ReentrancyGuard {
     /// @notice Sets the caller's limits. A RektBull permission must not allow this method.
     function setLimits(uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil) external {
         if (perTradeUsd == 0 || perPeriodUsd < perTradeUsd || periodSeconds == 0 || validUntil <= block.timestamp) revert BadConfig();
+        if (validUntil > block.timestamp + MAX_GRANT) revert BadConfig();
         limits[msg.sender] = Limits(perTradeUsd, perPeriodUsd, periodSeconds, validUntil);
+        creditEpoch[msg.sender] += 1; // a new grant: earlier sell exemptions end
         periodStartedAt[msg.sender] = block.timestamp;
         spentThisPeriodUsd[msg.sender] = 0;
         emit LimitsSet(msg.sender, perTradeUsd, perPeriodUsd, periodSeconds, validUntil);
@@ -194,7 +208,14 @@ contract RektBullTradeRouter is ReentrancyGuard {
     function revoke() external {
         delete limits[msg.sender];
         delete operatorOf[msg.sender];
+        creditEpoch[msg.sender] += 1; // sell exemptions end with the grant
         emit Revoked(msg.sender);
+    }
+
+    /// @notice How much of `token` the router bought for `account` under its current grant and hasn't sold back.
+    function boughtByRouter(address account, address token) public view returns (uint256) {
+        Credit memory c = credits[account][token];
+        return c.epoch == creditEpoch[account] ? c.amount : 0;
     }
 
     // ── Prices ────────────────────────────────────────────────────────────
@@ -273,9 +294,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
 
         // The account's limits, valued at the reference price. Selling what this router
         // bought for the account is exempt, up to the amount bought; the rest counts.
-        uint256 bought = boughtByRouter[account][p.tokenIn];
+        if (p.amountIn == 0) revert NotAllowed();
+        uint256 bought = boughtByRouter(account, p.tokenIn);
         exempt = p.amountIn < bought ? p.amountIn : bought;
-        boughtByRouter[account][p.tokenIn] = bought - exempt;
+        credits[account][p.tokenIn] = Credit(creditEpoch[account], uint192(bought - exempt));
         countedUsd = exempt == p.amountIn ? 0 : valueUsd(p.tokenIn, p.amountIn - exempt);
         _spend(account, countedUsd);
     }
@@ -300,7 +322,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
         amountOut = tokenOut.balanceOf(address(this)) - outBefore;
 
         // The output must be near the reference price, and at least the quote's minimum.
-        uint256 fair = amountForUsd(p.tokenOut, valueUsd(p.tokenIn, toTrade));
+        // A trade too small to have a reference value (under 1e-8 USD) has no price floor: refused (second AI audit, L-2).
+        uint256 inUsd = valueUsd(p.tokenIn, toTrade);
+        if (inUsd == 0) revert NotAllowed();
+        uint256 fair = amountForUsd(p.tokenOut, inUsd);
         uint256 minimum = fair * (10_000 - MAX_SLIPPAGE_BPS) / 10_000;
         if (p.minAmountOut > minimum) minimum = p.minAmountOut;
         if (amountOut < minimum) revert BelowMinimum(amountOut, minimum);
@@ -309,7 +334,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
         // Only the part of the trade that counted toward the limits earns an exemption for selling it
         // back. Crediting the output of an exempt sale would let sell-and-buy-back loop forever,
         // each round exempt (audit finding H-1, November 2026).
-        if (exempt < p.amountIn) boughtByRouter[account][p.tokenOut] += Math.mulDiv(amountOut, p.amountIn - exempt, p.amountIn);
+        if (exempt < p.amountIn) {
+            uint256 credit = boughtByRouter(account, p.tokenOut) + Math.mulDiv(amountOut, p.amountIn - exempt, p.amountIn);
+            credits[account][p.tokenOut] = Credit(creditEpoch[account], uint192(credit));
+        }
         tokenOut.safeTransfer(account, amountOut);
         uint256 leftover = tokenIn.balanceOf(address(this)) - inBefore;
         if (leftover > 0) tokenIn.safeTransfer(account, leftover);

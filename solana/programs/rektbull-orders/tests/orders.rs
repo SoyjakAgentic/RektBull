@@ -29,12 +29,17 @@ fn key(k: &Keypair) -> Pubkey { pk(&k.pubkey()) }
 fn deploy(name: &str) -> String { format!("{}/../../target/deploy/{name}.so", env!("CARGO_MANIFEST_DIR")) }
 
 fn delegate() -> Pubkey { Pubkey::find_program_address(&[DELEGATE_SEED], &rektbull_orders::ID).0 }
-fn transit() -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED], &rektbull_orders::ID).0 }
+/// Each owner has their own transit (second AI audit, M-1).
+fn transit_of(owner: &Pubkey) -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED, owner.as_ref()], &rektbull_orders::ID).0 }
+/// The test user has a fixed key, so `transit()` (their transit) needs no World.
+fn user_keypair() -> Keypair { Keypair::new_from_array([7u8; 32]) }
+fn transit() -> Pubkey { transit_of(&key(&user_keypair())) }
 fn vault() -> Pubkey { Pubkey::find_program_address(&[b"vault"], &JUPITER_V6).0 }
 fn order_pda(owner: &Pubkey, nonce: u64) -> Pubkey {
     Pubkey::find_program_address(&[ORDER_SEED, owner.as_ref(), &nonce.to_le_bytes()], &rektbull_orders::ID).0
 }
 const TOKEN: Pubkey = spl_token::ID;
+const ROUTE: [u8; 8] = [229, 23, 203, 151, 122, 227, 173, 42];
 
 fn ix(program: Pubkey, metas: Vec<AnchorMeta>, data: Vec<u8>) -> Instruction {
     Instruction {
@@ -48,7 +53,8 @@ fn r(p: Pubkey) -> AnchorMeta { AnchorMeta::new_readonly(p, false) }
 
 /// The stand-in exchange's instruction data: [op][a][b].
 fn venue_data(op: u8, x: u64, y: u64) -> Vec<u8> {
-    let mut d = vec![op];
+    let mut d = ROUTE.to_vec(); // Jupiter's `route` id: the stand-in sits at Jupiter's address
+    d.push(op);
     d.extend_from_slice(&x.to_le_bytes());
     d.extend_from_slice(&y.to_le_bytes());
     d
@@ -98,7 +104,7 @@ impl World {
         let mut clock = svm.get_sysvar::<solana_clock::Clock>();
         clock.unix_timestamp = NOW;
         svm.set_sysvar(&clock);
-        let user = Keypair::new();
+        let user = user_keypair();
         let exec = Keypair::new();
         let mut wd = World {
             svm, meme: Pubkey::new_unique(), user, exec,
@@ -201,7 +207,7 @@ impl World {
     fn fill_by(&mut self, executor: &Keypair, f: &Fill) -> Result<(), String> {
         let out = f.output_mint.is_some();
         let mut metas = rektbull_orders::accounts::Fill {
-            executor: key(executor), order: f.order, owner: f.owner, delegate: f.delegate, transit: transit(),
+            executor: key(executor), order: f.order, owner: f.owner, delegate: f.delegate, transit: transit_of(&f.owner),
             source: f.source, input_mint: f.input_mint, transit_in: f.transit_in, input_token_program: TOKEN,
             output_mint: f.output_mint, transit_out: f.transit_out, owner_out: f.owner_out, output_token_program: if out || f.transit_out.is_some() { Some(TOKEN) } else { None },
             fee_wallet: f.fee_wallet, fee_in: f.fee_in, fee_out: None, venue: f.venue, system_program: system_program::ID,
@@ -227,11 +233,17 @@ impl World {
     }
     /// A sale of meme tokens for SOL: the exchange pays `sol_out` to `to` (transit, honestly).
     fn sale(&self, order: Pubkey, amount_in: u64, sol_out: u64, to: Pubkey) -> Fill {
+        self.sale_for(key(&self.user), self.user_meme, self.transit_meme, order, amount_in, sol_out, to)
+    }
+    /// The same for any owner: their meme account and their transit's.
+    #[allow(clippy::too_many_arguments)]
+    fn sale_for(&self, owner: Pubkey, source: Pubkey, transit_meme: Pubkey, order: Pubkey, amount_in: u64, sol_out: u64, to: Pubkey) -> Fill {
+        let t = transit_of(&owner);
         Fill {
-            order, owner: key(&self.user), source: self.user_meme, input_mint: self.meme, transit_in: self.transit_meme,
+            order, owner, source, input_mint: self.meme, transit_in: transit_meme,
             output_mint: None, transit_out: None, owner_out: None, fee_in: None, fee_wallet: FEE_WALLET, delegate: delegate(), venue: JUPITER_V6,
             amount_in, unwrap_in: false, venue_data: venue_data(2, amount_in, sol_out),
-            venue_accounts: vec![w(transit()), w(self.transit_meme), r(self.meme), w(self.vault_meme), w(vault()), w(to), r(TOKEN), r(system_program::ID)],
+            venue_accounts: vec![w(t), w(transit_meme), r(self.meme), w(self.vault_meme), w(vault()), w(to), r(TOKEN), r(system_program::ID)],
         }
     }
     /// A buy of meme tokens with USDC: the exchange takes `usdc_in` and pays `meme_out` to transit.
@@ -333,9 +345,11 @@ fn honest_buy_paid_in_wrapped_sol_sent_as_sol() {
         venue_accounts: vec![w(transit()), w(vault()), w(wd.vault_meme), r(wd.meme), w(wd.transit_meme), r(TOKEN), r(system_program::ID)],
     };
     wd.fill(&f).unwrap();
-    assert_eq!(wd.lamports(FEE_WALLET) - fee0, SOL / 100, "the fee: 1% of the SOL in, as SOL");
+    let used = 98 * SOL / 100;
+    let fee = rektbull_orders::fee_on_used(used);
+    assert_eq!(wd.lamports(FEE_WALLET) - fee0, fee, "the fee: 1% of what was used (and the fee), as SOL");
     assert_eq!(wd.balance(wd.user_meme), Some(1_000_000 * MEME + 1500 * MEME), "the tokens reached the user");
-    assert_eq!(wd.lamports(key(&user)) - user0, SOL / 100 + wd.order_rent(), "the unused 0.01 SOL came back as SOL, with the order's rent");
+    assert_eq!(wd.lamports(key(&user)) - user0, SOL - used - fee + wd.order_rent(), "the unused SOL came back as SOL, with the order's rent");
     assert_eq!(wd.balance(wd.user_wsol), Some(SOL));
     let account_rent = wd.rent(spl_token::state::Account::LEN);
     assert_eq!(wd.lamports(key(&wd.exec)), exec0 + account_rent - 5000, "the executor got the wrapped-SOL account's rent back (less the 5,000-lamport transaction fee)");
@@ -360,7 +374,10 @@ fn unused_token_input_goes_back_to_the_user() {
     let (_, mut f) = wd.usdc_buy(3);
     f.venue_data = venue_data(0, 50_000_000, 600 * MEME); // the exchange takes only 50 of the 99 USDC
     wd.fill(&f).unwrap();
-    assert_eq!(wd.balance(wd.user_usdc), Some(1_000_000_000 - 100_000_000 + 49_000_000));
+    // The fee is on what the exchange used (50 USDC): unused input pays none (second AI audit, L-2).
+    let fee = rektbull_orders::fee_on_used(50_000_000);
+    assert_eq!(wd.balance(wd.fee_usdc), Some(fee));
+    assert_eq!(wd.balance(wd.user_usdc), Some(1_000_000_000 - 100_000_000 + 50_000_000 - fee));
     assert_eq!(wd.balance(wd.transit_usdc), Some(0));
 }
 
@@ -604,13 +621,14 @@ fn random_sequences_keep_the_invariants() {
         let bob = Keypair::new();
         wd.set_lamports(key(&bob), 10 * SOL);
         let bob_meme = wd.token_account(wd.meme, key(&bob), 1_000_000 * MEME);
+        let bob_transit_meme = wd.token_account(wd.meme, transit_of(&key(&bob)), 0);
         let bystander = Keypair::new();
         wd.set_lamports(key(&bystander), SOL);
         let by_meme = wd.token_account(wd.meme, key(&bystander), 500_000 * MEME);
         wd.approve(&bystander, by_meme, 500_000 * MEME);
         let attacker = Keypair::new();
         wd.set_lamports(key(&attacker), 10 * SOL);
-        let users = [(wd.user.insecure_clone(), wd.user_meme), (bob.insecure_clone(), bob_meme)];
+        let users = [(wd.user.insecure_clone(), wd.user_meme, wd.transit_meme), (bob.insecure_clone(), bob_meme, bob_transit_meme)];
         let mut sold = [0u64; 2];
         let mut orders: Vec<(usize, Pubkey, u64, u64)> = vec![]; // (user, order, amount_in, min_out)
         let mut nonce = 0u64;
@@ -633,10 +651,9 @@ fn random_sequences_keep_the_invariants() {
                     let part = 1 + rng.below(left + left / 4); // sometimes more than is left
                     let pay = part / MEME * (SOL / 100_000) * (30 + rng.below(170)) / 100; // 0.3–2 SOL per 100k
                     let attack = rng.below(6) == 0;
-                    let to = if rng.below(5) == 0 { key(&attacker) } else { transit() };
-                    let mut f = wd.sale(order, part, pay, to);
-                    f.owner = key(&users[u].0);
-                    f.source = users[u].1;
+                    let owner = key(&users[u].0);
+                    let to = if rng.below(5) == 0 { key(&attacker) } else { transit_of(&owner) };
+                    let f = wd.sale_for(owner, users[u].1, users[u].2, order, part, pay, to);
                     let (owner0, fee0) = (wd.lamports(key(&users[u].0)), wd.lamports(FEE_WALLET));
                     let res = if attack { wd.fill_by(&attacker.insecure_clone(), &f) } else { wd.fill(&f) };
                     match res {
@@ -679,7 +696,7 @@ fn random_sequences_keep_the_invariants() {
                 }
             }
             // Invariants after every step (stray funds may sit in transit until the next fill sweeps them).
-            for (i, (_, acc)) in users.iter().enumerate() {
+            for (i, (_, acc, _)) in users.iter().enumerate() {
                 // (At least: stray tokens found in transit are swept to the account a fill's input came from.)
                 assert!(wd.balance(*acc).unwrap() >= 1_000_000 * MEME - sold[i], "seed {seed}: user {i} lost tokens no fill sold");
             }
@@ -696,4 +713,56 @@ fn random_sequences_keep_the_invariants() {
     }
     println!("{fills_ok} fills went through, {refused} were refused");
     assert!(fills_ok >= 150, "the sequences really fill orders ({fills_ok})");
+}
+
+// ── The second AI audit (Fable 5.2, November 2026): regression tests ──
+
+#[test]
+fn only_a_venues_swap_instructions_can_be_called() {
+    let mut wd = World::new();
+    let order = wd.sell_order(1, 99 * SOL / 100);
+    let mut f = wd.sale(order, 100_000 * MEME, SOL, transit());
+    f.venue_data[..8].copy_from_slice(&[94, 6, 202, 115, 255, 96, 232, 183]); // an account instruction, not a swap
+    fails(wd.fill(&f), "VenueNotAllowed");
+    f.venue_data.truncate(4); // too short to be any instruction
+    fails(wd.fill(&f), "VenueNotAllowed");
+}
+
+#[test]
+fn a_fill_the_owner_signed_is_refused_and_no_other_signature_reaches_the_venue() {
+    let mut wd = World::new();
+    let order = wd.sell_order(1, 99 * SOL / 100);
+    // The owner co-signs a fill (as a "place and fill now" transaction might): refused outright.
+    let f = wd.sale(order, 100_000 * MEME, SOL, transit());
+    let out = f.output_mint.is_some();
+    let mut metas = rektbull_orders::accounts::Fill {
+        executor: key(&wd.exec), order: f.order, owner: f.owner, delegate: f.delegate, transit: transit_of(&f.owner),
+        source: f.source, input_mint: f.input_mint, transit_in: f.transit_in, input_token_program: TOKEN,
+        output_mint: None, transit_out: None, owner_out: None, output_token_program: if out { Some(TOKEN) } else { None },
+        fee_wallet: f.fee_wallet, fee_in: None, fee_out: None, venue: f.venue, system_program: system_program::ID,
+    }
+    .to_account_metas(None);
+    metas[2].is_signer = true;
+    metas.extend(f.venue_accounts.iter().cloned());
+    let data = rektbull_orders::instruction::Fill { amount_in: f.amount_in, unwrap_in: false, venue_data: f.venue_data.clone() }.data();
+    let (exec, user) = (wd.exec.insecure_clone(), wd.user.insecure_clone());
+    fails(wd.send(&[ix(rektbull_orders::ID, metas, data)], &[&exec, &user]), "BadFill");
+    // The executor's own signature isn't passed on either: an exchange trying to spend from it fails.
+    let mut f2 = wd.sale(order, 100_000 * MEME, SOL, transit());
+    f2.venue_data = venue_data(4, SOL, 0);
+    f2.venue_accounts = vec![AnchorMeta::new(key(&exec), true), w(key(&wd.user)), r(system_program::ID)];
+    fails(wd.fill(&f2), "signer privilege escalated|MissingRequiredSignature|missing required signature");
+}
+
+#[test]
+fn each_owner_has_their_own_transit() {
+    let mut wd = World::new();
+    let order = wd.sell_order(1, 99 * SOL / 100);
+    // Another owner's transit account can't stand in for this owner's.
+    let other = Pubkey::new_unique();
+    let other_transit_meme = wd.token_account(wd.meme, transit_of(&other), 0);
+    let mut f = wd.sale(order, 100_000 * MEME, SOL, transit());
+    f.transit_in = other_transit_meme;
+    fails(wd.fill(&f), "ConstraintTokenOwner|BadFill");
+    assert_ne!(transit_of(&key(&wd.user)), transit_of(&other));
 }

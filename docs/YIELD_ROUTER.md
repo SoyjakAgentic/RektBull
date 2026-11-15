@@ -27,10 +27,11 @@ owner, no admin and no upgrade path, and enforces onchain:
 | Only RektBull's session key can use the permission; it expires (30 days at most); the user can revoke it any time | MetaMask's Redeemer and Timestamp caveats; `disableDelegation` | Revocation is the user's own transaction |
 | It can only call the Yield Router's deposit, move and withdraw | AllowedTargets and AllowedMethods caveats | Can't call a token, a venue or anything else |
 | Positions are opened only for the user; withdrawals pay only the user | The router: every pull is from the caller, every deposit is on the caller's behalf, every withdrawal is to the caller | **Can't withdraw to itself or anyone else** |
-| A move only goes to a venue for the same asset paying at least 1 point more **right now**, read from both venues' contracts | The router (`rateOf`: Aave's liquidity rate, Comet's supply rate, the Sky Savings Rate) | Can't churn money back and forth for fees |
+| A move only goes to a venue for the same asset paying at least 1 point more, read from both venues' contracts before and again after the move, and never to one paying over 25% APR (a venue in distress shows the highest rate) | The router (`rateOf`: Aave's liquidity rate, Comet's supply rate, the Sky Savings Rate; `MAX_RATE`) | Can't move money to a worse venue as rates stand; a flash loan can still push rates within a transaction (see the fee cooldown) |
+| At most one fee per account and asset per 7 days, however many deposits and moves | The router (`FEE_COOLDOWN`) | **Churning can cost at most 0.1% a week per asset** (about 0.4-0.5% over a 30-day permission) |
 | A deposit only goes to the best-paying venue for the asset, or one within 1 point of it | The router (`NotBestVenue`) | Can't stand in for a move the rule above refuses, by withdrawing and depositing |
-| Money taken out through the router and put back within 7 days pays no fee | The router (`REDEPOSIT_WINDOW`) | Withdraw + deposit can't earn a fee a move wouldn't |
-| A withdrawal from Aave never leaves a user who borrows there with a health factor under 1.5 | The router (`MIN_HEALTH_FACTOR`, read from Aave after the withdrawal) | Can't push a borrowing user toward liquidation by taking out their collateral |
+| Putting back what was withdrawn through the router, within 7 days and up to the same amount of that asset, pays no fee | The router (`REDEPOSIT_WINDOW`, a credit per asset) | Withdraw + deposit can't earn a fee a move wouldn't |
+| A withdrawal from Aave that lowers the health factor of a user who borrows there can't leave it under 1.5; one that doesn't lower it (the position backs nothing) always goes through | The router (`MIN_HEALTH_FACTOR`, read from Aave before and after the withdrawal) | Can't push a borrowing user toward liquidation by taking out their collateral; the automatic exit isn't blocked by it |
 | At most one deposit or move per account a day | The router (`MIN_INTERVAL`) | Worst case in fees: 0.1% of the per-move limit a day |
 | Nothing above the user's own per-asset limit, nothing after their expiry | The router (`setLimits`, which only the user can call) | — |
 | The fee is at most 0.1% (a constant), paid only to the fixed fee wallet; withdrawals are free | The router (`MAX_FEE_BPS = 10`, `FEE_WALLET` immutable) | Can't charge more |
@@ -42,17 +43,17 @@ RektBull could deposit idle stablecoins or WETH into one of the listed
 venues, or move between them to a better-paying one, once a day, paying
 0.1% each time. Every listed venue carries its own smart-contract risk.
 
-**Accepted: rates read in the same transaction can be pushed.** The router
-reads each venue's rate at the moment of the call. Someone with a large flash
-loan can briefly change a lending market's rate (by borrowing or supplying a
-lot in the same transaction) so that a venue looks better than it is. A
-hacked RektBull could use that to make moves the rule would otherwise refuse.
-What it still can't do: send money anywhere but the user's own positions,
-take more than 0.1% a day of the per-move limit, or exceed the user's limits.
-So the worst case is the same as above: fees on unneeded moves, once a day,
-within the limits. Reading a time-averaged rate instead would need an oracle
-per venue, which none of them offer; decided 12 November 2026 to accept and
-document this rather than add one.
+**Rates read in the same transaction can be pushed, so the fee is capped
+instead.** The router reads each venue's rate at the moment of the call.
+Someone with a large flash loan can briefly change a lending market's rate (by
+supplying a lot in the same transaction) so that a venue looks better than it
+is. The second AI audit (15 November 2026) showed a hacked key doing this
+every day on a copy of Base, 0.1% each time. The fix: at most one fee per
+account and asset per 7 days (`FEE_COOLDOWN`), so churning can cost at most
+0.1% a week per asset, about 0.4-0.5% over a 30-day permission, whatever the
+rates do. The rates are also checked again after the move; on Base's real
+markets that alone refused every leg of the same attack, but it depends on the
+markets, so the cooldown is the bound.
 
 **Below the bar, noted for the auditor:** the rate rule compares rates before
 the move (a large move lowers the rate it lands in); the exit side of a move

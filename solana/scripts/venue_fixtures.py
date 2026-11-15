@@ -51,7 +51,11 @@ def pda(program, *seeds):
     out = subprocess.run(['solana', 'find-program-derived-address', program, *seeds], check=True, capture_output=True, text=True).stdout
     return out.split()[0]
 
-TRANSIT = pda(ORDERS, 'string:transit')
+# Each order owner has their own transit. The tests' user has a fixed test-only key (the secret is 32 bytes of 7,
+# Keypair::new_from_array([7; 32]) in tests/venues.rs; it controls nothing on mainnet), so Jupiter is asked for routes
+# with that user's transit as the trader.
+TEST_USER = 'GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB'
+TRANSIT = pda(ORDERS, 'string:transit', f'pubkey:{TEST_USER}')
 dumped = set()
 
 def dump(address, folder):

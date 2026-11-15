@@ -36,7 +36,9 @@ fn pubkey(v: &Value) -> Pubkey { Pubkey::from_str(v.as_str().unwrap()).unwrap() 
 fn root() -> String { format!("{}/../..", env!("CARGO_MANIFEST_DIR")) }
 fn fixtures() -> String { format!("{}/fixtures/venues", root()) }
 fn delegate() -> Pubkey { Pubkey::find_program_address(&[DELEGATE_SEED], &rektbull_orders::ID).0 }
-fn transit() -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED], &rektbull_orders::ID).0 }
+/// The user's own transit (each owner has one: second AI audit, M-1); the test user has a fixed key.
+fn user_keypair() -> Keypair { Keypair::new_from_array([7u8; 32]) }
+fn transit() -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED, key(&user_keypair()).as_ref()], &rektbull_orders::ID).0 }
 fn ix(program: Pubkey, metas: Vec<AnchorMeta>, data: Vec<u8>) -> Instruction {
     Instruction {
         program_id: a(&program),
@@ -78,7 +80,7 @@ impl Chain {
         clock.unix_timestamp = v["block_time"].as_i64().unwrap();
         svm.set_sysvar(&clock);
         svm.warp_to_slot(v["slot"].as_u64().unwrap() + 1);
-        let (user, exec) = (Keypair::new(), Keypair::new());
+        let (user, exec) = (user_keypair(), Keypair::new());
         let mut c = Chain { svm, v, user, exec };
         for k in [key(&c.user), key(&c.exec), FEE_WALLET] { c.set_lamports(k, 10 * SOL); }
         c
@@ -216,15 +218,16 @@ fn pumpswap_buy_and_sell_through_the_order_program() {
     let mut c = Chain::new();
     let coin = pubkey(&c.v["pumpswap"]["accounts"][3]);
     let event_authority = pubkey(&c.v["pumpswap"]["accounts"][15]);
-    let (user, exec) = (key(&c.user), c.exec.insecure_clone());
+    let user = key(&c.user);
     let transit_coin = c.ata_of(transit(), coin);
     let transit_wsol = c.ata_of(transit(), WSOL_MINT);
     let user_coin = c.ata_of(user, coin);
     let fee_wsol = c.ata_of(FEE_WALLET, WSOL_MINT);
-    // One-time setup, paid by the executor: PumpSwap's volume account for transit.
+    // Once per user, paid by them in their first order transaction: PumpSwap's volume account for their transit.
     let uva = Pubkey::find_program_address(&[b"user_volume_accumulator", transit().as_ref()], &PUMP_AMM).0;
-    let init = ix(PUMP_AMM, vec![AnchorMeta::new(key(&exec), true), r(transit()), w(uva), r(system_program::ID), r(event_authority), r(PUMP_AMM)], disc("init_user_volume_accumulator"));
-    c.send(&[init], &[&exec], &[]).expect("PumpSwap's init_user_volume_accumulator for transit");
+    let payer = c.user.insecure_clone();
+    let init = ix(PUMP_AMM, vec![AnchorMeta::new(key(&payer), true), r(transit()), w(uva), r(system_program::ID), r(event_authority), r(PUMP_AMM)], disc("init_user_volume_accumulator"));
+    c.send(&[init], &[&payer], &[]).expect("PumpSwap's init_user_volume_accumulator for the user's transit");
 
     // 1. A limit buy paid in wrapped SOL (PumpSwap takes wrapped SOL): the 1% fee in wrapped SOL.
     let user_wsol = c.user_wsol(SOL);
@@ -245,7 +248,8 @@ fn pumpswap_buy_and_sell_through_the_order_program() {
     let bought = c.token_balance(user_coin);
     println!("PumpSwap buy: {bought} units of {coin} for 0.1 wrapped SOL; transaction {size} bytes");
     assert!(bought > 0, "the coin reached the user");
-    assert_eq!(c.token_balance(fee_wsol), SOL / 1000, "1% in wrapped SOL to the fee wallet");
+    let fee = c.token_balance(fee_wsol);
+    assert!(fee > 0 && fee <= SOL / 1000, "1% of what PumpSwap used (and the fee), in wrapped SOL: {fee}");
     assert!(c.token_balance(user_wsol) > SOL - SOL / 10, "the unused wrapped SOL came back");
     assert_eq!((c.lamports(transit()), c.token_balance(transit_wsol), c.token_balance(transit_coin)), (0, 0, 0), "transit holds nothing");
 
@@ -279,8 +283,9 @@ fn jupiter(c: &Chain, which: &str) -> (Vec<u8>, Vec<AnchorMeta>, Vec<Pubkey>, u6
     (data, accounts, tables, q["inAmount"].as_str().unwrap().parse().unwrap(), q["outAmount"].as_str().unwrap().parse().unwrap())
 }
 
-/// The order size whose input after RektBull's 1% fee is exactly `net` (what the Jupiter instruction spends).
-fn gross_for(net: u64) -> u64 { (net..net + net / 50 + 2).find(|g| g - g / 100 == net).expect("an order size") }
+/// The order size for a Jupiter instruction that spends exactly `net`: that, plus RektBull's fee on it (the fee is
+/// charged on what the venue used).
+fn gross_for(net: u64) -> u64 { net + rektbull_orders::fee_on_used(net) }
 
 #[test]
 #[ignore = "needs mainnet copies: python3 -I scripts/venue_fixtures.py"]
@@ -310,7 +315,7 @@ fn jupiter_routes_through_the_order_program() {
     let got = c.token_balance(user_usdc);
     println!("Jupiter buy ({}): {got} USDC units for {amount} lamports of wrapped SOL (quoted {quoted}); transaction {size} bytes", c.v["jupiter_buy"]["route"]);
     assert!(got >= quoted * 97 / 100);
-    assert_eq!(c.token_balance(fee_wsol), amount / 100, "1% in wrapped SOL to the fee wallet");
+    assert_eq!(c.token_balance(fee_wsol), rektbull_orders::fee_on_used(net_in), "1% of what Jupiter used (and the fee), in wrapped SOL");
     assert_eq!((c.lamports(transit()), c.token_balance(transit_wsol), c.token_balance(transit_usdc)), (0, 0, 0), "transit holds nothing");
 
     // 2. Back to native SOL through Jupiter's other route: the fee in USDC, the wrapped SOL unwrapped.
@@ -325,7 +330,7 @@ fn jupiter_routes_through_the_order_program() {
     let got_sol = c.lamports(user) - sol0;
     println!("Jupiter sale ({}): {got_sol} lamports to the user as native SOL (with the order's rent back; quoted {quoted}); transaction {size} bytes", c.v["jupiter_sell"]["route"]);
     assert!(got_sol >= quoted * 97 / 100);
-    assert_eq!(c.token_balance(fee_usdc), amount / 100, "1% in USDC to the fee wallet");
+    assert_eq!(c.token_balance(fee_usdc), rektbull_orders::fee_on_used(net_in), "1% of what Jupiter used (and the fee), in USDC");
     assert!(!c.exists(transit_wsol), "transit's wrapped-SOL account was unwrapped and closed");
     assert_eq!((c.lamports(transit()), c.token_balance(transit_usdc)), (0, 0), "transit holds nothing");
 }

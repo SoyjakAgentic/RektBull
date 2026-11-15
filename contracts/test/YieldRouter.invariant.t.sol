@@ -26,12 +26,21 @@ contract YieldHandler is Test {
     uint256 public valueLostBeyondAllowed; // value a user lost beyond the fee and MAX_LOSS_BPS: must stay 0
     uint256 public worseMoves; // moves into a venue paying less than MIN_GAIN_BPS more: must stay 0
     uint256 public worseDeposits; // deposits into a venue paying MIN_GAIN_BPS or more below the best: must stay 0
-    uint256 public redepositFees; // fees taken on a deposit within REDEPOSIT_WINDOW of a withdrawal: must stay 0
+    uint256 public redepositFees; // fees on putting back no more than was withdrawn, within REDEPOSIT_WINDOW: must stay 0
+    uint256 public cooldownBreaks; // two fees for one user within FEE_COOLDOWN: must stay 0
     uint256 public intervalBreaks; // fee-bearing calls closer than MIN_INTERVAL: must stay 0
     uint256 public blockedWithdrawals; // withdrawals of a held position that failed: must stay 0
     uint256 public calls;
     mapping(address => uint256) public lastFeeCallAt;
-    mapping(address => uint256) public lastWithdrawAt;
+    mapping(address => uint256) public lastFeeAt;
+    mapping(address => uint256) public credit; // withdrawn through the router and not yet put back
+    mapping(address => uint256) public creditUntil;
+
+    function _fee(address u, uint256 fee) internal {
+        if (fee == 0) return;
+        if (lastFeeAt[u] != 0 && block.timestamp < lastFeeAt[u] + router.FEE_COOLDOWN()) cooldownBreaks++;
+        lastFeeAt[u] = block.timestamp;
+    }
 
     constructor(RektBullYieldRouter r, MockERC20 u, MockVault4626 v0, MockVault4626 v1, MockSsrOracle o0, MockSsrOracle o1, address fw) {
         router = r; usdc = u; vaults[0] = v0; vaults[1] = v1; oracles[0] = o0; oracles[1] = o1; feeWallet = fw;
@@ -109,7 +118,10 @@ contract YieldHandler is Test {
             calls++;
             if (rate + uint256(router.MIN_GAIN_BPS()) * 1e14 < other) worseDeposits++;
             uint256 fee = usdc.balanceOf(feeWallet) - feeBefore;
-            if (fee > 0 && lastWithdrawAt[u] != 0 && block.timestamp < lastWithdrawAt[u] + router.REDEPOSIT_WINDOW()) redepositFees++;
+            uint256 valid = block.timestamp < creditUntil[u] ? credit[u] : 0;
+            if (fee > 0 && amount <= valid) redepositFees++;
+            credit[u] = valid - (amount < valid ? amount : valid);
+            _fee(u, fee);
             feesPaid += fee; feeBase += amount;
             _lossCheck(u, before, fee, amount);
             _interval(u);
@@ -132,6 +144,7 @@ contract YieldHandler is Test {
             if (toRate < fromRate + uint256(router.MIN_GAIN_BPS()) * 1e14) worseMoves++;
             uint256 fee = usdc.balanceOf(feeWallet) - feeBefore;
             uint256 moved = amount > held ? held : amount;
+            _fee(u, fee);
             feesPaid += fee; feeBase += moved;
             _lossCheck(u, before, fee, moved);
             _interval(u);
@@ -145,10 +158,12 @@ contract YieldHandler is Test {
         amount = bound(amount, 1, type(uint256).max);
         uint256 before = _value(u);
         uint256 held = router.positionOf(id, u);
+        uint256 cash = usdc.balanceOf(u);
         vm.prank(u);
         try router.withdraw(id, amount) {
             calls++;
-            lastWithdrawAt[u] = block.timestamp;
+            credit[u] = (block.timestamp < creditUntil[u] ? credit[u] : 0) + usdc.balanceOf(u) - cash;
+            creditUntil[u] = block.timestamp + router.REDEPOSIT_WINDOW();
             _lossCheck(u, before, 0, amount > held ? held : amount);
         } catch {
             if (held > 0) blockedWithdrawals++;
@@ -236,8 +251,11 @@ contract YieldRouterInvariantTest is Test {
     /// stand in for a move the rule above would refuse).
     function invariant_onlyBestDeposits() public view { assertEq(handler.worseDeposits(), 0); }
 
-    /// Putting money back within REDEPOSIT_WINDOW of taking it out is never charged a fee.
+    /// Putting back no more than was taken out, within REDEPOSIT_WINDOW, is never charged a fee.
     function invariant_noFeeOnRedeposit() public view { assertEq(handler.redepositFees(), 0); }
+
+    /// At most one fee per user (and asset) per FEE_COOLDOWN, however many deposits and moves (second AI audit, M-1).
+    function invariant_oneFeePerCooldown() public view { assertEq(handler.cooldownBreaks(), 0); }
 
     /// Fee-bearing calls per account are at least MIN_INTERVAL apart.
     function invariant_minInterval() public view { assertEq(handler.intervalBreaks(), 0); }
