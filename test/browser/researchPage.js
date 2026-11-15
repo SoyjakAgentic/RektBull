@@ -18,13 +18,17 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await require('../../src/config/migrate').migrate();
   const today = new Date();
-  const ago = d => new Date(today - d * 86400000).toISOString().slice(0, 10);
-  const H = (d, name, amount, technique, extra) => ({ date: ago(d), name, amount_usd: amount, returned_usd: null, technique, classification: 'Protocol Logic', chains: ['Ethereum', 'Base'], bridge: false, target: 'DeFi Protocol', source: null, ...extra });
+  const research = require('../../src/services/research');
+  const w = research.lastWeek(today); // the last full Monday-to-Monday week, which the digest covers
+  const day = (from, d) => new Date(from.getTime() + d * 86400000).toISOString().slice(0, 10);
+  // Two hacks inside the digest's week, whatever weekday the check runs on;
+  // one this week (after it) and one long before, for the tracker only.
+  const H = (date, name, amount, technique, extra) => ({ date, name, amount_usd: amount, returned_usd: null, technique, classification: 'Protocol Logic', chains: ['Ethereum', 'Base'], bridge: false, target: 'DeFi Protocol', source: null, ...extra });
   require('../../src/providers/llama').hackList = async () => [
-    H(2, 'Recent Lend', 4e5, 'Withdrawal Logic Flaw', { source: 'https://example.com/postmortem' }),
-    H(6, 'Big Exchange', 6.4e9, 'Key Leaked via Infrastructure', { target: 'CEX' }),
-    H(9, 'Small Vault', 1e6, 'Withdrawal Logic Flaw', { returned_usd: 5e5 }),
-    H(60, 'Older Pool', null, 'Oracle Manipulation'),
+    H(day(today, 0), 'Recent Lend', 4e5, 'Withdrawal Logic Flaw', { source: 'https://example.com/postmortem' }),
+    H(day(w.start, 3), 'Big Exchange', 6.4e9, 'Key Leaked via Infrastructure', { target: 'CEX' }),
+    H(day(w.start, 1), 'Small Vault', 1e6, 'Withdrawal Logic Flaw', { returned_usd: 5e5 }),
+    H(day(today, -60), 'Older Pool', null, 'Oracle Manipulation'),
   ];
   const markets = require('../../src/services/markets');
   markets.overview = async () => ({ tvl: { usd: 85e9, change_7d_pct: -0.9 }, not_checked: [], sources: { tvl: 'DefiLlama TVL' } });
@@ -40,8 +44,6 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   claude.available = () => true;
   const WRITTEN = '## The week in brief\nThree exploits were recorded, **$6.4B** lost in all [DefiLlama hacks].\n## Hacks\n- Big Exchange lost $6.4B [DefiLlama hacks]';
   claude.write = async ({ system, prompt }) => ({ text: system.includes('fact-checker') ? `${prompt.split('Draft:\n')[1]}\n=== REMOVED ===\n- Expect more next week.` : WRITTEN });
-  const research = require('../../src/services/research');
-  const w = research.lastWeek(today);
   const week = d => d.toISOString().slice(0, 10);
   const { rows: [admin] } = await db.query('INSERT INTO accounts (wallet) VALUES ($1) RETURNING id, wallet', [ADMIN]);
   await research.makeDigest(w);
@@ -71,7 +73,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     assert.equal(await page.isHidden('#review'), true, 'the review is the owner\'s only');
     assert.equal(await page.getAttribute('#d-facts-box', 'open'), null, 'the facts fold away under a written digest');
     await page.getByText('The facts it was written from').click();
-    assert.match(await page.textContent('#d-facts'), /exploits recorded.*\[DefiLlama hacks\]/s);
+    assert.match(await page.textContent('#d-facts'), /2 exploits recorded, \$6\.4B lost in all.*\[DefiLlama hacks\]/s);
     assert.equal(await page.locator('#d-pick option').count(), 2, 'the draft isn\'t in the archive');
     console.log('✔ the latest published digest, with its byline, written from the facts, with the facts and their sources beneath');
 
