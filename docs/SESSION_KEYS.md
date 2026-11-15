@@ -162,7 +162,12 @@ exactly what this design rules out.
   check still apply to exempt sells. Only trades that counted toward the
   limits earn the exemption (the output of an exempt sale doesn't), so what
   can be sold freely is capped by the capped buys. (Fixed after the November
-  2026 audit: finding H-1, AUDIT_BRIEF.md section 8.)
+  2026 audit: finding H-1, AUDIT_BRIEF.md section 8.) The exemption belongs to
+  the grant it was earned under: revoking or setting new limits ends it, so a
+  credit from an old grant can't cover tokens the user got elsewhere (the
+  second AI audit's M-1). Because exits don't count, up to **twice** the daily
+  limit can change hands in a day (four times across the change of day): the
+  permission screen says so. Grants last at most 30 days onchain too.
 - **The worst case of a bad price is bounded:** a hacked RektBull could take
   at most the price bound (2%) on each trade, within the limits. Lower the bound
   for liquid pairs if that's too much.
@@ -343,8 +348,12 @@ cost is a few dollars a month in total.
 The Safe's owners enable it and call `setSession(key, validUntil)`, both
 ordinary Safe transactions. The named key may then ask the module to make the
 Safe call one function, the router's `swap`: nothing else, no value, never a
-delegatecall. Sessions last at most 30 days; owners stop it with `revoke()` or
-by disabling the module. The router applies its rules with the Safe as the
+delegatecall. Sessions last at most 30 days; owners stop it with `revoke()`, or
+any one owner with `revokeFor(safe)`, and RektBull's session key can give a
+session up with `renounce(safe)`. Disabling the module only pauses it:
+re-enabling it brings the session back, so the app always batches `revoke()`
+with disabling. `setSession` and `revoke` refuse calls forwarded by a Safe's
+fallback handler (the second AI audit, AUDIT_BRIEF.md section 8). The router applies its rules with the Safe as the
 account. A Safe is linked to RektBull by one of its owners, who signs in with
 their own wallet; RektBull checks onchain that they own it.
 

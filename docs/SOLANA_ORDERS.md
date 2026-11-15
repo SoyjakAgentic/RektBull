@@ -55,7 +55,15 @@ Revoking the delegate on the token account stops every sell order at once.
 | Address | Its one job | Why it's separate |
 |---|---|---|
 | `delegate` (PDA `["delegate"]`) | The only address users approve. It signs one thing: moving a fill's input from the order's owner to `transit` | It never signs anything an exchange sees, so an exchange can't use users' approvals |
-| `transit` (PDA `["transit"]`) | Holds a fill's funds during the fill and is the trader on the exchange (pump.fun's `user`, Jupiter's authority) | Nobody ever approves it, so an exchange call signed by it can only reach what this fill put in it |
+| `transit` (PDA `["transit", owner]`, one per user) | Holds a fill's funds during the fill and is the trader on the exchange (pump.fun's `user`, Jupiter's authority) | Nobody ever approves it, and it belongs to one user, so an exchange call signed by it can only reach what this fill put in it, and never another user's exchange-side accounts |
+
+A fill may only call an exchange's swap instructions (`is_swap`: pump.fun's
+buys and sells, PumpSwap's, Jupiter's routes), and only transit's signature
+reaches the exchange: a fill the owner signed is refused, and the executor's
+signature isn't passed on. (The second AI audit, 15 November 2026: with one
+shared transit and any instruction allowed, anyone naming themselves executor
+of their own order could close transit's pump.fun volume account and take its
+rent.)
 
 ## How a fill works
 
@@ -66,10 +74,11 @@ Revoking the delegate on the token account stops every sell order at once.
    `ceil(min_amount_out × amount_in / order amount_in)`.
 2. The delegate moves `amount_in` from the owner's token account (it must be
    theirs, for the order's input token) to transit.
-3. The fee, when the input is SOL, USDC or USDT: 1% to the fee wallet. With
-   `unwrap_in`, transit's wrapped SOL is unwrapped first (pump.fun's curve is
-   bought with SOL) and the account's rent goes back to the executor who
-   opened it.
+3. With `unwrap_in`, transit's wrapped SOL is unwrapped first (pump.fun's
+   curve is bought with SOL) and the account's rent goes back to the executor
+   who opened it. When the input is SOL, USDC or USDT, the 1% fee is charged
+   after the exchange call, on what the exchange used (`fee_on_used`): unused
+   input pays no fee.
 4. The exchange call (`venue_data`, with its accounts), signed by transit
    only. The delegate's address may not appear in it at all.
 5. The output to the owner: native SOL (everything transit holds, less a 1%
@@ -168,10 +177,11 @@ current v3 instructions and transit as pump.fun's trader, on 12 November 2026:
 **Found on the way:**
 - **pump.fun's volume account.** pump.fun creates a volume-tracking account
   for each trader on their first trade, with rent taken from the trader, which
-  here would mean a user's SOL. The trade service creates it once for transit
-  (`init_user_volume_accumulator`, paid by the executor) before the first fill:
+  here would mean a user's SOL taken mid-fill. Each user has their own transit,
+  so the user's first order transaction creates it for their transit
+  (`init_user_volume_accumulator`, paid by them and shown on the order screen):
   a 137-byte account, 1,844,400 lamports (about 0.0018 SOL) of rent-exempt
-  deposit, paid once in all, since every fill trades through the same transit.
+  deposit, once per user and exchange.
 - **pump.fun's extra charge.** pump.fun takes a small fixed amount from the
   trader on top of `spendable_quote_in`: 552,720 lamports in this test, the
   same for an ordinary wallet. The trade service simulates each fill and
@@ -204,8 +214,8 @@ the trader, then copies every account and program they touch; then
   accounts (the program's addresses, the fee wallet, mints, the exchanges'
   global accounts) plus Jupiter's tables for Jupiter routes. All the checks
   now assert their transactions fit.
-- **PumpSwap's volume account,** like pump.fun's: created once for transit by
-  the executor (`init_user_volume_accumulator`), so no user's SOL pays its rent.
+- **PumpSwap's volume account,** like pump.fun's: created for the user's
+  transit in their first order transaction, paid by them.
 - **Proprietary AMMs can't be checked on a copy.** Jupiter first routed
   through ZeroFi and BisonFi, whose prices are pushed onchain every slot: a
   copy is stale at once, and their swaps failed in the exchange itself, before
@@ -231,9 +241,9 @@ the trader, then copies every account and program they touch; then
     the first fill that pays it in SOL;
   - Token-2022 coins with a transfer hook can't be traded (the program
     doesn't pass a hook's extra accounts). pump.fun's coins don't use hooks;
-  - pump.fun's volume rewards for trades through the program accrue to
-    transit's volume account, which nobody can claim. Users trading by hand
-    keep their own.
+  - pump.fun's volume rewards for trades through the program accrue to the
+    user's own transit's volume account, which the program has no instruction
+    to claim. Users trading by hand keep their own.
 - These are not an audit.
 
 ## Building
@@ -253,8 +263,9 @@ version is a choice to make at deployment.
    the deployed bytes match a reproducible build of the audited commit.
 4. Remove the upgrade authority (`solana program set-upgrade-authority
    --final`).
-5. One-time setup by the executor: pump.fun's and PumpSwap's volume accounts
-   for transit, and RektBull's address lookup table for fills.
+5. One-time setup by the executor: RektBull's address lookup table for fills.
+   (Each user's first order transaction creates pump.fun's and PumpSwap's
+   volume accounts for their own transit.)
 6. No private key, seed phrase or program keypair ever goes into the
    repository, a chat or an issue.
 

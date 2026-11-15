@@ -36,7 +36,7 @@ contract TradeHandler is Test {
             vm.startPrank(users[i]);
             u.approve(address(r), type(uint256).max);
             w.approve(address(r), type(uint256).max);
-            r.setLimits(1e13, 1e14, 1 days, uint64(block.timestamp + 365 days)); // $100,000 a trade, $1,000,000 a day, to start
+            r.setLimits(1e13, 1e14, 1 days, uint64(block.timestamp + 30 days)); // $100,000 a trade, $1,000,000 a day, to start (30 days at most)
             vm.stopPrank();
         }
     }

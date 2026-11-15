@@ -151,13 +151,16 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
 
   it('works: a move to the better-paying venue, after the interval; the position moves, nothing is left behind', async function () {
     await directDeposit(low, usdc(1000)); // a position the user opened elsewhere themselves
+    const fees = await usdcToken.balanceOf(feeWallet);
     await fails(call('move', [low, high, ethers.MaxUint256]), /TooSoon/);
     await advance(DAY + 1);
     await (await call('move', [low, high, ethers.MaxUint256])).wait();
     assert.ok(await router.positionOf(low, user.address) <= 1n, 'the old position is empty');
     const pos = await router.positionOf(high, user.address);
     assert.ok(pos >= usdc(1996.9), `moved ${ethers.formatUnits(pos, 6)}`);
-    assert.ok(await usdcToken.balanceOf(feeWallet) >= usdc(1.998), 'the move paid 0.1%');
+    // The deposit above paid this asset's fee a day ago: within FEE_COOLDOWN (7 days) the move pays none (second AI
+    // audit, M-1: at most one fee per account and asset per week, however often it is moved).
+    assert.equal(await usdcToken.balanceOf(feeWallet), fees, 'no second fee within the cooldown');
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
 

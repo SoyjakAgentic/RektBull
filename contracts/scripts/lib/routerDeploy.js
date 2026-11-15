@@ -152,6 +152,17 @@ export async function preflight(ethers, p, { feeWallet, rehearsal = false, round
       add(`heartbeat ${f.description}`, maxGap !== null && maxGap <= f.heartbeat + GAP_SLACK && t.maxAge > f.heartbeat && t.maxAge <= 2 * f.heartbeat && maxGap < t.maxAge,
         maxGap === null ? 'no earlier rounds to measure'
           : `longest gap in the last ${gaps.length} rounds ${ago(maxGap)}; heartbeat ${ago(f.heartbeat)}; the router will refuse prices older than ${ago(t.maxAge)} (onchain round history)`);
+      // The aggregator's min/max answers must not be live bounds: a feed clamped at a bound would let the router trade
+      // far from the real price (second AI audit, L-3). Require the price at least 10x its minimum and at least 3%
+      // under its maximum (more than the 2% price bound plus the 1% fee). Stablecoin feeds cap at $1.05: a known
+      // bound, live only if the coin trades above $1.05 (AUDIT_BRIEF.md section 8).
+      try {
+        const agg = new ethers.Contract(await new ethers.Contract(f.address, ['function aggregator() view returns (address)'], provider).aggregator(),
+          ['function minAnswer() view returns (int192)', 'function maxAnswer() view returns (int192)'], provider);
+        const [min, max] = await Promise.all([agg.minAnswer(), agg.maxAnswer()]);
+        add(`bounds ${f.description}`, r[1] >= 10n * min && r[1] * 103n <= max * 100n,
+          `price ${ethers.formatUnits(r[1], decimals)}; the aggregator's bounds ${ethers.formatUnits(min, decimals)} to ${ethers.formatUnits(max, decimals)}: at least 10x the minimum and 3% under the maximum (onchain, aggregator ${agg.target})`);
+      } catch (e) { add(`bounds ${f.description}`, false, `couldn't read the aggregator's min/max answers: ${e.shortMessage || e.message}`); }
     } catch (e) { add(`feed ${f.description}`, false, `${f.address}: couldn't read it: ${e.shortMessage || e.message}`); }
   }
   return results;

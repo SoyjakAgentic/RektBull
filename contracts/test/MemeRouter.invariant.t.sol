@@ -88,7 +88,7 @@ contract MemeHandler is Test {
         // rate (out per 1e18 in) such that the gross output is about skew% of the order's price
         uint256 rate = o.minAmountOut * 1e18 / o.amountIn * skew / 100 + 1;
         RektBullMemeRouter.Fill memory f = RektBullMemeRouter.Fill({
-            amountIn: amountIn, venue: address(venue), spender: address(venue), unwrapIn: false,
+            amountIn: amountIn, venue: address(venue), spender: address(venue), unwrapIn: false, minAmountOut: 0,
             venueCalldata: abi.encodeCall(MockVenue.swap, (o.tokenIn, o.tokenOut, traded, rate, payElsewhere ? attacker : address(router)))
         });
         uint256 who = o.account == users[0] ? 0 : o.account == users[1] ? 1 : 2;
@@ -124,7 +124,7 @@ contract MemeHandler is Test {
         uint256 who = o.account == users[0] ? 0 : o.account == users[1] ? 1 : 2;
         bytes memory sig = _sign(who, o);
         RektBullMemeRouter.Fill memory f = RektBullMemeRouter.Fill({
-            amountIn: 1, venue: address(venue), spender: address(venue), unwrapIn: false,
+            amountIn: 1, venue: address(venue), spender: address(venue), unwrapIn: false, minAmountOut: 0,
             venueCalldata: abi.encodeCall(MockVenue.swap, (o.tokenIn, o.tokenOut, 1, 1e36, address(router)))
         });
         vm.prank(attacker);
@@ -139,7 +139,7 @@ contract MemeHandler is Test {
         bytes memory sig = _sign(lowerPrice ? who : (who + 1) % 3, o);
         if (lowerPrice) o.minAmountOut = o.minAmountOut / 2; // a 0 minimum stays 0 here: refused anyway, as an order with no price
         RektBullMemeRouter.Fill memory f = RektBullMemeRouter.Fill({
-            amountIn: 1, venue: address(venue), spender: address(venue), unwrapIn: false,
+            amountIn: 1, venue: address(venue), spender: address(venue), unwrapIn: false, minAmountOut: 0,
             venueCalldata: abi.encodeCall(MockVenue.swap, (o.tokenIn, o.tokenOut, 1, 1e36, address(router)))
         });
         try router.fill(o, sig, f) returns (uint256) { unauthorizedSuccesses++; } catch {}

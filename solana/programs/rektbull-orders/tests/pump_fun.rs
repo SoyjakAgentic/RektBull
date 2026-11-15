@@ -38,7 +38,9 @@ fn key(k: &Keypair) -> Pubkey { pk(&k.pubkey()) }
 fn root() -> String { format!("{}/../..", env!("CARGO_MANIFEST_DIR")) }
 fn fixtures() -> String { format!("{}/fixtures/pump", root()) }
 fn delegate() -> Pubkey { Pubkey::find_program_address(&[DELEGATE_SEED], &rektbull_orders::ID).0 }
-fn transit() -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED], &rektbull_orders::ID).0 }
+/// The user's own transit (each owner has one: second AI audit, M-1); the test user has a fixed key.
+fn user_keypair() -> Keypair { Keypair::new_from_array([7u8; 32]) }
+fn transit() -> Pubkey { Pubkey::find_program_address(&[TRANSIT_SEED, key(&user_keypair()).as_ref()], &rektbull_orders::ID).0 }
 fn ix(program: Pubkey, metas: Vec<AnchorMeta>, data: Vec<u8>) -> Instruction {
     Instruction {
         program_id: a(&program),
@@ -85,7 +87,7 @@ impl Pump {
         svm.set_sysvar(&clock);
         let mint = Pubkey::from_str(c["base_mint"].as_str().unwrap()).unwrap();
         let mint_program = Pubkey::from_str(c["base_token_program"].as_str().unwrap()).unwrap();
-        let (user, exec) = (Keypair::new(), Keypair::new());
+        let (user, exec) = (user_keypair(), Keypair::new());
         let mut p = Pump { svm, c, mint, mint_program, user, exec };
         p.set_lamports(key(&p.user), 10 * SOL);
         p.set_lamports(key(&p.exec), 10 * SOL);
@@ -195,14 +197,13 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     let user = p.user.insecure_clone();
     let transit_coin = p.coin_ata(transit());
     let user_coin = p.coin_ata(key(&user));
-    // One-time setup, paid by the executor: pump.fun's volume account for transit. (Without it, pump.fun would
-    // create it on the first trade with rent taken from transit, i.e. from that user's SOL.)
+    // Once per user, in their first order transaction and paid by them: pump.fun's volume account for their
+    // transit. (Without it, pump.fun would create it on the first trade with rent taken from transit.)
     let uva = Pubkey::find_program_address(&[b"user_volume_accumulator", transit().as_ref()], &PUMP_FUN).0;
-    let init = ix(PUMP_FUN, vec![AnchorMeta::new(key(&p.exec), true), r(transit()), w(uva), r(system_program::ID), r(p.acct("event_authority")), r(PUMP_FUN)], disc("init_user_volume_accumulator"));
-    let exec = p.exec.insecure_clone();
-    p.send(&[init], &[&exec]).expect("pump.fun's init_user_volume_accumulator for transit");
+    let init = ix(PUMP_FUN, vec![AnchorMeta::new(key(&user), true), r(transit()), w(uva), r(system_program::ID), r(p.acct("event_authority")), r(PUMP_FUN)], disc("init_user_volume_accumulator"));
+    p.send(&[init], &[&user]).expect("pump.fun's init_user_volume_accumulator for the user's transit");
     let uva_account = p.svm.get_account(&a(&uva)).unwrap();
-    println!("pump.fun's volume account for transit: {} bytes, {} lamports of rent (paid by the executor)", uva_account.data.len(), uva_account.lamports);
+    println!("pump.fun's volume account for the user's transit: {} bytes, {} lamports of rent (paid by the user)", uva_account.data.len(), uva_account.lamports);
 
     // 1. A limit buy: 0.1 SOL of wrapped SOL for at least 1 token unit (the price check is the next step).
     let user_wsol = p.wsol_account(key(&user), SOL);
@@ -220,7 +221,8 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     let bought = p.token_balance(user_coin);
     println!("bought {bought} units of {} with a 0.1 SOL order (0.001 fee, 0.098 offered to pump.fun)", p.mint);
     assert!(bought > 0, "the tokens reached the user");
-    assert_eq!(p.lamports(FEE_WALLET) - fee0, SOL / 1000, "1% of the SOL in to the fee wallet");
+    let fee = p.lamports(FEE_WALLET) - fee0;
+    assert!(fee > 0 && fee <= SOL / 1000, "1% of the SOL pump.fun used (and the fee) to the fee wallet: {fee}");
     assert!(p.lamports(key(&user)) >= user_sol0, "any SOL pump.fun didn't use came back (and the order's rent)");
     assert_eq!(p.lamports(transit()), 0, "transit holds nothing");
     assert_eq!(p.token_balance(transit_coin), 0);
@@ -249,4 +251,48 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     assert_eq!(p.token_balance(user_coin), 0);
     assert_eq!(p.lamports(transit()), 0, "transit holds nothing");
     assert_eq!(p.token_balance(transit_coin), 0);
+}
+
+/// The second AI audit's M-1, on pump.fun's real program: anyone can name themselves executor of their own order,
+/// but a fill can only call pump.fun's swaps (here, closing a volume account is refused), and only as the order
+/// owner's own transit, never another user's.
+#[test]
+#[ignore = "needs mainnet copies: python3 -I scripts/pump_fixtures.py"]
+fn a_stranger_cant_use_a_fill_for_anything_but_a_swap() {
+    let mut p = Pump::new();
+    let user = p.user.insecure_clone();
+    let uva = Pubkey::find_program_address(&[b"user_volume_accumulator", transit().as_ref()], &PUMP_FUN).0;
+    let init = ix(PUMP_FUN, vec![AnchorMeta::new(key(&user), true), r(transit()), w(uva), r(system_program::ID), r(p.acct("event_authority")), r(PUMP_FUN)], disc("init_user_volume_accumulator"));
+    p.send(&[init], &[&user]).unwrap();
+    // The stranger's own order, naming themselves executor, selling their own coin for SOL.
+    let attacker = Keypair::new();
+    p.set_lamports(key(&attacker), SOL);
+    let attacker_coin = p.coin_ata(key(&attacker));
+    let attacker_transit = Pubkey::find_program_address(&[TRANSIT_SEED, key(&attacker).as_ref()], &rektbull_orders::ID).0;
+    let transit_coin = p.coin_ata(attacker_transit);
+    let now = p.svm.get_sysvar::<solana_clock::Clock>().unix_timestamp;
+    let params = OrderParams { executor: key(&attacker), input_mint: p.mint, output_mint: WSOL_MINT, output_native: true, amount_in: 1, min_amount_out: 1, valid_after: 0, valid_until: now + 3600 };
+    let order = Pubkey::find_program_address(&[ORDER_SEED, key(&attacker).as_ref(), &7u64.to_le_bytes()], &rektbull_orders::ID).0;
+    let metas = rektbull_orders::accounts::PlaceOrder { owner: key(&attacker), order, system_program: system_program::ID }.to_account_metas(None);
+    p.send(&[ix(rektbull_orders::ID, metas, rektbull_orders::instruction::PlaceOrder { nonce: 7, p: params }.data())], &[&attacker]).unwrap();
+    let (mint, mint_program) = (p.mint, p.mint_program);
+    let fill = |venue_data: Vec<u8>, accounts: Vec<AnchorMeta>, transit: Pubkey| {
+        let mut metas = rektbull_orders::accounts::Fill {
+            executor: key(&attacker), order, owner: key(&attacker), delegate: delegate(), transit,
+            source: attacker_coin, input_mint: mint, transit_in: transit_coin, input_token_program: mint_program,
+            output_mint: None, transit_out: None, owner_out: None, output_token_program: None,
+            fee_wallet: FEE_WALLET, fee_in: None, fee_out: None, venue: PUMP_FUN, system_program: system_program::ID,
+        }.to_account_metas(None);
+        metas.extend(accounts);
+        (metas, rektbull_orders::instruction::Fill { amount_in: 1, unwrap_in: false, venue_data }.data())
+    };
+    // Closing a volume account through a fill: not a swap, refused.
+    let (metas, data) = fill(disc("close_user_volume_accumulator"), vec![w(attacker_transit), w(uva), r(p.acct("event_authority")), r(PUMP_FUN)], attacker_transit);
+    let err = p.send(&[ix(rektbull_orders::ID, metas, data)], &[&attacker]).expect_err("not a swap");
+    assert!(err.contains("VenueNotAllowed"), "{err}");
+    // And the user's transit can't be named for the stranger's order.
+    let (metas, data) = fill(pump_sell(1, 1), vec![], transit());
+    let err = p.send(&[ix(rektbull_orders::ID, metas, data)], &[&attacker]).expect_err("someone else's transit");
+    assert!(err.contains("ConstraintSeeds"), "{err}");
+    assert!(p.lamports(uva) > 0, "the user's volume account is untouched");
 }

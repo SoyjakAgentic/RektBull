@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -84,6 +85,7 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         address spender; // the contract approved to take the input (often the venue itself)
         bytes venueCalldata;
         bool unwrapIn; // the input is the wrapped native coin, sent to the venue as native
+        uint256 minAmountOut; // the executor's own minimum for this fill, on top of the user's (sandwich protection)
     }
 
     // ── Set by each user, for themselves only ─────────────────────────────
@@ -124,15 +126,19 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         FEE_WALLET = feeWallet;
         FEE_BPS = feeBps;
         WRAPPED_NATIVE = IWrappedNative(wrappedNative);
-        for (uint256 i; i < venues.length; ++i) {
-            if (venues[i] == address(0) || venues[i] == NATIVE) revert BadConfig();
-            isVenue[venues[i]] = true;
-        }
         for (uint256 i; i < baseAssets.length; ++i) {
             if (baseAssets[i] == address(0)) revert BadConfig();
             isBase[baseAssets[i]] = true;
         }
         isBase[NATIVE] = true;
+        // A venue is called with calldata anyone with an order of their own can choose, so a venue must never be a
+        // token users approve to this router (second AI audit, M-1). The deploy pre-flight also refuses any venue
+        // that answers like a token.
+        for (uint256 i; i < venues.length; ++i) {
+            address v = venues[i];
+            if (v == address(0) || v == NATIVE || v == wrappedNative || isBase[v]) revert BadConfig();
+            isVenue[v] = true;
+        }
     }
 
     /// @dev Native coin arrives from the wrapped native contract (unwrapping) and from venues (a sale for native).
@@ -183,19 +189,25 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         IERC20(o.tokenIn).safeTransferFrom(account, address(this), f.amountIn);
         uint256 received = IERC20(o.tokenIn).balanceOf(address(this)) - inBefore;
 
-        // The fee, on the input unless the output is a base asset.
+        // The fee, on the input unless the output is a base asset. On the input, it is set aside here and charged
+        // after the trade on what the venue actually used, so unused input pays no fee.
         bool feeOnOutput = isBase[o.tokenOut];
         uint256 fee = 0;
-        if (!feeOnOutput) {
-            fee = received * FEE_BPS / 10_000;
-            if (fee > 0) IERC20(o.tokenIn).safeTransfer(FEE_WALLET, fee);
-        }
-        uint256 toTrade = received - fee;
+        uint256 toTrade = feeOnOutput ? received : received - received * FEE_BPS / 10_000;
 
         // The trade, through the allowed venue.
         uint256 nativeBefore = address(this).balance;
         uint256 outBefore = _balance(o.tokenOut);
         _callVenue(o, f, toTrade);
+        if (f.unwrapIn && address(this).balance > nativeBefore) {
+            WRAPPED_NATIVE.deposit{value: address(this).balance - nativeBefore}(); // unused native, wrapped back
+        }
+        if (!feeOnOutput) {
+            // fee = FEE_BPS of (used + fee): the same as before when the venue uses everything it was given.
+            uint256 unused = IERC20(o.tokenIn).balanceOf(address(this)) - inBefore;
+            fee = Math.min((received - unused) * FEE_BPS / (10_000 - FEE_BPS), unused);
+            if (fee > 0) IERC20(o.tokenIn).safeTransfer(FEE_WALLET, fee);
+        }
         amountOut = _balance(o.tokenOut) - outBefore;
         if (feeOnOutput) {
             fee = amountOut * FEE_BPS / 10_000;
@@ -212,12 +224,22 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
 
         // At least the user's own limit price, pro rata for a part of the order.
         uint256 minimum = Math.mulDiv(o.minAmountOut, f.amountIn, o.amountIn, Math.Rounding.Ceil);
+        if (f.minAmountOut > minimum) minimum = f.minAmountOut;
         if (amountOut < minimum) revert BelowLimit(amountOut, minimum);
-        if (f.unwrapIn && address(this).balance > nativeBefore) {
-            WRAPPED_NATIVE.deposit{value: address(this).balance - nativeBefore}(); // unused native, wrapped back
-        }
         uint256 leftover = IERC20(o.tokenIn).balanceOf(address(this)) - inBefore;
         if (leftover > 0) IERC20(o.tokenIn).safeTransfer(account, leftover);
+        // Native coin a venue handed back on a fill that doesn't pay out native (a rebate, a mistaken payment) goes
+        // to the account too: the router holds nothing (second AI audit, L-2).
+        // Wrapped where the chain has a wrapped native, so a stray wei can't block fills for wallets that refuse native coin.
+        if (o.tokenOut != NATIVE && address(this).balance > 0) {
+            uint256 stray = address(this).balance;
+            if (address(WRAPPED_NATIVE) != address(0)) {
+                WRAPPED_NATIVE.deposit{value: stray}();
+                IERC20(address(WRAPPED_NATIVE)).safeTransfer(account, stray);
+            } else {
+                _send(NATIVE, account, stray);
+            }
+        }
 
         emit Filled(h, account, o.tokenIn, o.tokenOut, f.amountIn, fee, feeOnOutput, amountOut);
     }
@@ -230,10 +252,14 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         if (o.epoch != epochOf[o.account]) revert OrderCancelled();
         h = hashOrder(o);
         if (cancelled[h]) revert OrderCancelled();
-        if (!SignatureChecker.isValidSignatureNow(o.account, h, signature)) revert BadSignature();
+        // The account's own key first, then EIP-1271: an account that gains code later (an EIP-7702 delegation) keeps
+        // the orders its key signed (second AI audit, L-1).
+        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(h, signature);
+        if (!(err == ECDSA.RecoverError.NoError && signer == o.account)
+            && !SignatureChecker.isValidERC1271SignatureNow(o.account, h, signature)) revert BadSignature();
         // An order must name a price: with no minimum, it could be filled at any price at all.
         if (o.tokenIn == o.tokenOut || o.tokenIn == NATIVE || o.amountIn == 0 || o.minAmountOut == 0 || f.amountIn == 0) revert NotAllowed();
-        if (!isVenue[f.venue] || !isVenue[f.spender]) revert NotAllowed();
+        if (!isVenue[f.venue] || !isVenue[f.spender] || isVenue[o.tokenIn] || isVenue[o.tokenOut]) revert NotAllowed();
         if (f.unwrapIn && (address(WRAPPED_NATIVE) == address(0) || o.tokenIn != address(WRAPPED_NATIVE) || o.tokenOut == NATIVE)) {
             revert NotAllowed();
         }

@@ -44,6 +44,52 @@ pub const PUMP_AMM: Pubkey = pubkey!("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXE
 pub const JUPITER_V6: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 pub const VENUES: [Pubkey; 3] = [PUMP_FUN, PUMP_AMM, JUPITER_V6];
 
+/// The only instructions a fill may call on each venue: their swaps (Anchor ids, the first 8 bytes of
+/// sha256("global:<name>")). Transit signs the call, so anything else a venue lets its trader do (close or claim
+/// accounts, create coins, provide liquidity) must be out of reach (second AI audit, M-1).
+pub const PUMP_FUN_SWAPS: [[u8; 8]; 9] = [
+    [102, 6, 61, 18, 1, 218, 235, 234],      // buy
+    [51, 230, 133, 164, 1, 127, 131, 173],   // sell
+    [56, 252, 116, 8, 158, 223, 205, 95],    // buy_exact_sol_in
+    [184, 23, 238, 97, 103, 197, 211, 61],   // buy_v2
+    [93, 246, 130, 60, 231, 233, 64, 178],   // sell_v2
+    [7, 5, 29, 196, 245, 23, 101, 80],       // buy_v3
+    [28, 146, 222, 119, 38, 196, 105, 213],  // sell_v3
+    [194, 171, 28, 70, 104, 77, 91, 47],     // buy_exact_quote_in_v2
+    [225, 247, 80, 30, 213, 179, 132, 136],  // buy_exact_quote_in_v3
+];
+pub const PUMP_AMM_SWAPS: [[u8; 8]; 6] = [
+    [102, 6, 61, 18, 1, 218, 235, 234],      // buy
+    [51, 230, 133, 164, 1, 127, 131, 173],   // sell
+    [198, 46, 21, 82, 180, 217, 232, 112],   // buy_exact_quote_in
+    [184, 23, 238, 97, 103, 197, 211, 61],   // buy_v2
+    [93, 246, 130, 60, 231, 233, 64, 178],   // sell_v2
+    [194, 171, 28, 70, 104, 77, 91, 47],     // buy_exact_quote_in_v2
+];
+pub const JUPITER_SWAPS: [[u8; 8]; 6] = [
+    [229, 23, 203, 151, 122, 227, 173, 42],  // route
+    [193, 32, 155, 51, 65, 214, 156, 129],   // shared_accounts_route
+    [208, 51, 239, 151, 123, 43, 237, 92],   // exact_out_route
+    [176, 209, 105, 168, 154, 125, 69, 62],  // shared_accounts_exact_out_route
+    [187, 100, 250, 204, 49, 196, 175, 20],  // route_v2
+    [209, 152, 83, 147, 124, 254, 216, 233], // shared_accounts_route_v2
+];
+
+/// Whether `data` is one of `venue`'s swap instructions.
+pub fn is_swap(venue: &Pubkey, data: &[u8]) -> bool {
+    let Some(id) = data.get(..8) else { return false };
+    let list: &[[u8; 8]] = if *venue == PUMP_FUN {
+        &PUMP_FUN_SWAPS
+    } else if *venue == PUMP_AMM {
+        &PUMP_AMM_SWAPS
+    } else if *venue == JUPITER_V6 {
+        &JUPITER_SWAPS
+    } else {
+        return false;
+    };
+    list.iter().any(|d| d[..] == id[..])
+}
+
 /// Base assets: the fee is taken on whichever side of a fill is one of these.
 pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 pub const USDC_MINT: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -69,6 +115,12 @@ pub fn mul_div_ceil(a: u64, b: u64, c: u64) -> Option<u64> {
 /// RektBull's fee on an amount (rounded down: never more than FEE_BPS).
 pub fn fee_of(amount: u64) -> u64 {
     ((amount as u128) * (FEE_BPS as u128) / 10_000) as u64
+}
+
+/// The input-side fee when the venue used `used`: FEE_BPS of (used + fee), the same as fee_of on the whole input
+/// when the venue used all it was given (rounded down).
+pub fn fee_on_used(used: u64) -> u64 {
+    ((used as u128) * (FEE_BPS as u128) / (10_000 - FEE_BPS as u128)) as u64
 }
 
 #[program]
@@ -130,6 +182,10 @@ pub mod rektbull_orders {
         let left = order.amount_in - order.filled_in;
         require!(amount_in > 0 && amount_in <= left, OrderError::OverSize);
         require!(VENUES.contains(ctx.accounts.venue.key), OrderError::VenueNotAllowed);
+        require!(is_swap(ctx.accounts.venue.key, &venue_data), OrderError::VenueNotAllowed);
+        // The owner never signs a fill: their signature must never be anywhere a venue could see it (second AI
+        // audit, L-1).
+        require!(!ctx.accounts.owner.is_signer, OrderError::BadFill);
         require!(ctx.accounts.venue.executable, OrderError::VenueNotAllowed);
         require!(!unwrap_in || (order.input_mint == WSOL_MINT && !order.output_native), OrderError::BadFill);
         // The user's price for this part: ceil(min_amount_out * amount_in / amount_in_total).
@@ -140,7 +196,8 @@ pub mod rektbull_orders {
 
         let a = &ctx.accounts;
         let transit_bump = ctx.bumps.transit;
-        let transit_seeds: &[&[u8]] = &[TRANSIT_SEED, &[transit_bump]];
+        let owner_key = a.owner.key();
+        let transit_seeds: &[&[u8]] = &[TRANSIT_SEED, owner_key.as_ref(), &[transit_bump]];
         let delegate_seeds: &[&[u8]] = &[DELEGATE_SEED, &[ctx.bumps.delegate]];
 
         // What has reached the owner so far: measured again at the end.
@@ -186,7 +243,7 @@ pub mod rektbull_orders {
             a.input_mint.decimals,
         )?;
 
-        // 2. The fee on the input side (when the input is SOL, USDC or USDT).
+        // 2. Unwrapping (the fee on the input side is charged after the venue call, on what the venue used).
         let mut fee: u64 = 0;
         if unwrap_in {
             // Unwrap: close transit's wrapped-SOL account into transit; the account's rent goes back to the
@@ -204,10 +261,49 @@ pub mod rektbull_orders {
             let got = a.transit.lamports().checked_sub(before).ok_or(OrderError::Math)?;
             let rent = got.checked_sub(amount_in).ok_or(OrderError::Math)?;
             send_lamports(&a.transit, &a.executor.to_account_info(), &a.system_program, rent, transit_seeds)?;
-            fee = fee_of(amount_in);
+        }
+        // What the venue may use: transit's SOL (unwrapped) or transit's input tokens, measured before the call.
+        let sol_before = a.transit.lamports();
+        let mut t_in = a.transit_in.clone();
+        if !unwrap_in {
+            t_in.reload()?;
+        }
+        let in_before = if unwrap_in { 0 } else { t_in.amount };
+
+        // 3. The venue, with transit as the trader, and only transit's signature: nothing else this program
+        //    controls signs, and no signer of this transaction (the executor) is passed on.
+        let metas: Vec<AccountMeta> = ctx
+            .remaining_accounts
+            .iter()
+            .map(|acc| {
+                require_keys_neq!(*acc.key, a.delegate.key(), OrderError::BadFill);
+                Ok(AccountMeta {
+                    pubkey: *acc.key,
+                    is_signer: *acc.key == a.transit.key(),
+                    is_writable: acc.is_writable,
+                })
+            })
+            .collect::<Result<_>>()?;
+        let mut infos: Vec<AccountInfo<'info>> = ctx.remaining_accounts.to_vec();
+        infos.push(a.transit.to_account_info());
+        infos.push(a.venue.to_account_info());
+        invoke_signed(
+            &Instruction { program_id: a.venue.key(), accounts: metas, data: venue_data },
+            &infos,
+            &[transit_seeds],
+        )?;
+
+        // The fee on the input side (SOL, USDC, USDT): FEE_BPS of what the venue used plus the fee, taken from what
+        // it left (second AI audit, L-2: unused input pays no fee).
+        if unwrap_in {
+            let left = a.transit.lamports();
+            let used = sol_before.saturating_sub(left);
+            fee = fee_on_used(used).min(left);
             send_lamports(&a.transit, &a.fee_wallet.to_account_info(), &a.system_program, fee, transit_seeds)?;
         } else if fee_on_input {
-            fee = fee_of(amount_in);
+            t_in.reload()?;
+            let used = in_before.saturating_sub(t_in.amount);
+            fee = fee_on_used(used).min(t_in.amount);
             let fee_in = a.fee_in.as_ref().ok_or(OrderError::BadFill)?;
             require_keys_eq!(fee_in.mint, order.input_mint, OrderError::BadFill);
             require_keys_eq!(fee_in.owner, FEE_WALLET, OrderError::BadFill);
@@ -228,28 +324,6 @@ pub mod rektbull_orders {
                 )?;
             }
         }
-
-        // 3. The venue, with transit as the trader. Nothing else this program controls signs.
-        let metas: Vec<AccountMeta> = ctx
-            .remaining_accounts
-            .iter()
-            .map(|acc| {
-                require_keys_neq!(*acc.key, a.delegate.key(), OrderError::BadFill);
-                Ok(AccountMeta {
-                    pubkey: *acc.key,
-                    is_signer: acc.is_signer || *acc.key == a.transit.key(),
-                    is_writable: acc.is_writable,
-                })
-            })
-            .collect::<Result<_>>()?;
-        let mut infos: Vec<AccountInfo<'info>> = ctx.remaining_accounts.to_vec();
-        infos.push(a.transit.to_account_info());
-        infos.push(a.venue.to_account_info());
-        invoke_signed(
-            &Instruction { program_id: a.venue.key(), accounts: metas, data: venue_data },
-            &infos,
-            &[transit_seeds],
-        )?;
 
         // 4. The output to the owner (less the fee on the output side), and unused input back.
         if output_native {
@@ -446,7 +520,7 @@ pub struct Fill<'info> {
     #[account(seeds = [DELEGATE_SEED], bump)]
     pub delegate: UncheckedAccount<'info>,
     /// CHECK: this program's transit address, a system account that holds a fill's funds during the fill only.
-    #[account(mut, seeds = [TRANSIT_SEED], bump)]
+    #[account(mut, seeds = [TRANSIT_SEED, owner.key().as_ref()], bump)]
     pub transit: UncheckedAccount<'info>,
     /// The owner's token account the input comes from.
     #[account(mut, token::mint = input_mint, token::authority = owner, token::token_program = input_token_program)]

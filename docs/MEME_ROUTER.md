@@ -47,7 +47,8 @@ be used to fill that account's own signed orders.
 | Output (and unused input) goes only to the order's account | The contract (balance checks; it holds nothing between transactions) | Can't send it elsewhere: an exchange paying someone else fails the price check |
 | At least the user's limit price, pro rata for a partial fill, measured on what reaches the account (so a token that taxes transfers can't leave the user short) | The contract | **Worst case: the order filled at the user's own price**, at a time of its choosing within the window |
 | Fee at most 1% (`MAX_FEE_BPS`), only to the fixed fee wallet, on the base-asset side | The contract (immutable) | Can't raise the fee or redirect it |
-| Only exchanges fixed at deployment are called or approved, and only for this fill's input | The contract (immutable list; approval reset after each call) | Can't call anything else |
+| Only exchanges fixed at deployment are called or approved, and only for this fill's input; no exchange may be a token users approve to the router, and no order may trade one | The contract (immutable list, the wrapped native and base assets refused as venues; approval reset after each call) | Can't call anything else |
+| Unused input pays no fee; native coin an exchange hands back goes to the account | The contract (the input fee is charged after the trade, on what was used) | — |
 | Cancel one order, or all at once | The user's own transaction (`cancel`, `cancelAll`) | Works however RektBull behaves |
 | Which tokens and when to trade; the checks before a buy | RektBull's trade service (off-chain) | Could be bypassed, inside the signed orders |
 

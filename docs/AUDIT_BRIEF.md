@@ -255,12 +255,47 @@ was not covered. Before any deployment, the next engagement should cover:
 - **Meme Router:** the whole contract, new.
 - **Solana order program:** the whole program, new (SOLANA_ORDERS.md), if
   the same firm covers Solana.
-- **Below the bar on the Trade Router, for your view:** the fixed window
-  allows up to twice the period limit across a window boundary; `setLimits`
-  resets what was spent this period (only the user can call it); for a token
-  that taxes transfers, the price is checked before the tax; disabling the
-  Safe Module in a Safe leaves its session stored (harmless while disabled);
-  Chainlink answers aren't checked against a feed's min/max.
+- **Below the bar on the Trade Router, for your view:** `setLimits` resets
+  what was spent this period (only the user can call it); for a token that
+  taxes transfers, the price is checked before the tax.
+
+### Second AI audit (Fable 5.2, 15 November 2026)
+
+An independent AI review of all five contracts, one reviewer each, run before
+this engagement. Every finding came with a proof test; every proof was re-run
+and reproduced, and each fixed one is kept as a regression test that now
+asserts the safe behaviour. No Critical or High finding. Please review each fix.
+
+| Contract | Finding | What changed | Regression test |
+|---|---|---|---|
+| Trade Router | **M-1** A sell exemption (`boughtByRouter`) never expired: it survived `revoke()` and new limits, and later covered tokens the user got elsewhere (about $30k sold in one trade under a $10/day limit) | Credits belong to a grant: `setLimits()` and `revoke()` move the account's `creditEpoch` on, and older credits read as zero | `TradeRouterAudit.t.sol` M1 tests |
+| | L-1 Real volume is up to 2× the period limit (4× across a window boundary): counted buys plus exempt sales of them | Disclosed on the permission screen and in SESSION_KEYS.md | `test_L1_volumeBoundIsAsDisclosed` |
+| | L-2 A trade worth under 1e-8 USD had no price floor | Zero-size and zero-value trades refused | `test_L2_dustAndZeroTradesAreRefused` |
+| | L-3 Chainlink min/max answers unchecked | Deploy pre-flight requires each price ≥ 10× the aggregator's minimum and ≥ 3% under its maximum. **Known bound:** the USDC and USDT feeds cap at $1.05, live only if the coin trades above $1.05 | `routerDeploy.test.js` (real feeds) |
+| | I-2, I-3 A token could be a venue; duplicate tokens; no onchain cap on a grant | Constructor refuses both; `validUntil` at most 30 days (`MAX_GRANT`) | I2, I3 tests |
+| Yield Router | **M-1** A flash loan defeats the "pays more" rule within a transaction: a hacked key churned a user daily, 0.1% each time | At most one fee per account and asset per `FEE_COOLDOWN` (7 days): churn can cost at most 0.1% a week per asset, about 0.4-0.5% over a 30-day permission | `yieldRouterAudit.test.js` M-1; `invariant_oneFeePerCooldown` |
+| | L-1 Rates were only compared before a move or deposit | Both checked again after it (on Base's real markets this alone refuses the flash churn) | as above |
+| | L-2 The health-factor floor blocked exits that don't lower health | Refuses only a withdrawal that lowers the health factor and ends under 1.5 | L-2 test |
+| | L-3 One 1-unit withdrawal made every deposit fee-free for a week | A fee-free credit per account and asset, up to what was withdrawn | L-3 test; `invariant_noFeeOnRedeposit` |
+| | L-5 The rate rule favours a venue in distress (100% utilisation) | No deposit or move into a venue paying over `MAX_RATE` (25% APR) | yieldRouter.test.js |
+| | I-1, I-3 Venues not validated; one reverting rate source blocked deposits | Constructor checks aToken / Comet base token / vault asset; a failing rate source is skipped | fork tests |
+| Meme Router | **M-1** A token listed as a venue would let anyone drain approvals of it (anyone can fill their own order) | Constructor refuses the wrapped native and base assets as venues; orders can't trade a venue. Deployment requirement: no venue may answer as a token (pre-flight, when the deploy script is written) | `memeRouterAudit.test.js` M-1 |
+| | M-2 A hacked executor can fill a floor order at its floor while the market is higher | The documented worst case; stated plainly in MEME_ROUTER.md | M-2 test checks the bound |
+| | L-1 Orders signed by an account that later gains code (EIP-7702) stopped being fillable | ECDSA first, then EIP-1271 | L-1 test |
+| | L-2 Native coin a venue handed back stayed in the router | Sent to the account (wrapped where possible) | L-2 test |
+| | L-3 No executor-side minimum | `Fill.minAmountOut`, checked with the user's | L-3 test |
+| | Info: the input fee was charged on input the venue didn't use | Charged on what was used | memeRouter.test.js |
+| Safe Module | L-2 A Safe with the module set as its fallback handler let outsiders set its session | `setSession` and `revoke` accept only exact calldata (a forwarded call carries 20 extra bytes) | `safeModuleAudit.test.js` L-2 (real Safe 1.4.1) |
+| | L-1 Disabling the module doesn't end a session; re-enabling revives it | Documented: `revoke()` is the stop (the app batches it with disabling) | L-1 test |
+| | I-1 No fast stop: RektBull couldn't drop a session, one owner couldn't stop it | `renounce(safe)` by the session key; `revokeFor(safe)` by any single owner (both only end sessions) | I-1 test |
+| Solana orders | **M-1** One shared `transit` let anyone (naming themselves executor) use its signature for any venue instruction, e.g. closing its pump.fun volume account and taking the rent, which the next user's buy then paid again | Each owner has their own transit (`["transit", owner]`); a fill may only call the venue's swap instructions (`is_swap`) | orders.rs, pump_fun.rs (real pump.fun) |
+| | L-1 Signer flags were forwarded to the venue | Only transit signs a venue call; a fill the owner signed is refused | orders.rs |
+| | L-2 The input fee was charged on input the venue didn't use | Charged on what was used (`fee_on_used`) | orders.rs, venues.rs |
+
+Also new since the first list above: fills need address lookup tables (a
+PumpSwap fill is 1,317 bytes without one), and each user pays the rent of
+pump.fun's and PumpSwap's volume accounts for their own transit (about 0.0018
+SOL each, once) in their first order transaction (SOLANA_ORDERS.md).
 
 `contracts/config/<chain>.json` lists the Trade Router and the Safe Module
 under `awaitingAudit`, so the deploy pre-flight refuses both until the new

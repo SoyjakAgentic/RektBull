@@ -1,6 +1,6 @@
 {
   "about": "Slither findings on RektBull's own contracts that were reviewed and accepted, each with the reason. scripts/slither.mjs fails CI on any Medium or High finding not listed here. A finding is matched by its detector, file and function (or variable). Add an entry only with a reason a reviewer can check against the code; never to silence a finding nobody has read.",
-  "reviewed": "2026-11-11, Slither 0.11.6",
+  "reviewed": "2026-11-11, Slither 0.11.6; 2026-11-15 after the second AI audit's fixes",
   "accepted": [
     {
       "check": "arbitrary-send-erc20", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter.fill",
@@ -61,6 +61,18 @@
     {
       "check": "incorrect-equality", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._checkLimits",
       "reason": "amount == 0 and lastMoveAt == 0 (first move) are plain zero checks."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullTradeRouter.sol", "where": "RektBullTradeRouter._trade",
+      "reason": "inUsd == 0 refuses a trade too small to have a reference value (the second AI audit's L-2): a zero check on a price computed from Chainlink, not a balance equality anyone can steer. Covered by TradeRouterAudit.t.sol test_L2_dustAndZeroTradesAreRefused."
+    },
+    {
+      "check": "incorrect-equality", "file": "contracts/RektBullYieldRouter.sol", "where": "RektBullYieldRouter._takeFee",
+      "reason": "amount == 0 skips a fee on nothing (a fully fee-free redeposit); the other condition is the fee cooldown's timestamp comparison. Neither is a balance equality an attacker could break. Covered by yieldRouterAudit.test.js and the oneFeePerCooldown invariant."
+    },
+    {
+      "check": "unused-return", "file": "contracts/RektBullMemeRouter.sol", "where": "RektBullMemeRouter._checkOrder",
+      "reason": "ECDSA.tryRecover's third return value is only the raw error argument describing a failure; the code checks the error kind (NoError) and that the recovered signer is the order's account, then falls back to EIP-1271. Covered by memeRouterAudit.test.js L-1 (a wrong signer is refused)."
     }
   ]
 }

@@ -369,7 +369,7 @@
   function updateWorst() {
     const trade = Number($('l-trade').value), day = Number($('l-day').value), days = Number($('l-days').value);
     const until = new Date(Date.now() + days * 86400000).toLocaleDateString();
-    $('worst').textContent = `At most $${day.toLocaleString()} a day can be traded, at most $${trade.toLocaleString()} per trade, only through the RektBull Trade Router, only back into this wallet, until ${until}. RektBull's fee is 1% and the router can't charge more. You can stop it at any time.`;
+    $('worst').textContent = `At most $${day.toLocaleString()} a day can be bought, at most $${trade.toLocaleString()} per trade, only through the RektBull Trade Router, only back into this wallet, until ${until}. Selling what it bought for you doesn't count toward the limit, so an exit is never blocked; that means up to twice the limit can change hands in a day (four times across the change of day). Each trade can be at most 2% under the market price, plus RektBull's 1% fee, which the router can't raise. You can stop it at any time.`;
     $('confirm-wrap').hidden = !(trade > DEFAULT_LIMITS.trade || day > DEFAULT_LIMITS.day);
   }
   for (const id of ['l-trade', 'l-day', 'l-days']) $(id).addEventListener('input', updateWorst);

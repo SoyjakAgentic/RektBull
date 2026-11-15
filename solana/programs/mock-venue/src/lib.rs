@@ -2,7 +2,7 @@
 //! address in the test chain). Swaps at whatever rate the test asks, and can misbehave on purpose.
 //! Never deployed.
 //!
-//! Instruction data: [op: u8][a: u64 LE][b: u64 LE]. The vault is the PDA ["vault"], a system account that
+//! Instruction data: [Jupiter's `route` id: 8 bytes][op: u8][a: u64 LE][b: u64 LE]. The vault is the PDA ["vault"], a system account that
 //! holds SOL and is the authority of the venue's token accounts.
 
 use anchor_lang::solana_program::{
@@ -44,9 +44,12 @@ fn token_transfer<'a>(
 }
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
-    if data.len() < 17 {
+    // It sits at an allowed venue's address (Jupiter's) and is called with that venue's swap instruction id first
+    // (the order program only passes swaps): 8 bytes, skipped here.
+    if data.len() < 8 + 17 {
         return Err(ProgramError::InvalidInstructionData);
     }
+    let data = &data[8..];
     let op = data[0];
     let a = u64::from_le_bytes(data[1..9].try_into().unwrap());
     let b = u64::from_le_bytes(data[9..17].try_into().unwrap());
