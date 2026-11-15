@@ -76,17 +76,6 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     [ethers.solidityPacked(['address', 'uint256', 'bytes'], [router.target, 0, router.interface.encodeFunctionData(fn, args)])],
   ]);
   const call = (delegation, fn, args) => session.sendTransaction({ to: dm.target, data: redeemData(delegation, fn, args), gasLimit: 3_000_000 });
-  // The venue a deposit of `amount` can go to now: the best-paying one that is still within MIN_GAIN_BPS of the best
-  // with the deposit in it. On this copy of Base a big deposit can lower a small market's rate enough for the router
-  // to refuse it, so the top rate before the deposit isn't always the venue that takes it.
-  async function venueFor(user, amount) {
-    const ids = [AAVE, COMP, SPK];
-    const rates = await Promise.all(ids.map(i => router.rateOf(i)));
-    for (const id of [...ids].sort((a, b) => (rates[b] > rates[a] ? 1 : rates[b] < rates[a] ? -1 : 0))) {
-      try { await router.connect(user).deposit.staticCall(id, amount); return id; } catch (err) { if (!/NotBestVenue/.test(err.message)) throw err; }
-    }
-    throw new Error(`no venue takes a deposit of ${ethers.formatUnits(amount, 6)} USDC`);
-  }
 
   before(async function () {
     [funder] = await ethers.getSigners();
@@ -106,7 +95,7 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     dm = new ethers.Contract(MM.DelegationManager, abis.DelegationManager, ethers.provider);
   });
 
-  it('M-1: a compromised key churning a user every day with a free flash loan gets at most one fee a week', async function () {
+  it('M-1: a compromised key churning a user every day with a free flash loan gets at most one fee per cooldown (the user\'s break-even)', async function () {
     const { user, delegation } = await newUser(usdc(50000));
     // The user's own position, in Aave.
     await (await usdcToken.connect(user).approve(AAVE_POOL, usdc(50000))).wait();
@@ -191,26 +180,36 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
 
   it('L-3 (the report\'s L-2): a one-unit withdrawal makes only one unit fee-free', async function () {
     const { user } = await newUser(usdc(60000));
-    const first = await venueFor(user, usdc(100));
-    await (await router.connect(user).deposit(first, usdc(100))).wait(); // pays 0.1 USDC
+    // Where the router itself accepts this deposit now, best rate first, tried with a dry run (staticCall): live
+    // rates move on the fork, and a deposit can move its venue's own rate (Compound's accrues its interest on
+    // the deposit, which can drop a quoted 5% to under 4%). The fee-free credit is per asset, not per venue.
+    const best = async amount => {
+      const ids = [AAVE, COMP, SPK];
+      const rates = await Promise.all(ids.map(i => router.rateOf(i)));
+      for (const id of [...ids].sort((a, b) => (rates[ids.indexOf(b)] > rates[ids.indexOf(a)] ? 1 : -1))) {
+        try { await router.connect(user).deposit.staticCall(id, amount); return id; } catch { /* not the best after it */ }
+      }
+      throw new Error('no venue accepts this deposit on the fork now');
+    };
+    let held = await best(usdc(100));
+    await (await router.connect(user).deposit(held, usdc(100))).wait(); // pays 0.1 USDC
     await advance(Number(await router.FEE_COOLDOWN()) + 1); // past the fee cooldown
     await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait(); // a new 30-day permission
-    await (await router.connect(user).withdraw(first, 1n)).wait(); // one millionth of a dollar out
+    await (await router.connect(user).withdraw(held, 1n)).wait(); // one millionth of a dollar out
     await advance(DAY + 1);
     const fees = await usdcToken.balanceOf(feeWallet);
-    // Fees and the re-deposit credit are per account and asset, so the venue each deposit goes to doesn't matter here.
-    const big = await venueFor(user, usdc(50000));
-    await (await router.connect(user).deposit(big, usdc(50000))).wait();
+    held = await best(usdc(50000));
+    await (await router.connect(user).deposit(held, usdc(50000))).wait();
     assert.equal(await usdcToken.balanceOf(feeWallet) - fees, (usdc(50000) - 1n) * 10n / 10_000n, 'the fee on all but the one unit put back');
     // Putting back what was withdrawn, within the window: free.
     await advance(Number(await router.FEE_COOLDOWN()) + 1);
     await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait();
     const cash = await usdcToken.balanceOf(user.address);
-    await (await router.connect(user).withdraw(big, usdc(1000))).wait();
+    await (await router.connect(user).withdraw(held, usdc(1000))).wait();
     const back = await usdcToken.balanceOf(user.address) - cash;
     await advance(DAY + 1);
     const fees2 = await usdcToken.balanceOf(feeWallet);
-    await (await router.connect(user).deposit(await venueFor(user, back), back)).wait();
+    await (await router.connect(user).deposit(await best(back), back)).wait();
     assert.equal(await usdcToken.balanceOf(feeWallet), fees2, 'no fee on putting back what came out');
   });
 });

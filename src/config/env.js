@@ -58,6 +58,8 @@ const env = {
   tradingEnabled: process.env.TRADING_ENABLED === 'true',
   swapFeeBps: int(process.env.SWAP_FEE_BPS, 100), // 1%; the Trade Router caps it at 1% onchain
   swapFeeWalletEvm: (process.env.SWAP_FEE_WALLET_EVM || '').toLowerCase(),
+  // RektBull's Solana fee wallet (a public address; Solana addresses are case-sensitive). Unset: Solana trades carry no fee.
+  swapFeeWalletSolana: (process.env.SWAP_FEE_WALLET_SOLANA || '').trim(),
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
   sessionKeyAddress: (process.env.SESSION_KEY_ADDRESS || '').toLowerCase(),
   kmsSessionKeyVersion: process.env.KMS_SESSION_KEY_VERSION || '',

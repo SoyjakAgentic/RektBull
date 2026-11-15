@@ -197,8 +197,17 @@ the trade wherever the trade has a place for it:
   approval, nothing held, one EIP-5792 batch with `atomicRequired` where the
   wallet can (so it's paid only if the buy works); other wallets send the buy
   first, then the fee, which the user can decline.
+- **On Solana** (trade/solana.js, through Jupiter's Router, which charges no
+  fee of its own): a plain SOL transfer to `SWAP_FEE_WALLET_SOLANA`, the last
+  instruction of the one transaction the user signs, so it's paid only if the
+  swap works. A buy spends 99% of the SOL on the swap and sends the other 1%;
+  a sale sends 1% of the least the sale is sure to bring (Jupiter's minimum),
+  from the sale. No approval, nothing held. With no fee wallet set, or one
+  holding less than Solana's rent-exempt minimum (0.00089 SOL, which an empty
+  account needs before it can take a small transfer), trades go ahead without
+  the fee.
 
-No fee can be forced onchain: anyone can call 0x or four.meme directly. The
+No fee can be forced onchain: anyone can call 0x, four.meme or Jupiter directly. The
 fee is what RektBull's checks and the prepared trade cost.
 
 ## NOWPayments (a second checkout)

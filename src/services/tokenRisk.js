@@ -464,12 +464,10 @@ async function scanEvm(chain, token) {
 
 const solanaRpc = (method, params) => rpc.solanaRpc(method, params);
 
-async function jupiterOut(inputMint, outputMint, amount) {
-  const key = env.jupiterApiKey;
-  const url = key ? 'https://api.jup.ag/swap/v1' : 'https://lite-api.jup.ag/swap/v1';
-  const data = await track('jupiter', async () => (await axios.get(`${url}/quote`, { params: { inputMint, outputMint, amount: String(amount), slippageBps: 300 }, headers: key ? { 'x-api-key': key } : {}, timeout: 15000 })).data);
-  return data?.outAmount ? BigInt(data.outAmount) : null;
-}
+// Jupiter's Swap API v2 quote (providers/jupiter.js): a price only, nothing to sign. Its Meta-Aggregator
+// includes Jupiter's own fee (up to 0.5% a side for a token under a day old), so the round trip below is
+// a touch worse than a trade through RektBull, which uses Jupiter's fee-free Router.
+const jupiterOut = (inputMint, outputMint, amount) => require('../providers/jupiter').quote({ inputMint, outputMint, amount });
 
 async function scanSolana(mint) {
   const flags = [];
@@ -536,7 +534,7 @@ async function scanSolana(mint) {
       else if (loss > 20) add('high', 'round_trip', `Selling straight back loses ${loss}%`, 'A buy of 0.1 SOL sold straight back: a transfer fee, or a thin pool.', 'Jupiter quote');
     }
   } catch (err) {
-    checks.trading = { not_checked: `Jupiter: ${err.response?.data?.error || err.message}` };
+    checks.trading = { not_checked: err.isJupiter ? err.message : `Jupiter: ${err.message}` };
   }
   return { checks, flags, disagreements: [], incomplete: !!(checks.mint?.not_checked || checks.trading?.not_checked) };
 }

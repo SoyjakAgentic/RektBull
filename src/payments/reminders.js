@@ -29,8 +29,8 @@ const kindFor = (endsAt, now) => {
 /** The worker's job (hourly): reminders that are due, each sent once. Returns how many were raised. */
 async function tick({ now = new Date() } = {}) {
   const { rows } = await db.query(
-    `SELECT p.account_id, a.wallet, max(p.ends_at) AS ends_at FROM passes p JOIN accounts a ON a.id = p.account_id
-     GROUP BY p.account_id, a.wallet
+    `SELECT p.account_id, COALESCE(a.wallet, a.solana_wallet) AS wallet, max(p.ends_at) AS ends_at FROM passes p JOIN accounts a ON a.id = p.account_id
+     GROUP BY p.account_id, a.wallet, a.solana_wallet
      HAVING max(p.ends_at) > $1::timestamptz - interval '1 day' AND max(p.ends_at) <= $1::timestamptz + interval '7 days'`,
     [now],
   );

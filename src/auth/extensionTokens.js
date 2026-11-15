@@ -36,7 +36,7 @@ async function issue(account, label) {
   if (!env.jwtSecret) throw new Error('JWT_SECRET is not set');
   const jti = crypto.randomUUID();
   await db.query(`INSERT INTO extension_tokens (jti, account_id, label, expires_at) VALUES ($1, $2, $3, now() + make_interval(days => $4))`, [jti, account.id, label ? String(label).slice(0, 60) : null, DAYS]);
-  const token = jwt.sign({ sub: String(account.id), wallet: account.wallet, scope: 'extension', jti }, env.jwtSecret, { expiresIn: `${DAYS}d` });
+  const token = jwt.sign({ sub: String(account.id), wallet: account.wallet || null, ...(account.solana_wallet ? { sol: account.solana_wallet } : {}), scope: 'extension', jti }, env.jwtSecret, { expiresIn: `${DAYS}d` });
   return { token, jti, expires_in_days: DAYS };
 }
 

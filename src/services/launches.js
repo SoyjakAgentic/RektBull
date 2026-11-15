@@ -112,7 +112,7 @@ async function card({ chain, token }) {
  * Never throws: a check that couldn't run says why, and the buyer must confirm.
  */
 async function forTrade({ chain, token }) {
-  if (!CHAINS.includes(chain)) return { young: false, risk: 'ok', detail: 'not checked on this chain' };
+  if (!CHAINS.includes(chain) && chain !== 'solana') return { young: false, risk: 'ok', detail: 'not checked on this chain' };
   const market = await cached(`launches:market:${chain}:${token}`, 120, () => dexscreener.market(chain, token)).catch(err => ({ not_checked: err.message }));
   const ageHours = market.first_pair_created_at ? (Date.now() - Date.parse(market.first_pair_created_at)) / 3600000 : null;
   if (ageHours !== null && ageHours >= YOUNG_HOURS) return { young: false, risk: 'ok', detail: `its first pool opened ${Math.round(ageHours / 24)} days ago (DexScreener)` };

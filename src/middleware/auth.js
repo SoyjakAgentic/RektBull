@@ -15,7 +15,8 @@ async function optionalAuth(req, _res, next) {
       if (account.scope !== 'extension' || !ext.allowed(req.method, req.path) || !(await ext.isActive(account.jti))) account = null;
     }
     // A wallet blocked in the admin panel is treated as signed out (admin/accounts.js).
-    if (account && require('../admin/accounts').isBlocked(account.wallet)) account = null;
+    const { isBlocked } = require('../admin/accounts');
+    if (account && (isBlocked(account.wallet) || isBlocked(account.solana_wallet))) account = null;
     req.account = account;
     next();
   } catch (err) { next(err); }
@@ -24,6 +25,49 @@ async function optionalAuth(req, _res, next) {
 function requireAuth(req, res, next) {
   if (!req.account) return res.status(401).json({ error: 'sign_in_required', message: 'Sign in with your wallet first (POST /v1/auth/nonce).' });
   next();
+}
+
+/**
+ * For features that act on an EVM wallet (EVM trading, permissions, yield):
+ * an account signed in with only a Solana wallet is asked to link one.
+ */
+async function requireEvmWallet(req, res, next) {
+  try {
+    if (!req.account) return requireAuth(req, res, next);
+    // The wallets as stored now: a session token can predate a link or an unlink.
+    const now = await require('../auth/siwe').wallets(req.account.id);
+    if (!now) return res.status(401).json({ error: 'sign_in_required', message: 'Sign in with your wallet first (POST /v1/auth/nonce).' });
+    req.account = { ...req.account, wallet: now.wallet, solana_wallet: now.solana_wallet };
+    if (!now.wallet) return res.status(409).json({ error: 'evm_wallet_required', message: 'This needs an EVM wallet (MetaMask, Coinbase Wallet, Rabby…). Link one to your account first: it only takes a signature.' });
+    next();
+  } catch (err) { next(err); }
+}
+
+/**
+ * For a trade: the wallet of the chain named in the body. Solana trades need
+ * the account's Solana wallet; every other chain its EVM wallet.
+ */
+async function requireTradeWallet(req, res, next) {
+  if (String(req.body?.chain || '').toLowerCase() !== 'solana') return requireEvmWallet(req, res, next);
+  try {
+    if (!req.account) return requireAuth(req, res, next);
+    const now = await require('../auth/siwe').wallets(req.account.id);
+    if (!now) return res.status(401).json({ error: 'sign_in_required', message: 'Sign in with your wallet first (POST /v1/auth/nonce).' });
+    req.account = { ...req.account, wallet: now.wallet, solana_wallet: now.solana_wallet };
+    if (!now.solana_wallet) return res.status(409).json({ error: 'solana_wallet_required', message: 'Trading on Solana needs a Solana wallet (Phantom, Solflare, or MetaMask with Solana). Link one to your account first: it only takes a signature.' });
+    next();
+  } catch (err) { next(err); }
+}
+
+/** The account's wallets as stored now, for routes that work with either. */
+async function currentWallets(req, res, next) {
+  try {
+    if (!req.account) return requireAuth(req, res, next);
+    const now = await require('../auth/siwe').wallets(req.account.id);
+    if (!now) return res.status(401).json({ error: 'sign_in_required', message: 'Sign in with your wallet first (POST /v1/auth/nonce).' });
+    req.account = { ...req.account, wallet: now.wallet, solana_wallet: now.solana_wallet };
+    next();
+  } catch (err) { next(err); }
 }
 
 function requireAdmin(req, res, next) {
@@ -41,4 +85,4 @@ function requireFreshAdmin(req, res, next) {
   next();
 }
 
-module.exports = { optionalAuth, requireAuth, requireAdmin, requireFreshAdmin, FRESH_SECONDS };
+module.exports = { optionalAuth, requireAuth, requireEvmWallet, requireTradeWallet, currentWallets, requireAdmin, requireFreshAdmin, FRESH_SECONDS };

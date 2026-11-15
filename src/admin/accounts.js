@@ -12,14 +12,21 @@ const MAX_CREDIT_CENTS = 50000; // $500 an action
 const MAX_PASS_DAYS = 365;
 const refused = (m, status = 400) => Object.assign(new Error(m), { status });
 const blockKey = wallet => `blocked:${wallet}`;
+const { isSolanaAddress } = require('../lib/base58');
 
 /** Is this wallet blocked? From the minute-old copy (sign-in reads the database). */
 const isBlocked = wallet => !!(wallet && settings.get(blockKey(String(wallet).toLowerCase())));
 
 async function find(query) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(q) && !/^\d+$/.test(q)) throw refused('Search by wallet address (0x…) or account number.');
-  const { rows } = await db.query(/^\d+$/.test(q) ? 'SELECT id, wallet, created_at FROM accounts WHERE id = $1' : 'SELECT id, wallet, created_at FROM accounts WHERE wallet = $1', [q]);
+  const raw = String(query || '').trim();
+  const q = raw.toLowerCase();
+  const sol = isSolanaAddress(raw);
+  if (!/^0x[0-9a-f]{40}$/.test(q) && !/^\d+$/.test(q) && !sol) throw refused('Search by wallet address (0x… or a Solana address) or account number.');
+  const cols = 'id, wallet, solana_wallet, created_at';
+  const { rows } = await db.query(
+    /^\d+$/.test(q) ? `SELECT ${cols} FROM accounts WHERE id = $1` : sol ? `SELECT ${cols} FROM accounts WHERE solana_wallet = $1` : `SELECT ${cols} FROM accounts WHERE wallet = $1`,
+    [sol ? raw : q],
+  );
   if (!rows.length) throw refused('No account for that wallet: it has never signed in.', 404);
   return rows[0];
 }
@@ -37,7 +44,7 @@ async function lookup(query) {
     db.query('SELECT count(*)::int AS n FROM monitored_wallets WHERE account_id = $1', [a.id]),
     db.query('SELECT agent, enabled FROM agent_settings WHERE account_id = $1', [a.id]),
     db.query('SELECT kind, label, verified_at IS NOT NULL AS verified, disabled_at IS NOT NULL AS disabled FROM alert_channels WHERE account_id = $1', [a.id]),
-    settings.read(blockKey(a.wallet)),
+    Promise.all([a.wallet, a.solana_wallet].filter(Boolean).map(w => settings.read(blockKey(w.toLowerCase())))).then(bs => bs.find(Boolean) || null),
   ]);
   return {
     account: { ...a, credits_cents: balance, blocked: block ? { since: block.at, reason: block.reason } : null },
@@ -88,10 +95,14 @@ async function extendPass(query, days, { wallet, reason }) {
 /** A blocked wallet can't sign in, and its existing sessions stop working within a minute. */
 async function setBlocked(query, blocked, { wallet, reason }) {
   if (typeof blocked !== 'boolean') throw refused('blocked must be true or false.');
-  const target = /^0x[0-9a-f]{40}$/i.test(String(query || '').trim()) ? String(query).trim().toLowerCase() : (await find(query)).wallet;
-  if (require('../config/env').adminWallets.includes(target)) throw refused('An admin wallet can\'t be blocked here; remove it from ADMIN_WALLETS first.');
-  await settings.set(blockKey(target), blocked ? { at: new Date().toISOString(), reason } : null, { wallet, action: blocked ? 'block' : 'unblock', reason });
-  return { wallet: target, blocked };
+  // A wallet given directly is blocked even if it never signed in; an account number blocks the account's wallets.
+  const raw = String(query || '').trim();
+  const direct = /^0x[0-9a-f]{40}$/i.test(raw) || isSolanaAddress(raw);
+  const targets = direct ? [raw.toLowerCase()] : await find(query).then(a => [a.wallet, a.solana_wallet].filter(Boolean).map(w => w.toLowerCase()));
+  const target = targets[0];
+  if (targets.some(t => require('../config/env').adminWallets.includes(t))) throw refused('An admin wallet can\'t be blocked here; remove it from ADMIN_WALLETS first.');
+  for (const t of targets) await settings.set(blockKey(t), blocked ? { at: new Date().toISOString(), reason } : null, { wallet, action: blocked ? 'block' : 'unblock', reason });
+  return { wallet: target, wallets: targets, blocked };
 }
 
 module.exports = { lookup, addCredits, refundRun, extendPass, setBlocked, isBlocked, MAX_CREDIT_CENTS, MAX_PASS_DAYS };
