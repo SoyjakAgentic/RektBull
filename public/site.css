@@ -96,7 +96,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .more-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 170px; display: grid; gap: 2px; padding: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 34px -18px rgba(0, 0, 0, .4); z-index: 10; }
 .more-menu.left { right: auto; left: 0; }
 .more-menu a { border-radius: 9px; }
-.acct { display: flex; align-items: center; gap: 10px; }
+.acct { display: flex; align-items: center; gap: 10px; position: relative; }
+.acct-menu { min-width: 250px; max-width: min(320px, calc(100vw - 32px)); }
+.acct-menu button:not(.link) { text-align: left; justify-content: flex-start; background: none; border: none; border-radius: 9px; padding: 8px 10px; font-size: 14px; color: var(--text); cursor: pointer; }
+.acct-menu button:not(.link):hover { background: var(--soft); }
+.acct-menu-note { margin: 4px 10px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.acct-menu-row { display: grid; gap: 2px; }
 .who { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .acct .btn { padding: 8px 16px; font-size: 14px; }
 

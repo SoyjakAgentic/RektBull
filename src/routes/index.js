@@ -2,7 +2,7 @@ const express = require('express');
 const env = require('../config/env');
 const db = require('../config/db');
 const siwe = require('../auth/siwe');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireEvmWallet, requireAdmin } = require('../middleware/auth');
 const { publicCatalog } = require('../payments/catalog');
 const { methods } = require('../payments/stablecoins');
 const credits = require('../payments/credits');
@@ -48,12 +48,26 @@ router.get('/v1/payment-methods', (_req, res) => res.json({
 }));
 
 // ── Sign in with your wallet ────────────────────────────────────────────────
+// kind 'evm' (the default: Sign-In with Ethereum) or 'solana' (Sign In With Solana).
 router.post('/v1/auth/nonce', async (req, res) => {
-  res.json(await siwe.createChallenge({ address: req.body?.address, chainId: req.body?.chain_id }));
+  res.json(await siwe.createChallenge({ address: req.body?.address, chainId: req.body?.chain_id, kind: req.body?.kind || 'evm' }));
 });
 
 router.post('/v1/auth/verify', async (req, res) => {
   res.json(await siwe.verifyChallenge({ challengeId: req.body?.challenge_id, signature: req.body?.signature }));
+});
+
+// Link the other kind of wallet to the signed-in account: it signs a link message, like a sign-in.
+// Not from an extension token: only a full sign-in can change the account's wallets.
+const fullSession = (req, res, next) => (req.account?.scope ? res.status(403).json({ error: 'forbidden', message: 'Sign in on rektbull.com to change your wallets.' }) : next());
+router.post('/v1/auth/link/nonce', requireAuth, fullSession, async (req, res) => {
+  res.json(await siwe.createChallenge({ address: req.body?.address, chainId: req.body?.chain_id, kind: req.body?.kind, linkAccountId: req.account.id }));
+});
+router.post('/v1/auth/link/verify', requireAuth, fullSession, async (req, res) => {
+  res.json(await siwe.linkWallet({ accountId: req.account.id, challengeId: req.body?.challenge_id, signature: req.body?.signature }));
+});
+router.post('/v1/auth/unlink', requireAuth, fullSession, async (req, res) => {
+  res.json(await siwe.unlinkWallet({ accountId: req.account.id, kind: req.body?.kind }));
 });
 
 router.get('/v1/me', requireAuth, async (req, res) => {
@@ -66,7 +80,7 @@ router.get('/v1/me', requireAuth, async (req, res) => {
     for (const [id, n] of Object.entries(p.included_per_month || {})) included[id] = await points.includedLeft(req.account.id, id, n);
   }
   res.json({
-    account: req.account,
+    account: { ...req.account, ...(await siwe.wallets(req.account.id)) },
     credits_cents: await credits.balance(req.account.id),
     points: await points.status(req.account),
     passes: active.map(p => ({ ...p, title: productOf(p.product).title })),
@@ -271,7 +285,7 @@ router.get('/v1/yield/auto', (_req, res) => res.json({
   note: env.yieldAutoEnabled ? 'Automatic rebalancing uses a limited, revocable permission that may only call the RektBull Yield Router.' : 'Automatic rebalancing is built and switched off until the Yield Router is audited. Proposals you sign yourself work now.',
 }));
 router.get('/v1/yield/auto/setup', autoCall(req => yieldAuto.setupCalls(Number(req.query.chain_id), { limits: Object.fromEntries(['USDC', 'USDT', 'WETH'].filter(a => Number(req.query[a]) > 0).map(a => [a, Number(req.query[a])])), days: Number(req.query.days) || 30 })));
-router.post('/v1/yield/auto/permissions', requireAuth, autoCall(async req => {
+router.post('/v1/yield/auto/permissions', requireEvmWallet, autoCall(async req => {
   await yieldProposals.requirePro(req.account.id);
   return yieldAuto.register(req.account, req.body || {}, { sessionKey: env.sessionKeyAddress });
 }));

@@ -5,7 +5,7 @@
  */
 const express = require('express');
 const env = require('../config/env');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireEvmWallet } = require('../middleware/auth');
 const { TRADE_CHAINS } = require('../trade/chains');
 const rules = require('../trade/rules');
 const proposals = require('../trade/proposals');
@@ -61,18 +61,18 @@ router.get('/v1/trading/settings', requireAuth, async (req, res) => res.json(awa
 router.put('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.saveSettings(req.account.id, req.body || {})));
 
 // One click: the checks before the click (preview), then the checked trade and its wallet calls in one step (trades).
-router.post('/v1/trading/preview', requireAuth, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
-router.post('/v1/trading/trades', requireAuth, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
+router.post('/v1/trading/preview', requireEvmWallet, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
+router.post('/v1/trading/trades', requireEvmWallet, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
 
-router.post('/v1/trading/proposals', requireAuth, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
+router.post('/v1/trading/proposals', requireEvmWallet, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
 router.get('/v1/trading/proposals', requireAuth, async (req, res) => res.json({ proposals: await proposals.list(req.account) }));
 router.get('/v1/trading/proposals/:id', requireAuth, async (req, res) => res.json(await proposals.get(req.account, req.params.id)));
-router.post('/v1/trading/proposals/:id/approve', requireAuth, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
+router.post('/v1/trading/proposals/:id/approve', requireEvmWallet, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
 router.post('/v1/trading/proposals/:id/submitted', requireAuth, async (req, res) => res.json(await proposals.submitted(req.account, req.params.id, req.body?.tx_hash, req.body?.click_to_prompt_ms)));
 router.post('/v1/trading/proposals/:id/cancel', requireAuth, async (req, res) => res.json(await proposals.cancel(req.account, req.params.id)));
 
 /** The signed-in wallet's limits on the Trade Router, and whether it's a MetaMask smart account, read onchain. */
-router.get('/v1/trading/limits', requireAuth, async (req, res) => {
+router.get('/v1/trading/limits', requireEvmWallet, async (req, res) => {
   const net = networks.network(Number(req.query.chain_id || 84532));
   const raw = await evmRpc(net.name, 'eth_call', [{ to: net.router, data: permissions.ROUTER.encodeFunctionData('limits', [req.account.wallet]) }, 'latest']);
   const l = permissions.ROUTER.decodeFunctionResult('limits', raw);
@@ -93,7 +93,7 @@ router.get('/v1/trading/positions', requireAuth, async (req, res) => res.json({ 
  * wallet shows it and signs it as EIP-712 typed data; POST it back to
  * /v1/trading/permissions with the signature.
  */
-router.get('/v1/trading/auto/delegation', requireAuth, async (req, res) => {
+router.get('/v1/trading/auto/delegation', requireEvmWallet, async (req, res) => {
   if (!env.sessionKeyAddress) return res.status(503).json({ error: 'not_configured', message: 'Automatic trading is not set up yet (SESSION_KEY_ADDRESS).' });
   const net = networks.network(Number(req.query.chain_id || 84532));
   const raw = await evmRpc(net.name, 'eth_call', [{ to: net.router, data: permissions.ROUTER.encodeFunctionData('limits', [req.account.wallet]) }, 'latest']);
@@ -117,7 +117,7 @@ router.get('/v1/trading/auto/delegation', requireAuth, async (req, res) => {
 });
 
 /** The approvals the router needs for automatic trading: each router token, enough for the user's limits. */
-router.get('/v1/trading/auto/allowances', requireAuth, async (req, res) => {
+router.get('/v1/trading/auto/allowances', requireEvmWallet, async (req, res) => {
   const net = networks.network(Number(req.query.chain_id || 84532));
   const raw = await evmRpc(net.name, 'eth_call', [{ to: net.router, data: permissions.ROUTER.encodeFunctionData('limits', [req.account.wallet]) }, 'latest']);
   const l = permissions.ROUTER.decodeFunctionResult('limits', raw);
@@ -143,7 +143,7 @@ router.get('/v1/trading/auto/allowances', requireAuth, async (req, res) => {
  * Then POST /v1/trading/permissions with wallet_type and, for Coinbase, the
  * spend_permissions returned here.
  */
-router.get('/v1/trading/auto/setup', requireAuth, async (req, res) => {
+router.get('/v1/trading/auto/setup', requireEvmWallet, async (req, res) => {
   if (!env.sessionKeyAddress) return res.status(503).json({ error: 'not_configured', message: 'Automatic trading is not set up yet (SESSION_KEY_ADDRESS).' });
   const net = networks.network(Number(req.query.chain_id || 84532));
   const type = req.query.wallet_type;
@@ -190,11 +190,11 @@ router.get('/v1/trading/auto/setup', requireAuth, async (req, res) => {
   res.status(400).json({ error: 'bad_request', message: 'wallet_type must be safe or coinbase (MetaMask uses /v1/trading/auto/delegation)' });
 });
 
-router.post('/v1/trading/auto/intents', requireAuth, async (req, res) => res.status(201).json(await autonomous.queue(req.account, req.body || {})));
+router.post('/v1/trading/auto/intents', requireEvmWallet, async (req, res) => res.status(201).json(await autonomous.queue(req.account, req.body || {})));
 router.get('/v1/trading/auto/intents', requireAuth, async (req, res) => res.json({ intents: await autonomous.list(req.account) }));
 router.post('/v1/trading/auto/intents/:id/cancel', requireAuth, async (req, res) => res.json(await autonomous.cancel(req.account, req.params.id)));
 
-router.post('/v1/trading/permissions', requireAuth, async (req, res) => {
+router.post('/v1/trading/permissions', requireEvmWallet, async (req, res) => {
   if (!env.sessionKeyAddress) return res.status(503).json({ error: 'not_configured', message: 'Automatic trading is not set up yet (SESSION_KEY_ADDRESS).' });
   res.status(201).json(await permissions.register(req.account, req.body || {}, { sessionKey: env.sessionKeyAddress }));
 });

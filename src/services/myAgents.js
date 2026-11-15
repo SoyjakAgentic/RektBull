@@ -290,7 +290,7 @@ const RUNNERS = {
       const token = { chain: pos.chain, token: pos.token };
       const name = () => p.symbol || `${pos.token.slice(0, 6)}…${pos.token.slice(-4)}`;
       const alert = (severity, id, title, reasons) => alerts.push({
-        kind: 'meme_watch', severity, wallet: account.wallet, dedupe: `meme:${key}:${id}`,
+        kind: 'meme_watch', severity, wallet: account.wallet || account.solana_wallet, dedupe: `meme:${key}:${id}`,
         title: `${name()} on ${pos.chain}: ${title}`, detail: { reasons, token, sell: sellLink(pos.chain, pos.token) },
       });
       try {
@@ -379,6 +379,9 @@ const RUNNERS = {
 
   /** The free checkup on the signed-in wallet. Weekly: a summary every run. Daily: only when the headlines changed. */
   async wallet_checkup({ account, row, every }) {
+    if (!account.wallet) {
+      return { alerts: [], snapshot: row?.snapshot || {}, result: { text: 'The checkup reads EVM chains: link an EVM wallet to your account to have it checked.', not_checked: ['Wallet checkup'] } };
+    }
     const r = await require('./home').checkup(account.wallet, { accountId: account.id });
     const headlines = r.parts.map(p => `${p.id}:${p.status}:${p.headline}`).sort().join('|');
     const actionable = r.parts.filter(p => ['bad', 'warn', 'good'].includes(p.status));
@@ -460,7 +463,7 @@ const RUNNERS = {
       if (!prev[key] || !fresh.length) continue;
       const worst = fresh.reduce((w, f) => (RANK[f.severity] > RANK[w] ? f.severity : w), 'medium');
       alerts.push({
-        kind: 'token_watch', severity: worst, wallet: account.wallet,
+        kind: 'token_watch', severity: worst, wallet: account.wallet || account.solana_wallet,
         dedupe: `token:${key}:${fresh.map(f => `${f.id}:${f.severity}`).sort().join(',')}`,
         title: `${t.label || `${t.token.slice(0, 6)}…${t.token.slice(-4)}`} on ${t.chain}: ${fresh[0].title}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`,
         detail: { reasons: fresh.slice(0, 4).map(f => ({ text: `${f.title}. ${f.evidence || ''}`.trim(), source: f.source })), token: { chain: t.chain, token: t.token } },
@@ -497,7 +500,7 @@ const RUNNERS = {
           now[key] = { verdict: r.verdict, groups };
           if (r.verdict !== 'no_bundle_found') {
             alerts.push({
-              kind: 'launch_safety', severity: r.verdict === 'bundle_found' ? 'high' : 'medium', wallet: account.wallet, dedupe: `launch:${key}:found`,
+              kind: 'launch_safety', severity: r.verdict === 'bundle_found' ? 'high' : 'medium', wallet: account.wallet || account.solana_wallet, dedupe: `launch:${key}:found`,
               title: `${nameOf(t)} on ${t.chain}: ${r.summary.replace(/\.$/, '')}`,
               detail: { reasons: r.flags.filter(f => f.severity !== 'info').slice(0, 4).map(f => ({ text: `${f.title}. ${f.evidence}`, source: f.source })), token },
             });
@@ -517,7 +520,7 @@ const RUNNERS = {
           const soldNow = Math.max(0, Math.round((1 - h / g.bought_pct) * 100));
           if (soldNow - soldBefore >= 20) {
             alerts.push({
-              kind: 'launch_safety', severity: 'critical', wallet: account.wallet, dedupe: `launch:${key}:${g.funder}:sold:${Math.floor(soldNow / 20)}`,
+              kind: 'launch_safety', severity: 'critical', wallet: account.wallet || account.solana_wallet, dedupe: `launch:${key}:${g.funder}:sold:${Math.floor(soldNow / 20)}`,
               title: `${nameOf(t)} on ${t.chain}: bundle wallets are selling (${soldNow}% of what they bought at launch is gone)`,
               detail: { reasons: [{ text: `${g.wallets.length} wallets funded from ${g.funder.slice(0, 6)}…${g.funder.slice(-4)} bought ${g.bought_pct}% of the supply at launch and hold ${h}% now (${reported ?? 'unknown'}% when last reported).`, source: t.chain === 'solana' ? 'Solana RPC' : `${t.chain} RPC (balanceOf)` }], token },
             });
@@ -539,7 +542,7 @@ const RUNNERS = {
 };
 
 async function walletsFor(account, which) {
-  const own = [account.wallet.toLowerCase()];
+  const own = account.wallet ? [account.wallet.toLowerCase()] : []; // a Solana-only account has no EVM wallet of its own
   if (which === 'signed_in') return own;
   if (!(await passes.covering(account.id, 'risk_monitor'))) return own;
   const { rows } = await db.query('SELECT wallet FROM monitored_wallets WHERE account_id = $1', [account.id]);
@@ -549,14 +552,14 @@ async function walletsFor(account, which) {
 /** Runs one agent for one account now, stores what it saw and raises its alerts. */
 async function runOne(row) {
   const a = BY_ID[row.agent];
-  const { rows: [account] } = await db.query('SELECT id, wallet FROM accounts WHERE id = $1', [row.account_id]);
+  const { rows: [account] } = await db.query('SELECT id, wallet, solana_wallet FROM accounts WHERE id = $1', [row.account_id]);
   const every = row.every_hours ?? a.default_every;
   if (a.plan === 'pro' && !(await passes.covering(row.account_id, 'risk_monitor'))) {
     await db.query(`UPDATE agent_settings SET last_error = 'Paused: Safety Pro has ended', next_run_at = now() + interval '1 day' WHERE account_id = $1 AND agent = $2`, [row.account_id, row.agent]);
     return { paused: true };
   }
   const out = await RUNNERS[row.agent]({ account, row, every });
-  const raised = await raise(account.id, out.alerts.map(x => ({ ...x, wallet: x.wallet || account.wallet })));
+  const raised = await raise(account.id, out.alerts.map(x => ({ ...x, wallet: x.wallet || account.wallet || account.solana_wallet })));
   await db.query(
     `UPDATE agent_settings SET snapshot = $3, last_result = $4, last_run_at = now(), last_error = NULL,
        next_run_at = now() + make_interval(hours => $5) WHERE account_id = $1 AND agent = $2`,

@@ -20,7 +20,8 @@ payments.
 |---|---|
 | `GET /v1/catalog` | Products, prices and how each can be paid for |
 | `GET /v1/payment-methods` | x402 and stablecoin top-up options |
-| `POST /v1/auth/nonce`, `POST /v1/auth/verify` | Sign in with your wallet (EIP-4361) |
+| `POST /v1/auth/nonce`, `POST /v1/auth/verify` | Sign in with your wallet: an EVM wallet (EIP-4361) or a Solana wallet (Sign In With Solana, `kind: "solana"`) |
+| `POST /v1/auth/link/nonce`, `POST /v1/auth/link/verify`, `POST /v1/auth/unlink` | Link the other kind of wallet to your account, or unlink one (never the only one). Accounts are never merged |
 | `GET /v1/me`, `GET /v1/credits` | Account, credits balance and history, active passes |
 | `POST /v1/invoices`, `GET /v1/invoices[/:id]` | Top up credits with USDT/USDC on Ethereum, BNB Chain or Base, optionally buying a pass |
 | `POST /v1/passes/:product` | Buy a prepaid pass from credits |

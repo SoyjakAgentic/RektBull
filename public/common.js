@@ -5,8 +5,16 @@
   'use strict';
   const $ = id => document.getElementById(id);
 
-  const state = { wallets: [], wallet: null, provider: null, address: null, token: null };
-  try { state.token = sessionStorage.getItem('rb_token'); state.address = sessionStorage.getItem('rb_wallet'); } catch { /* storage blocked */ }
+  /* state.wallet/provider/address: the connected EVM wallet (what EVM pages send through).
+   * state.sol: the connected Solana wallet { wallet, account, address }. state.signedAs: the
+   * address the session signed in with, and state.kind its kind ('evm' or 'solana'). */
+  const state = { wallets: [], wallet: null, provider: null, address: null, sol: null, token: null, signedAs: null, kind: null };
+  try {
+    state.token = sessionStorage.getItem('rb_token');
+    state.signedAs = sessionStorage.getItem('rb_wallet');
+    state.kind = sessionStorage.getItem('rb_kind') || (state.signedAs ? 'evm' : null);
+    if (state.kind === 'evm') state.address = state.signedAs;
+  } catch { /* storage blocked */ }
   const listeners = [];
 
   function el(tag, attrs, ...children) {
@@ -41,28 +49,52 @@
   }
   const request = (method, params = []) => state.provider.request({ method, params });
 
-  /* wallets: EIP-6963, with window.ethereum as a fallback */
+  const connected = () => state.provider || state.sol;
+
+  /* EVM wallets: EIP-6963, with window.ethereum as a fallback */
   window.addEventListener('eip6963:announceProvider', e => {
     const { info, provider } = e.detail || {};
     if (!info || state.wallets.some(w => w.info.uuid === info.uuid)) return;
-    state.wallets.push({ info, provider });
+    state.wallets.push({ kind: 'evm', info, provider });
     render();
   });
   window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+  /* Solana wallets: the Wallet Standard (Phantom, Solflare, MetaMask's Solana account, Backpack…).
+   * Each wallet registers itself; RektBull uses only connect and signMessage here, and
+   * signAndSendTransaction on the trade page. */
+  const SOL_CHAIN = 'solana:mainnet';
+  function addSolanaWallet(w) {
+    const f = w && w.features;
+    if (!f || !f['standard:connect'] || !f['solana:signMessage'] || !(w.chains || []).includes(SOL_CHAIN)) return;
+    if (state.wallets.some(x => x.kind === 'solana' && (x.wallet === w || x.info.name === w.name + ' · Solana'))) return;
+    state.wallets.push({ kind: 'solana', wallet: w, info: { uuid: 'solana:' + w.name, name: w.name + ' · Solana', icon: w.icon } });
+    render();
+  }
+  const standardApi = Object.freeze({ register: (...ws) => { ws.forEach(addSolanaWallet); return () => {}; } });
+  window.addEventListener('wallet-standard:register-wallet', e => { try { e.detail(standardApi); } catch { /* a broken wallet */ } });
+  try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: standardApi })); } catch { /* fine */ }
+
+  const NO_WALLET = 'No wallet found. Install MetaMask, Phantom, Solflare or Coinbase Wallet, or open this page in your wallet\'s browser.';
   setTimeout(() => {
-    if (!state.wallets.length && window.ethereum) { state.wallets.push({ info: { uuid: 'injected', name: 'Browser wallet' }, provider: window.ethereum }); render(); }
-    if (!state.wallets.length) say('connect-msg', 'No wallet found. Install MetaMask, Coinbase Wallet or Phantom, or open this page in your wallet\'s browser.', 'bad');
+    if (!state.wallets.some(w => w.kind === 'evm') && window.ethereum) { state.wallets.push({ kind: 'evm', info: { uuid: 'injected', name: 'Browser wallet' }, provider: window.ethereum }); render(); }
+    if (!state.wallets.length) say('connect-msg', NO_WALLET, 'bad');
   }, 400);
 
   function render() {
     const box = $('wallets');
     if (box) box.replaceChildren(...state.wallets.map(w => el('button', { onclick: () => connect(w) }, 'Connect ' + w.info.name)));
     const who = $('who');
-    if (who) who.textContent = state.wallet ? `${state.wallet.info.name}: ${short(state.address)}` : (state.token && state.address ? `Signed in: ${short(state.address)}` : 'Not signed in');
+    if (who) {
+      const live = state.kind === 'solana' ? state.sol : state.wallet;
+      who.textContent = state.token && state.signedAs ? `Signed in: ${short(state.signedAs)}`
+        : live ? `${live === state.sol ? state.wallets.find(w => w.wallet === state.sol.wallet)?.info.name || 'Solana wallet' : state.wallet.info.name}: ${short(live === state.sol ? state.sol.address : state.address)}`
+          : 'Not signed in';
+    }
     const btn = $('signin');
-    if (btn) { btn.disabled = !state.provider; btn.hidden = !!state.token; }
+    if (btn) { btn.disabled = !connected(); btn.hidden = !!state.token; }
     const head = $('hdr-connect');
-    if (head) { head.hidden = !!state.token; head.textContent = state.provider ? 'Sign in' : 'Connect wallet'; }
+    if (head) head.textContent = state.token ? 'Account' : connected() ? 'Sign in' : 'Connect wallet';
   }
 
   /* A short message at the bottom of the screen, for pages without a message line of their own. */
@@ -75,42 +107,141 @@
   }
   /** Sign-in messages go to the page's own line when it has one, otherwise to a toast. */
   function tell(text, kind) { if ($('connect-msg')) say('connect-msg', text, kind); else if (text) toast(text); }
+  const cancelled = err => err && (err.code === 4001 || /reject|cancel|denied|declined/i.test(err.message || ''));
 
-  /* The header's button: connect the wallet (the first one found), then sign in. */
+  /* The header's menu: the wallets to sign in with; once signed in, the account's wallets, linking and signing out. */
+  function menu() {
+    const acct = document.querySelector('.bar .acct');
+    if (!acct) return null;
+    let m = $('hdr-menu');
+    if (!m) { m = el('div', { id: 'hdr-menu', class: 'more-menu acct-menu', hidden: true }); acct.append(m); }
+    return m;
+  }
+  const closeMenu = () => { const m = $('hdr-menu'); if (m) m.hidden = true; };
+
   async function headerConnect() {
-    if (!state.provider) {
-      const w = state.wallets[0];
-      if (!w) return toast('No wallet found. Install MetaMask, Coinbase Wallet or Phantom, or open this page in your wallet\'s browser.');
-      await connect(w);
-      if (!state.provider) return;
+    const m = menu();
+    if (!m) return;
+    if (!m.hidden) return closeMenu();
+    if (!state.token) {
+      if (!state.wallets.length) return toast(NO_WALLET);
+      m.replaceChildren(el('p', { class: 'acct-menu-note' }, 'Sign in with a wallet. It only proves you own it: nothing is moved or approved.'),
+        ...state.wallets.map(w => el('button', { type: 'button', onclick: async () => { closeMenu(); await connect(w); if (connected() && !state.token) await signIn(w.kind); } }, w.info.name)));
+      m.hidden = false;
+      return;
     }
-    if (!state.token) await signIn();
+    m.replaceChildren(el('p', { class: 'acct-menu-note' }, 'Loading your wallets…'));
+    m.hidden = false;
+    try {
+      const me = await api('GET', '/v1/me');
+      const a = me.account;
+      const rows = [];
+      const line = (label, addr, kind) => {
+        const other = kind === 'evm' ? a.solana_wallet : a.wallet;
+        rows.push(el('p', { class: 'acct-menu-note' }, `${label}: `, addr ? el('code', {}, short(addr)) : 'none',
+          addr && other ? [' · ', el('button', { type: 'button', class: 'link', onclick: () => unlink(kind) }, 'Unlink')] : null));
+        if (!addr) {
+          const choices = state.wallets.filter(w => w.kind === kind);
+          rows.push(choices.length
+            ? el('div', { class: 'acct-menu-row' }, ...choices.map(w => el('button', { type: 'button', onclick: () => link(w) }, `Link ${w.info.name}`)))
+            : el('p', { class: 'acct-menu-note' }, kind === 'solana' ? 'To link one, open this page with Phantom, Solflare or MetaMask (with Solana) installed.' : 'To link one, open this page with MetaMask, Rabby or Coinbase Wallet installed.'));
+        }
+      };
+      line('EVM wallet', a.wallet, 'evm');
+      line('Solana wallet', a.solana_wallet, 'solana');
+      rows.push(el('button', { type: 'button', onclick: signOut }, 'Sign out'));
+      m.replaceChildren(...rows);
+    } catch (err) { m.replaceChildren(el('p', { class: 'acct-menu-note' }, err.message)); }
   }
 
   async function connect(w) {
     try {
-      state.wallet = w; state.provider = w.provider;
-      const [addr] = await request('eth_requestAccounts');
-      if (state.address && state.address.toLowerCase() !== addr.toLowerCase()) forget();
-      state.address = addr;
+      if (w.kind === 'solana') {
+        const res = await w.wallet.features['standard:connect'].connect();
+        const accts = (res && res.accounts) || w.wallet.accounts || [];
+        const account = accts.find(x => (x.chains || []).includes(SOL_CHAIN)) || accts[0];
+        if (!account) throw new Error('The wallet didn\'t share a Solana account.');
+        state.sol = { wallet: w.wallet, account, address: account.address };
+        if (state.kind === 'solana' && state.signedAs && state.signedAs !== account.address) forget();
+      } else {
+        state.wallet = w; state.provider = w.provider;
+        const [addr] = await request('eth_requestAccounts');
+        if (state.kind === 'evm' && state.signedAs && state.signedAs.toLowerCase() !== addr.toLowerCase()) forget();
+        state.address = addr;
+      }
       render();
       if ($('connect-msg')) say('connect-msg', state.token ? 'Signed in.' : 'Connected. Now sign in: it only proves you own this wallet, and costs nothing.');
       if (state.token) notify();
-    } catch (err) { state.provider = null; state.wallet = null; render(); tell(err.message, 'bad'); }
+    } catch (err) {
+      if (w.kind === 'solana') state.sol = null; else { state.provider = null; state.wallet = null; }
+      render(); tell(cancelled(err) ? 'You cancelled in your wallet.' : err.message, 'bad');
+    }
   }
 
-  async function signIn() {
+  const b64 = bytes => btoa(String.fromCharCode(...bytes));
+  /** The signature for a challenge, from the connected wallet of that kind. */
+  async function signChallenge(ch) {
+    if (ch.kind === 'solana') {
+      const [out] = await state.sol.wallet.features['solana:signMessage'].signMessage({ account: state.sol.account, message: new TextEncoder().encode(ch.message) });
+      return b64(out.signature);
+    }
+    return request('personal_sign', [hexUtf8(ch.message), state.address]);
+  }
+  const chainId = async () => Number(await request('eth_chainId'));
+
+  function remember(out, kind, address) {
+    state.token = out.token; state.kind = kind; state.signedAs = address;
+    try { sessionStorage.setItem('rb_token', out.token); sessionStorage.setItem('rb_wallet', address); sessionStorage.setItem('rb_kind', kind); } catch { /* fine */ }
+  }
+
+  /** Signs in with the connected wallet of `kind` (by default the Solana one only when no EVM wallet is connected). */
+  async function signIn(kind) {
+    kind = kind === 'solana' || kind === 'evm' ? kind : (!state.provider && state.sol ? 'solana' : 'evm');
     try {
-      const chainId = Number(await request('eth_chainId'));
-      const ch = await api('POST', '/v1/auth/nonce', { address: state.address, chain_id: chainId });
-      const signature = await request('personal_sign', [hexUtf8(ch.message), state.address]);
-      const out = await api('POST', '/v1/auth/verify', { challenge_id: ch.challenge_id, signature });
-      state.token = out.token;
-      try { sessionStorage.setItem('rb_token', out.token); sessionStorage.setItem('rb_wallet', state.address); } catch { /* fine */ }
+      const address = kind === 'solana' ? state.sol?.address : state.address;
+      if (!address) throw new Error('Connect a wallet first.');
+      const ch = await api('POST', '/v1/auth/nonce', kind === 'solana' ? { kind, address } : { address, chain_id: await chainId() });
+      const out = await api('POST', '/v1/auth/verify', { challenge_id: ch.challenge_id, signature: await signChallenge(ch) });
+      remember(out, kind, address);
       render();
       tell('Signed in.', 'ok');
       notify();
-    } catch (err) { tell(err.code === 4001 ? 'You cancelled in your wallet. Nothing was signed.' : err.message, 'bad'); }
+    } catch (err) { tell(cancelled(err) ? 'You cancelled in your wallet. Nothing was signed.' : err.message, 'bad'); }
+  }
+
+  /** Links a wallet of the other kind to the signed-in account: it signs a link message, like a sign-in. */
+  async function link(w) {
+    closeMenu();
+    try {
+      await connect(w);
+      const address = w.kind === 'solana' ? state.sol?.address : state.address;
+      if (!address) return;
+      const ch = await api('POST', '/v1/auth/link/nonce', w.kind === 'solana' ? { kind: 'solana', address } : { kind: 'evm', address, chain_id: await chainId() });
+      const out = await api('POST', '/v1/auth/link/verify', { challenge_id: ch.challenge_id, signature: await signChallenge(ch) });
+      remember(out, state.kind, state.signedAs);
+      toast(`Linked ${short(address)} to your account.`);
+      notify();
+    } catch (err) { toast(cancelled(err) ? 'You cancelled in your wallet. Nothing was linked.' : err.message); }
+  }
+
+  async function unlink(kind) {
+    closeMenu();
+    try {
+      const out = await api('POST', '/v1/auth/unlink', { kind });
+      remember(out, state.kind, state.signedAs);
+      toast(kind === 'solana' ? 'Solana wallet unlinked.' : 'EVM wallet unlinked.');
+      notify();
+    } catch (err) { toast(err.message); }
+  }
+
+  function signOut() {
+    closeMenu();
+    forget();
+    state.signedAs = null; state.kind = null;
+    try { sessionStorage.removeItem('rb_wallet'); sessionStorage.removeItem('rb_kind'); } catch { /* fine */ }
+    render();
+    toast('Signed out.');
+    notify();
   }
 
   function notify() { for (const f of listeners) Promise.resolve(f()).catch(err => console.error(err)); }
@@ -132,9 +263,11 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     const btn = $('signin');
-    if (btn) btn.addEventListener('click', signIn);
+    if (btn) btn.addEventListener('click', () => signIn());
     const head = $('hdr-connect');
     if (head) head.addEventListener('click', headerConnect);
+    document.addEventListener('click', e => { const m = $('hdr-menu'); if (m && !m.hidden && !e.target.closest('.bar .acct')) closeMenu(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
     render();
     if (state.token) notify();
     // The header's More menu: kept on screen, closed by a click elsewhere or Escape.
@@ -271,5 +404,6 @@
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
     signedIn: () => !!state.token,
+    connect, signIn, link, SOL_CHAIN,
   };
 })();
