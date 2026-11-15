@@ -143,7 +143,8 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     console.log(`      ${moves} moves in ${DAYS} days; the rule refused ${refusedPlain} of them unaided. Fees taken: ${ethers.formatUnits(fees, 6)} USDC of ${ethers.formatUnits(worthStart, 6)} (${(Number(fees) / Number(worthStart) * 100).toFixed(3)}%). Position now ${ethers.formatUnits(worthEnd, 6)}. Attacker's USDC cost: ${attackerCost} units`);
     // Whatever the rates allow on the day (on this copy of Base the rates checked after the move refuse every leg),
     // the fee cooldown is the bound that always holds.
-    assert.ok(fees <= worthStart / 1000n + 1n, `at most one 0.1% fee in the week (FEE_COOLDOWN), not one a day: ${ethers.formatUnits(fees, 6)} USDC`);
+    assert.equal(await router.FEE_COOLDOWN(), BigInt(365 * DAY * 10 / 100), 'the cooldown is the break-even: 36.5 days at 0.1% and 1 point');
+    assert.ok(fees <= worthStart / 1000n + 1n, `at most one 0.1% fee in the break-even period, not one a day: ${ethers.formatUnits(fees, 6)} USDC`);
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
 
@@ -183,14 +184,16 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     const rates = await Promise.all([AAVE, COMP, SPK].map(i => router.rateOf(i)));
     const top = [AAVE, COMP, SPK].reduce((a, b) => (rates[b] > rates[a] ? b : a), best);
     await (await router.connect(user).deposit(top, usdc(100))).wait(); // pays 0.1 USDC
-    await advance(8 * DAY); // past the fee cooldown
+    await advance(Number(await router.FEE_COOLDOWN()) + 1); // past the fee cooldown
+    await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait(); // a new 30-day permission
     await (await router.connect(user).withdraw(top, 1n)).wait(); // one millionth of a dollar out
     await advance(DAY + 1);
     const fees = await usdcToken.balanceOf(feeWallet);
     await (await router.connect(user).deposit(top, usdc(50000))).wait();
     assert.equal(await usdcToken.balanceOf(feeWallet) - fees, (usdc(50000) - 1n) * 10n / 10_000n, 'the fee on all but the one unit put back');
     // Putting back what was withdrawn, within the window: free.
-    await advance(8 * DAY);
+    await advance(Number(await router.FEE_COOLDOWN()) + 1);
+    await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait();
     const cash = await usdcToken.balanceOf(user.address);
     await (await router.connect(user).withdraw(top, usdc(1000))).wait();
     const back = await usdcToken.balanceOf(user.address) - cash;
