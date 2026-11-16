@@ -14,6 +14,12 @@
  *
  * Trigger orders (take-profit and stop-loss) must be reduce-only, so they can
  * close a position but never open one.
+ *
+ * The fee (docs/PAYMENTS.md): an order may name only RektBull's builder
+ * address, at exactly RektBull's rate, and a fee approval is carried only for
+ * that address and at most that rate. With no builder address set, orders
+ * carry no builder field. An order that can only close (reduce-only) may go
+ * without the fee, so a position can always be closed.
  */
 const env = require('../config/env');
 const hl = require('../providers/hyperliquid');
@@ -51,6 +57,21 @@ function checkOrder(o, i) {
   } else bad(`${what}: t must be a limit or a trigger`);
 }
 
+/** RektBull's builder code: { b: address, f: tenths of a basis point }, or null when no address is set. */
+const builder = () => (env.hlBuilderAddress && env.hlBuilderFeeTenthsBps > 0 ? { b: env.hlBuilderAddress, f: env.hlBuilderFeeTenthsBps } : null);
+
+function checkBuilder(action, opens) {
+  const ours = builder();
+  const b = action.builder;
+  if (b !== undefined) {
+    if (!b || typeof b !== 'object' || !isAddr(b.b) || !Number.isInteger(b.f)) bad('builder must be { b: address, f: tenths of a basis point }');
+    if (!ours || b.b.toLowerCase() !== ours.b) throw new RelayRefused('This order names a builder that isn\'t RektBull\'s. RektBull only relays orders that pay its own builder address, or none.', 422, 'wrong_builder');
+    if (b.f !== ours.f) throw new RelayRefused(`This order's fee (${H.feeRate(b.f)}) isn't RektBull's (${H.feeRate(ours.f)}).`, 422, 'wrong_fee');
+  } else if (ours && opens) {
+    throw new RelayRefused(`Orders sent through RektBull carry its ${H.feeRate(ours.f)} fee on what fills. This one has no builder field.`, 422, 'builder_fee_missing');
+  }
+}
+
 /**
  * Checks a signed request before it's passed on. wallet is the signed-in
  * account's EVM wallet. Returns what the request does:
@@ -80,6 +101,11 @@ function check(body, { wallet, now = Date.now() }) {
     } else {
       only(action, ['type', 'hyperliquidChain', 'signatureChainId', 'maxFeeRate', 'builder', 'nonce'], 'approveBuilderFee');
       if (!isAddr(action.builder) || typeof action.maxFeeRate !== 'string' || !/^\d+(\.\d+)?%$/.test(action.maxFeeRate)) bad('approveBuilderFee needs a builder address and a maxFeeRate such as "0.01%"');
+      const ours = builder();
+      if (!ours) throw new RelayRefused('RektBull has no builder address set, so there is no fee to approve.', 422, 'no_builder');
+      if (action.builder.toLowerCase() !== ours.b) throw new RelayRefused('RektBull only relays a fee approval for its own builder address.', 422, 'wrong_builder');
+      // At most RektBull's rate: never an approval for more. "0%" takes the approval away.
+      if (Number(action.maxFeeRate.slice(0, -1)) * 1000 > ours.f + 1e-9) throw new RelayRefused(`RektBull's fee is ${H.feeRate(ours.f)}: it won't relay an approval for more (${action.maxFeeRate}).`, 422, 'fee_too_high');
     }
     let signer;
     try { signer = H.recoverUser(action, payload.signature); } catch { bad('the signature couldn\'t be read'); }
@@ -101,6 +127,7 @@ function check(body, { wallet, now = Date.now() }) {
     if (!['na', 'normalTpsl', 'positionTpsl'].includes(action.grouping)) bad('grouping must be na, normalTpsl or positionTpsl');
     action.orders.forEach(checkOrder);
     opens = action.orders.some(o => !o.r);
+    checkBuilder(action, opens);
   } else if (action.type === 'cancel') {
     only(action, ['type', 'cancels'], 'the cancel action');
     if (!Array.isArray(action.cancels) || !action.cancels.length || action.cancels.length > MAX_ORDERS || action.cancels.some(c => !Number.isInteger(c?.a) || !Number.isSafeInteger(c?.o))) bad('cancels must hold 1 to 20 { a, o } pairs');
@@ -139,4 +166,4 @@ async function send(body, ctx) {
   return { ok: true, type: checked.type, results: summarize(answer), hyperliquid: answer, source: 'Hyperliquid\'s exchange API' };
 }
 
-module.exports = { check, send, summarize, RelayRefused, L1, USER };
+module.exports = { check, send, summarize, builder, RelayRefused, L1, USER };

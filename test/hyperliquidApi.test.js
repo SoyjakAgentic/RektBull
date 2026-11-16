@@ -78,11 +78,47 @@ test('the relay: what it carries and what it refuses', async () => {
   refused(() => relay.check({ action: mainnetOne, nonce: mainnetOne.nonce, signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), null, /signed for Mainnet/);
   const tooLong = H.approveAgentAction({ mainnet: false, signatureChainId: 1, agentAddress: agent.address, name: 'rektbull-web', validUntilMs: Date.now() + 181 * 86400000, nonce: Date.now() });
   refused(() => relay.check({ action: tooLong, nonce: tooLong.nonce, signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), null, /at most 180 days/);
-  const fee = relay.check(await approval(H.approveBuilderFeeAction({ mainnet: false, signatureChainId: 8453, builder: BUILDER, tenthsBps: 10, nonce: Date.now() })), ctx);
-  assert.equal(fee.type, 'approveBuilderFee');
 
   assert.deepEqual(relay.summarize({ status: 'ok', response: { type: 'order', data: { statuses: [{ filled: { totalSz: '0.02', avgPx: '1891.4', oid: 77747314 } }, { resting: { oid: 77738308 } }, { error: 'Order must have minimum value of $10.' }] } } }),
     [{ filled: true, size: 0.02, avg_px: 1891.4, oid: 77747314 }, { resting: true, oid: 77738308 }, { error: 'Order must have minimum value of $10.' }]);
+});
+
+test('the fee: only RektBull\'s builder address, at RektBull\'s rate, and nothing when no address is set', async () => {
+  const ctx = { wallet };
+  const withFee = f => H.orderAction([order()], { builder: { b: BUILDER, f } });
+  const feeApproval = async (builder, tenthsBps) => approval(H.approveBuilderFeeAction({ mainnet: false, signatureChainId: 8453, builder, tenthsBps, nonce: Date.now() }));
+
+  // No builder address set: orders go with no builder field, and none is accepted.
+  assert.equal(relay.builder(), null);
+  assert.equal(relay.check(await l1(H.orderAction([order()])), ctx).payload.action.builder, undefined);
+  refused(() => relay.check({ action: withFee(10), nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'wrong_builder');
+  const none = await feeApproval(BUILDER, 10);
+  refused(() => relay.check(none, ctx), 'no_builder', /no fee to approve/);
+  assert.equal(require('../src/routes/hyperliquid').config().builder.address, null);
+  assert.match(require('../src/routes/hyperliquid').config().builder.note, /no builder field and RektBull takes no fee/);
+
+  env.hlBuilderAddress = BUILDER; env.hlBuilderFeeTenthsBps = 10;
+  try {
+    assert.deepEqual(relay.builder(), { b: BUILDER, f: 10 });
+    const cfg = require('../src/routes/hyperliquid').config().builder;
+    assert.deepEqual([cfg.address, cfg.fee_tenths_bps, cfg.fee_pct, cfg.max_fee_rate, cfg.builder_min_account_usd], [BUILDER, 10, 0.01, '0.01%', 100]);
+    assert.match(cfg.note, /0\.01% of each fill, taken by Hyperliquid when an order fills and never otherwise/);
+
+    assert.deepEqual(relay.check(await l1(withFee(10)), ctx).payload.action.builder, { b: BUILDER, f: 10 });
+    refused(() => relay.check({ action: H.orderAction([order()]), nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'builder_fee_missing', /carry its 0\.01% fee/);
+    refused(() => relay.check({ action: withFee(100), nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'wrong_fee', /0\.1%.*isn't RektBull's \(0\.01%\)/);
+    refused(() => relay.check({ action: H.orderAction([order()], { builder: { b: '0x' + 'ee'.repeat(20), f: 10 } }), nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'wrong_builder', /isn't RektBull's/);
+    // A position can always be closed, fee approved or not.
+    assert.equal(relay.check(await l1(H.orderAction([order({ isBuy: false, reduceOnly: true })])), ctx).opens, false);
+    assert.equal(relay.check(await l1(H.cancelAction([{ asset: 0, oid: 1 }])), ctx).type, 'cancel');
+
+    assert.equal(relay.check(await feeApproval(BUILDER, 10), ctx).type, 'approveBuilderFee');
+    assert.equal(relay.check(await feeApproval(BUILDER, 0), ctx).approves, true, 'lowering it to 0% takes the approval away');
+    const more = await feeApproval(BUILDER, 100);
+    refused(() => relay.check(more, ctx), 'fee_too_high', /won't relay an approval for more \(0\.1%\)/);
+    const elsewhere = await feeApproval('0x' + 'ee'.repeat(20), 10);
+    refused(() => relay.check(elsewhere, ctx), 'wrong_builder', /its own builder address/);
+  } finally { env.hlBuilderAddress = ''; }
 });
 
 test('sending: Hyperliquid\'s answer comes back, and its refusal says why', async () => {

@@ -5,8 +5,14 @@
   or fiat options), prepaid passes, and in-kind fees on claims,
   yield moves, four.meme curve buys paid in BNB and Solana trades paid in SOL
   (a share of what's claimed, moved, spent or sold, in a plain transfer the
-  user signs next to it; see docs/PAYMENTS.md). No recurring pulls and no
-  token approvals asked of users for billing.
+  user signs next to it; see docs/PAYMENTS.md), and a Hyperliquid builder
+  code on perps (docs/HYPERLIQUID.md): the user signs `approveBuilderFee`
+  once, a most-per-fill rate for RektBull's builder address, and Hyperliquid
+  takes the fee (`HL_BUILDER_FEE_TENTHS_BPS`, 0.01% by default) from fills
+  only. That is a capped fee-on-fill permission, not a token approval and not
+  a recurring pull: nothing is taken unless an order the user or their agent
+  placed fills. No recurring pulls and no token approvals asked of users for
+  billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the
   server must never receive an xprv or mnemonic.

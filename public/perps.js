@@ -202,6 +202,35 @@
     } finally { btn.disabled = false; }
   }
 
+  /* ── the fee: a most-per-fill rate the wallet approves once for RektBull's builder address ── */
+
+  hl.feeNeeded = () => !!hl.config.builder.address && !hl.approvals?.builder_fee?.approved;
+  hl.showFee = () => {
+    const b = hl.config.builder;
+    $('fee-box').hidden = false;
+    $('fee-note').textContent = b.note;
+    const f = hl.approvals?.builder_fee;
+    $('fee-approve').hidden = !b.address || !!f?.approved;
+    $('fee-revoke').hidden = !b.address || !f?.approved_tenths_bps;
+    if (!b.address) return say('fee-status', '');
+    if (!f || f.error) return say('fee-status', f?.error || 'Whether the fee is approved couldn\'t be read.', 'bad');
+    say('fee-status', f.approved ? `Approved: at most ${b.max_fee_rate} of each fill, to ${short(b.address)}.` : `Not approved yet. Hyperliquid refuses an order that carries a fee you haven't approved.`, f.approved ? 'ok' : '');
+  };
+  async function approveFee(tenthsBps) {
+    try {
+      const b = hl.config.builder;
+      say('setup-msg', tenthsBps ? `Your wallet will show the approval: at most ${b.max_fee_rate} of each fill, paid to RektBull's builder address by Hyperliquid.` : 'Your wallet will show the approval set to 0%.');
+      const signed = await walletSign(chainId => H.approveBuilderFeeAction({ mainnet: mainnet(), signatureChainId: chainId, builder: b.address, tenthsBps, nonce: nonce() }));
+      await api('POST', '/v1/hyperliquid/exchange', signed);
+      say('setup-msg', tenthsBps ? 'Fee approved.' : 'The fee approval is taken away. Orders that open a position are refused until it\'s approved again.', 'ok');
+      await loadApprovals();
+    } catch (err) {
+      say('setup-msg', err.message, 'bad');
+    }
+  }
+  $('fee-approve').addEventListener('click', () => approveFee(hl.config.builder.fee_tenths_bps));
+  $('fee-revoke').addEventListener('click', () => approveFee(0));
+
   /* ── orders ── */
 
   /** Signs an L1 action with the trading key and sends the signature through RektBull's relay. */
@@ -260,9 +289,9 @@
       if (!(Number(size) > 0)) return { error: `That's less than the smallest ${m.coin} order (${10 ** -m.sz_decimals} ${m.coin}).` };
       if (!reduceOnly && Number(size) * Number(price) < hl.config.order.min_usd) return { error: `Hyperliquid's smallest order is $${hl.config.order.min_usd}.` };
     }
-    const b = builder();
+    const b = reduceOnly && hl.feeNeeded() ? null : builder();
     const notional = Number(size) * (trigger ? Number(trigger.triggerPx) : type === 'limit' ? Number(price) : ref);
-    const fee = b ? `RektBull's fee: ${(b.f / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}% of what fills (about ${fmtUsd(notional * b.f / 100000, 4)}), taken by Hyperliquid on the fill only, on top of Hyperliquid's own fee.` : 'RektBull takes no fee on this order (no builder address is set); Hyperliquid\'s own fee applies.';
+    const fee = b ? `RektBull's fee: ${(b.f / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}% of what fills (about ${fmtUsd(notional * b.f / 100000, 4)}), taken by Hyperliquid on the fill only, on top of Hyperliquid's own fee.` : 'RektBull takes no fee on this order; Hyperliquid\'s own fee applies.';
     const order = H.orderWire({ asset: m.asset, isBuy, px: price, sz: size, reduceOnly, tif, trigger, cloid: H.cloid() });
     return { m, order, note, fee, action: H.orderAction([order], { builder: b }) };
   }
@@ -285,7 +314,7 @@
       if (!hl.config.enabled) throw new Error('Perps trading is switched off on this server for now.');
       const p = plan();
       if (p.error) throw new Error(p.error);
-      if (hl.feeNeeded && hl.feeNeeded()) throw new Error('Approve RektBull\'s fee first (step 2): Hyperliquid refuses an order that carries a fee you haven\'t approved.');
+      if (hl.feeNeeded() && !p.order.r) throw new Error('Approve RektBull\'s fee first (step 2): Hyperliquid refuses an order that carries a fee you haven\'t approved.');
       say('order-msg', 'Signing in this browser and sending…');
       const r = await send(p.action);
       say('order-msg', outcome(r), failed(r) ? 'bad' : 'ok');
@@ -302,7 +331,7 @@
       if (!(ref > 0)) throw new Error(`Hyperliquid shows no price for ${p.coin} right now.`);
       const isBuy = p.side === 'short';
       const order = H.orderWire({ asset: m.asset, isBuy, px: H.slippagePrice(ref, isBuy, hl.config.order.slippage_pct / 100, m.sz_decimals), sz: H.formatSize(p.size, m.sz_decimals), reduceOnly: true, tif: 'Ioc', cloid: H.cloid() });
-      const r = await send(H.orderAction([order], { builder: builder() }));
+      const r = await send(H.orderAction([order], { builder: hl.feeNeeded() ? null : builder() })); // a close goes without the fee when the fee isn't approved
       say('positions-msg', `${p.coin}: ${outcome(r)}`, failed(r) ? 'bad' : 'ok');
       await loadAccount(true);
     } catch (err) {

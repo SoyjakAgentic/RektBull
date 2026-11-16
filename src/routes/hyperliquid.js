@@ -13,6 +13,7 @@ const { requireEvmWallet } = require('../middleware/auth');
 const hl = require('../providers/hyperliquid');
 const markets = require('../hyperliquid/markets');
 const relay = require('../hyperliquid/relay');
+const H = require('../../public/hl-core.js');
 
 const router = express.Router();
 
@@ -28,6 +29,18 @@ const refusal = fn => async (req, res) => {
   }
 };
 
+/** A builder needs at least this much in its own Hyperliquid perps account before it can collect (Hyperliquid's builder-codes page). */
+const BUILDER_MIN_ACCOUNT_USD = 100;
+function builderConfig() {
+  const b = relay.builder();
+  if (!b) return { address: null, fee_tenths_bps: 0, fee_pct: 0, note: 'No builder address is set (HL_BUILDER_ADDRESS), so orders are sent with no builder field and RektBull takes no fee on them.' };
+  return {
+    address: b.b, fee_tenths_bps: b.f, fee_pct: b.f / 1000, max_fee_rate: H.feeRate(b.f),
+    note: `RektBull's fee is ${H.feeRate(b.f)} of each fill, taken by Hyperliquid when an order fills and never otherwise. You approve it once, as a most-per-fill rate; it isn't a token approval and can't be raised without a new signature from your wallet.`,
+    builder_min_account_usd: BUILDER_MIN_ACCOUNT_USD,
+  };
+}
+
 function config() {
   return {
     enabled: env.hlEnabled,
@@ -38,6 +51,8 @@ function config() {
     deposit_url: `${APPS[hl.network()]}/trade`,
     agent: WEB_AGENT,
     order: { min_usd: 10, slippage_pct: 1, max_slippage_pct: 5, expires_seconds: 30 },
+    // The fee: a Hyperliquid builder code. Hyperliquid takes it on fills only, from the user's account, up to the rate the user approved.
+    builder: builderConfig(),
   };
 }
 router.get('/v1/hyperliquid/config', (_req, res) => res.json(config()));
