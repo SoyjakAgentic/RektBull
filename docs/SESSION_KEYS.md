@@ -358,10 +358,14 @@ ordinary Safe transactions. The named key may then ask the module to make the
 Safe call one function, the router's `swap`: nothing else, no value, never a
 delegatecall. Sessions last at most 30 days; owners stop it with `revoke()`, or
 any one owner with `revokeFor(safe)`, and RektBull's session key can give a
-session up with `renounce(safe)`. Disabling the module only pauses it:
-re-enabling it brings the session back, so the app always batches `revoke()`
-with disabling. `setSession` and `revoke` refuse calls forwarded by a Safe's
-fallback handler (the second AI audit, AUDIT_BRIEF.md section 8). The router applies its rules with the Safe as the
+session up with `renounce(safe)`, or give up every session it has at once, for
+good, with `retire()` (RektBull's kill switch if the key is ever at risk; a
+retired key can't trade or be named again). Disabling the module only pauses
+it: re-enabling it brings the session back, so `revoke()` is the stop, and the
+app's stop button must send it with the disabling (to build with the trade
+service integration; the re-review's N-3). `setSession`, `revoke`, `revokeFor`
+and `renounce` refuse calls forwarded by a Safe's fallback handler (the second
+AI audit and its re-review, AUDIT_BRIEF.md section 8). The router applies its rules with the Safe as the
 account. A Safe is linked to RektBull by one of its owners, who signs in with
 their own wallet; RektBull checks onchain that they own it.
 
