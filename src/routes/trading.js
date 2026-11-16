@@ -155,7 +155,8 @@ router.get('/v1/trading/auto/setup', requireEvmWallet, async (req, res) => {
   const perDay = Number(req.query.per_day_usd || 10000);
   const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
   if (!(perTrade > 0 && perDay >= perTrade)) return res.status(400).json({ error: 'bad_request', message: 'per_day_usd must be at least per_trade_usd, and both above 0' });
-  const validUntil = Math.floor(Date.now() / 1000) + days * 86400;
+  // 10 minutes short of the days asked: a server clock ahead of the chain mustn't push 30 days past the router's MAX_GRANT.
+  const validUntil = Math.floor(Date.now() / 1000) + days * 86400 - 600;
   const { ethers } = require('ethers');
   const R = new ethers.Interface(['function setLimits(uint128,uint128,uint32,uint64)', 'function setOperator(address)']);
   const ERC20 = new ethers.Interface(['function approve(address,uint256)']);

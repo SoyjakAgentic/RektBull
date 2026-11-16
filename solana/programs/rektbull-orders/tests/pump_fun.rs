@@ -103,9 +103,12 @@ impl Pump {
     fn set_lamports(&mut self, p: Pubkey, lamports: u64) {
         self.svm.set_account(a(&p), Account { lamports, data: vec![], owner: a(&system_program::ID), executable: false, rent_epoch: 0 }).unwrap();
     }
+    /// A token account's amount (the same field in Token and Token-2022); 0 for an account that was closed.
     fn token_balance(&self, p: Pubkey) -> u64 {
-        let acc = self.svm.get_account(&a(&p)).unwrap();
-        u64::from_le_bytes(acc.data[64..72].try_into().unwrap()) // the amount field, the same in Token and Token-2022
+        match self.svm.get_account(&a(&p)) {
+            Some(acc) if acc.data.len() >= 72 => u64::from_le_bytes(acc.data[64..72].try_into().unwrap()),
+            _ => 0,
+        }
     }
     /// A classic-token wrapped SOL account holding `amount`.
     fn wsol_account(&mut self, owner: Pubkey, amount: u64) -> Pubkey {
@@ -225,7 +228,10 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     assert!(fee > 0 && fee <= SOL / 1000, "1% of the SOL pump.fun used (and the fee) to the fee wallet: {fee}");
     assert!(p.lamports(key(&user)) >= user_sol0, "any SOL pump.fun didn't use came back (and the order's rent)");
     assert_eq!(p.lamports(transit()), 0, "transit holds nothing");
-    assert_eq!(p.token_balance(transit_coin), 0);
+    // Transit's coin account (pump.fun's coins are Token-2022, with no withheld fees) was emptied and closed, its rent
+    // back to the executor who opened it (re-review, N-1). The trade service opens it again for the next fill.
+    assert_eq!(p.lamports(transit_coin), 0, "transit's emptied coin account was closed");
+    p.coin_ata(transit());
 
     // 2. The same buy with a limit pump.fun can't meet: refused, by the order program's own check.
     let user_wsol2 = p.wsol_account(key(&user), SOL);
@@ -241,6 +247,7 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     let approve = spl_token_2022::instruction::approve(&p.mint_program, &user_coin, &delegate(), &key(&user), &[], bought).unwrap();
     p.send(&[ix(p.mint_program, approve.accounts, approve.data)], &[&user]).unwrap();
     let sell = p.place(3, p.params(p.mint, WSOL_MINT, true, bought, 1));
+    p.coin_ata(transit()); // still open after the refused fill; idempotent
     let (fee0, user_sol0) = (p.lamports(FEE_WALLET), p.lamports(key(&user)));
     p.fill(sell, user_coin, p.mint, p.mint_program, transit_coin, None, bought, false, pump_sell(bought, 1), transit_coin)
         .expect("the sale through pump.fun");
@@ -250,7 +257,7 @@ fn pump_fun_buy_and_sell_through_the_order_program() {
     assert!(fee > 0 && fee * 99 <= got, "1% of the SOL out to the fee wallet");
     assert_eq!(p.token_balance(user_coin), 0);
     assert_eq!(p.lamports(transit()), 0, "transit holds nothing");
-    assert_eq!(p.token_balance(transit_coin), 0);
+    assert_eq!(p.lamports(transit_coin), 0, "and its emptied coin account was closed again");
 }
 
 /// The second AI audit's M-1, on pump.fun's real program: anyone can name themselves executor of their own order,
@@ -295,4 +302,38 @@ fn a_stranger_cant_use_a_fill_for_anything_but_a_swap() {
     let err = p.send(&[ix(rektbull_orders::ID, metas, data)], &[&attacker]).expect_err("someone else's transit");
     assert!(err.contains("ConstraintSeeds"), "{err}");
     assert!(p.lamports(uva) > 0, "the user's volume account is untouched");
+}
+
+/// Re-review N-1, on pump.fun's real program: the owner gets back the rent of their transit's volume account (paid
+/// in their first order transaction) with close_volume_account. Only the owner can; nothing else can be sent.
+#[test]
+#[ignore = "needs mainnet copies: python3 -I scripts/pump_fixtures.py"]
+fn the_owner_gets_their_volume_accounts_rent_back() {
+    let mut p = Pump::new();
+    let user = p.user.insecure_clone();
+    let uva = Pubkey::find_program_address(&[b"user_volume_accumulator", transit().as_ref()], &PUMP_FUN).0;
+    let init = ix(PUMP_FUN, vec![AnchorMeta::new(key(&user), true), r(transit()), w(uva), r(system_program::ID), r(p.acct("event_authority")), r(PUMP_FUN)], disc("init_user_volume_accumulator"));
+    p.send(&[init], &[&user]).unwrap();
+    let rent = p.lamports(uva);
+    assert!(rent > 0);
+    let event_authority = p.acct("event_authority");
+    let close = |owner: Pubkey, transit: Pubkey, data: Vec<u8>| {
+        let mut metas = rektbull_orders::accounts::CloseVolume { owner, transit, venue: PUMP_FUN, system_program: system_program::ID }.to_account_metas(None);
+        metas.extend([w(transit), w(uva), r(event_authority), r(PUMP_FUN)]);
+        ix(rektbull_orders::ID, metas, rektbull_orders::instruction::CloseVolumeAccount { venue_data: data }.data())
+    };
+    // Someone else can't: their own transit isn't the volume account's user.
+    let stranger = Keypair::new();
+    p.set_lamports(key(&stranger), SOL);
+    let theirs = Pubkey::find_program_address(&[TRANSIT_SEED, key(&stranger).as_ref()], &rektbull_orders::ID).0;
+    assert!(p.send(&[close(key(&stranger), theirs, disc("close_user_volume_accumulator"))], &[&stranger]).is_err());
+    // No other pump.fun instruction can be sent this way.
+    let err = p.send(&[close(key(&user), transit(), pump_sell(1, 1))], &[&user]).expect_err("only the close");
+    assert!(err.contains("VenueNotAllowed"), "{err}");
+    // The owner can, and the rent reaches them; transit holds nothing after.
+    let before = p.lamports(key(&user));
+    p.send(&[close(key(&user), transit(), disc("close_user_volume_accumulator"))], &[&user]).unwrap();
+    assert_eq!(p.lamports(uva), 0, "the volume account is closed");
+    assert_eq!(p.lamports(key(&user)), before + rent - 5000, "its rent went to the owner (less the transaction fee)");
+    assert_eq!(p.lamports(transit()), 0, "transit holds nothing");
 }
