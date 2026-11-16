@@ -90,16 +90,34 @@ contract TradeRouterAuditTest is Test {
         assertEq(weth.balanceOf(user), 10 ether, "the user's own WETH is untouched");
     }
 
-    /// A new setLimits() also starts a new grant (the user changing their limits ends earlier credits).
-    function test_M1_newLimitsStartANewGrant() public {
+    /// Re-review N-3: renewing or changing the limits while the grant is still live keeps the credits, so a position the
+    /// router opened can still be closed in one sale. setLimits() after the grant ended starts a new grant, and credits end.
+    function test_M1_renewalKeepsCreditsANewGrantEndsThem() public {
         usdc.mint(user, 1_000e6);
         vm.prank(user);
         router.setLimits(500e8, 1000e8, 1 days, uint64(block.timestamp + 30 days));
         _swap(usdc, weth, 500e6, BUY_RATE);
-        assertGt(router.boughtByRouter(user, address(weth)), 0);
+        uint256 credit = router.boughtByRouter(user, address(weth));
+        assertGt(credit, 0);
+        vm.warp(block.timestamp + 10 days);
+        vm.prank(user);
+        router.setLimits(500e8, 1000e8, 1 days, uint64(block.timestamp + 30 days)); // renewed early
+        assertEq(router.boughtByRouter(user, address(weth)), credit, "an early renewal keeps the credit");
+        vm.warp(block.timestamp + 30 days + 1); // the renewed grant ends
         vm.prank(user);
         router.setLimits(500e8, 1000e8, 1 days, uint64(block.timestamp + 30 days));
-        assertEq(router.boughtByRouter(user, address(weth)), 0);
+        assertEq(router.boughtByRouter(user, address(weth)), 0, "a grant after the last one ended starts afresh");
+    }
+
+    /// Re-review I-2: the spend-permission manager can't be a venue (through it anyone could spend another wallet's permission).
+    function test_spendPermissionManagerIsNotAVenue() public {
+        address spm = address(0x5BE0);
+        address[] memory venues = new address[](1);
+        venues[0] = spm;
+        address[] memory none = new address[](0);
+        uint256[] memory noAges = new uint256[](0);
+        vm.expectRevert(RektBullTradeRouter.BadConfig.selector);
+        new RektBullTradeRouter(address(0xFEE), 100, 200, address(0), spm, venues, none, none, noAges);
     }
 
     /// L-1 (disclosed). Within one period, counted buys plus exempt sales of what they bought reach twice the limit,

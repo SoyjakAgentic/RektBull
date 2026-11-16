@@ -401,7 +401,7 @@
   function updateWorst() {
     const trade = Number($('l-trade').value), day = Number($('l-day').value), days = Number($('l-days').value);
     const until = new Date(Date.now() + days * 86400000).toLocaleDateString();
-    $('worst').textContent = `At most $${day.toLocaleString()} a day can be bought, at most $${trade.toLocaleString()} per trade, only through the RektBull Trade Router, only back into this wallet, until ${until}. Selling what it bought for you doesn't count toward the limit, so an exit is never blocked; that means up to twice the limit can change hands in a day (four times across the change of day). Each trade can be at most 2% under the market price, plus RektBull's 1% fee, which the router can't raise. You can stop it at any time.`;
+    $('worst').textContent = `At most $${day.toLocaleString()} a day can be bought, at most $${trade.toLocaleString()} per trade, only through the RektBull Trade Router, only back into this wallet, until ${until}. Selling what it bought for you doesn't count toward the limits, so an exit is never blocked: one sale of everything it bought can be larger than the per-trade and daily limits, and over the whole permission up to twice ($${(day * days * 2).toLocaleString()}) can change hands. Each trade can be at most 2% under the market price, plus RektBull's 1% fee, which the router can't raise. Renewing before it ends keeps open positions sellable; revoking ends it at once.`;
     $('confirm-wrap').hidden = !(trade > DEFAULT_LIMITS.trade || day > DEFAULT_LIMITS.day);
   }
   for (const id of ['l-trade', 'l-day', 'l-days']) $(id).addEventListener('input', updateWorst);
@@ -557,7 +557,7 @@
         throw new Error(`Type ${day} in the box to confirm you understand that much can be traded in a day.`);
       }
       const iface = new ethers.Interface(ROUTER_ABI);
-      const data = iface.encodeFunctionData('setLimits', [BigInt(Math.round(trade * 1e8)), BigInt(Math.round(day * 1e8)), 86400, Math.floor(Date.now() / 1000) + days * 86400]);
+      const data = iface.encodeFunctionData('setLimits', [BigInt(Math.round(trade * 1e8)), BigInt(Math.round(day * 1e8)), 86400, Math.floor(Date.now() / 1000) + days * 86400 - 600]); // 10 minutes short: a clock ahead of the chain mustn't push it past 30 days
       await routerTx(data);
       say('limits-msg', 'Limits saved onchain from your wallet.', 'ok');
     } catch (err) { say('limits-msg', err.message, 'bad'); }

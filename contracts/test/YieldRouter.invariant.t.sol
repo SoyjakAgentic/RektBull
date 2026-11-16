@@ -26,20 +26,36 @@ contract YieldHandler is Test {
     uint256 public valueLostBeyondAllowed; // value a user lost beyond the fee and MAX_LOSS_BPS: must stay 0
     uint256 public worseMoves; // moves into a venue paying less than MIN_GAIN_BPS more: must stay 0
     uint256 public worseDeposits; // deposits into a venue paying MIN_GAIN_BPS or more below the best: must stay 0
-    uint256 public redepositFees; // fees on putting back no more than was withdrawn, within REDEPOSIT_WINDOW: must stay 0
-    uint256 public cooldownBreaks; // two fees for one user within FEE_COOLDOWN: must stay 0
+    uint256 public doubleCharges; // a fee on money that already paid in the current fee period: must stay 0
+    uint256 public creditFromNothing; // a withdrawal adding more redeposit credit than the paid money it took out: must stay 0
     uint256 public intervalBreaks; // fee-bearing calls closer than MIN_INTERVAL: must stay 0
     uint256 public blockedWithdrawals; // withdrawals of a held position that failed: must stay 0
     uint256 public calls;
     mapping(address => uint256) public lastFeeCallAt;
-    mapping(address => uint256) public lastFeeAt;
-    mapping(address => uint256) public credit; // withdrawn through the router and not yet put back
-    mapping(address => uint256) public creditUntil;
 
-    function _fee(address u, uint256 fee) internal {
-        if (fee == 0) return;
-        if (lastFeeAt[u] != 0 && block.timestamp < lastFeeAt[u] + router.FEE_COOLDOWN()) cooldownBreaks++;
-        lastFeeAt[u] = block.timestamp;
+    /// u's paid money held and redeposit credit in the current fee period, read from the router (0 when none is running).
+    function _period(address u) internal view returns (uint256 held, uint256 credit) {
+        uint256 start = router.feePeriodStart(u, address(usdc));
+        if (start != 0 && block.timestamp < start + router.FEE_COOLDOWN()) {
+            held = router.paidHeld(u, address(usdc));
+            credit = router.redepositCredit(u, address(usdc));
+        }
+    }
+
+    /// The fee is at most FEE_BPS of the part of `upTo` not already covered (by paid money held, or by credit).
+    function _fee(uint256 fee, uint256 covered, uint256 upTo) internal {
+        uint256 above = upTo > covered ? upTo - covered : 0;
+        if (fee > above * router.FEE_BPS() / 10_000) doubleCharges++;
+    }
+
+    /// The user renews their own limits (a permission lasts at most 30 days).
+    function renew(uint256 who) external {
+        address[] memory assets = new address[](1);
+        assets[0] = address(usdc);
+        uint256[] memory limits = new uint256[](1);
+        limits[0] = 1e12;
+        vm.prank(users[bound(who, 0, 2)]);
+        router.setLimits(assets, limits, uint64(block.timestamp + 30 days));
     }
 
     constructor(RektBullYieldRouter r, MockERC20 u, MockVault4626 v0, MockVault4626 v1, MockSsrOracle o0, MockSsrOracle o1, address fw) {
@@ -54,7 +70,7 @@ contract YieldHandler is Test {
             u.approve(address(r), type(uint256).max);
             v0.approve(address(r), type(uint256).max);
             v1.approve(address(r), type(uint256).max);
-            r.setLimits(assets, limits, uint64(block.timestamp + 365 days));
+            r.setLimits(assets, limits, uint64(block.timestamp + 30 days));
             vm.stopPrank();
         }
     }
@@ -113,15 +129,13 @@ contract YieldHandler is Test {
         uint256 other = router.rateOf(1 - id);
         uint256 before = _value(u);
         uint256 feeBefore = usdc.balanceOf(feeWallet);
+        (, uint256 credit) = _period(u);
         vm.prank(u);
         try router.deposit(id, amount) {
             calls++;
             if (rate + uint256(router.MIN_GAIN_BPS()) * 1e14 < other) worseDeposits++;
             uint256 fee = usdc.balanceOf(feeWallet) - feeBefore;
-            uint256 valid = block.timestamp < creditUntil[u] ? credit[u] : 0;
-            if (fee > 0 && amount <= valid) redepositFees++;
-            credit[u] = valid - (amount < valid ? amount : valid);
-            _fee(u, fee);
+            _fee(fee, credit, amount);
             feesPaid += fee; feeBase += amount;
             _lossCheck(u, before, fee, amount);
             _interval(u);
@@ -138,13 +152,14 @@ contract YieldHandler is Test {
         uint256 before = _value(u);
         uint256 held = router.positionOf(from, u);
         uint256 feeBefore = usdc.balanceOf(feeWallet);
+        (uint256 paidHeld,) = _period(u);
         vm.prank(u);
         try router.move(from, to, amount) {
             calls++;
             if (toRate < fromRate + uint256(router.MIN_GAIN_BPS()) * 1e14) worseMoves++;
             uint256 fee = usdc.balanceOf(feeWallet) - feeBefore;
             uint256 moved = amount > held ? held : amount;
-            _fee(u, fee);
+            _fee(fee, paidHeld, moved + 1); // what a vault's rounding can add: 1 unit
             feesPaid += fee; feeBase += moved;
             _lossCheck(u, before, fee, moved);
             _interval(u);
@@ -158,12 +173,12 @@ contract YieldHandler is Test {
         amount = bound(amount, 1, type(uint256).max);
         uint256 before = _value(u);
         uint256 held = router.positionOf(id, u);
-        uint256 cash = usdc.balanceOf(u);
+        (uint256 heldBefore, uint256 creditBefore) = _period(u);
         vm.prank(u);
         try router.withdraw(id, amount) {
             calls++;
-            credit[u] = (block.timestamp < creditUntil[u] ? credit[u] : 0) + usdc.balanceOf(u) - cash;
-            creditUntil[u] = block.timestamp + router.REDEPOSIT_WINDOW();
+            (, uint256 creditAfter) = _period(u);
+            if (creditAfter > creditBefore + heldBefore) creditFromNothing++;
             _lossCheck(u, before, 0, amount > held ? held : amount);
         } catch {
             if (held > 0) blockedWithdrawals++;
@@ -206,6 +221,39 @@ contract YieldRouterInvariantTest is Test {
         targetContract(address(handler));
     }
 
+    /// Re-review L3: a venue above MAX_RATE (one in distress) no longer blocks deposits into the others.
+    function test_distressedVenueDoesNotBlockDeposits() public {
+        RektBullYieldRouter.Venue memory v1v = router.venueAt(1);
+        MockSsrOracle(v1v.rateSource).set(1e27 + uint256(6_000) * 1e14 * 1e9 / 31_536_000); // 60% a year
+        address u = handler.user(0);
+        uint256 high = router.rateOf(1); // read first: a prank applies to the next call
+        vm.expectRevert(abi.encodeWithSelector(RektBullYieldRouter.RateTooHigh.selector, high));
+        vm.prank(u);
+        router.deposit(1, 1e9); // nothing goes into it
+        vm.prank(u);
+        router.deposit(0, 1e9); // and it no longer counts as the best for the others
+        assertGt(router.positionOf(0, u), 0);
+    }
+
+    /// Re-review L4: a router whose settings make the fee period shorter than a 30-day permission, or every move
+    /// impossible, can't be deployed; nor can limits run longer than 30 days.
+    function test_settingsThatBreakTheFeeBoundCantBeDeployed() public {
+        RektBullYieldRouter.Venue[] memory list = new RektBullYieldRouter.Venue[](1);
+        list[0] = router.venueAt(0);
+        vm.expectRevert(RektBullYieldRouter.BadConfig.selector);
+        new RektBullYieldRouter(feeWallet, 10, 150, 1 hours, list); // 10 / 150 of a year: 24.3 days
+        vm.expectRevert(RektBullYieldRouter.BadConfig.selector);
+        new RektBullYieldRouter(feeWallet, 0, 2_500, 1 hours, list); // a 25% minimum gain: no move could pass MAX_RATE
+        new RektBullYieldRouter(feeWallet, 10, 121, 1 hours, list); // 30.2 days: fine
+        new RektBullYieldRouter(feeWallet, 0, 500, 1 hours, list); // no fee at all: fine
+        address[] memory assets = new address[](1);
+        assets[0] = address(usdc);
+        uint256[] memory limits = new uint256[](1);
+        limits[0] = 1;
+        vm.expectRevert(RektBullYieldRouter.BadConfig.selector);
+        router.setLimits(assets, limits, uint64(block.timestamp + 30 days + 1));
+    }
+
     /// The handler's honest path really deposits, moves and withdraws (so the invariants aren't passing on nothing).
     function test_handlerWorks() public {
         handler.deposit(0, 0, 1e9); // both pay 0%: either is the best
@@ -220,13 +268,16 @@ contract YieldRouterInvariantTest is Test {
         assertEq(handler.calls(), 4);
         handler.deposit(2, 0, 1e9); // into the venue paying 5% less than the best: refused
         assertEq(handler.calls(), 4);
-        // User 0 withdrew above; putting it back within the window costs no fee (MIN_INTERVAL still applies).
+        // User 0 withdrew above; putting it back within the fee period costs no fee: it already paid (MIN_INTERVAL still applies).
         handler.wait(2 hours);
         uint256 fees = handler.feesPaid();
         handler.deposit(0, 1, 1e9);
         assertEq(handler.calls(), 5);
-        assertEq(handler.feesPaid(), fees);
-        assertEq(handler.redepositFees(), 0);
+        // 999 USDC came out (1 USDC of the 1,000 went to the first fee): those 999 come back free, and only the
+        // 1 USDC that is new money pays the 0.1%.
+        assertEq(handler.feesPaid() - fees, 1e6 * 10 / 10_000);
+        assertEq(handler.doubleCharges(), 0);
+        assertEq(handler.creditFromNothing(), 0);
     }
 
     function invariant_routerHoldsNothing() public view {
@@ -251,11 +302,12 @@ contract YieldRouterInvariantTest is Test {
     /// stand in for a move the rule above would refuse).
     function invariant_onlyBestDeposits() public view { assertEq(handler.worseDeposits(), 0); }
 
-    /// Putting back no more than was taken out, within REDEPOSIT_WINDOW, is never charged a fee.
-    function invariant_noFeeOnRedeposit() public view { assertEq(handler.redepositFees(), 0); }
+    /// Money that has paid in the current fee period is never charged again in it (deposits, moves, putting back).
+    function invariant_eachUnitPaysOncePerPeriod() public view { assertEq(handler.doubleCharges(), 0); }
 
     /// At most one fee per user (and asset) per FEE_COOLDOWN, however many deposits and moves (second AI audit, M-1).
-    function invariant_oneFeePerCooldown() public view { assertEq(handler.cooldownBreaks(), 0); }
+    /// A redeposit credit only ever comes from money that paid in the period (re-review, L2).
+    function invariant_creditOnlyFromPaidMoney() public view { assertEq(handler.creditFromNothing(), 0); }
 
     /// Fee-bearing calls per account are at least MIN_INTERVAL apart.
     function invariant_minInterval() public view { assertEq(handler.intervalBreaks(), 0); }
