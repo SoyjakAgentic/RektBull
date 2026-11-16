@@ -86,7 +86,7 @@ async function account(user, { ms = 4000 } = {}) {
   user = user.toLowerCase();
   const [state, orders] = await Promise.all([
     part(() => hl.info({ type: 'clearinghouseState', user }, { ms })),
-    part(() => hl.info({ type: 'frontendOpenOrders', user }, { ms: Math.max(ms, 8000) })),
+    part(() => hl.info({ type: 'frontendOpenOrders', user }, { ms: ms && Math.max(ms, 8000) })),
   ]);
   const out = { user, network: hl.network(), source: hl.SOURCE };
   if (state.ok) {

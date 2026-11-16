@@ -28,6 +28,7 @@ const PAGES = {
   '/governance': ['DAO Votes Decoded: Snapshot and Onchain | RektBull', 'See the DAO votes open for your wallet, with each proposal\'s actions decoded and flagged, and vote from your own wallet. Never a recommendation.'],
   '/launches': ['New Meme Coins, Checked for Rugs and Bundles | RektBull', 'New tokens on Base, Ethereum, Arbitrum and BNB Chain with their warning signs. Buying runs a honeypot, tax and bundle check first; your wallet signs.'],
   '/trade': ['Trade Crypto With Limits You Set | RektBull', 'Every token checked before you buy, within limits you set. Your wallet signs each trade, or gives a limited permission you can revoke any time.'],
+  '/perps': ['Hyperliquid Perps From Your Own Account | RektBull', 'Trade Hyperliquid perpetuals from your own account: live markets, positions and liquidation prices. Trading keys can trade but never withdraw.'],
   '/developers': ['Crypto Safety API and MCP Server for Agents | RektBull', 'Give your app or AI agent RektBull\'s checks: a remote MCP server, a REST API with every fact sourced, and pay-per-call with x402 in USDC.'],
   '/about': ['About RektBull: How the Checks Work and Our Sources', 'Who runs RektBull, how each check works, every data source it uses, how the weekly digest is written and reviewed, and what RektBull never does.'],
   '/privacy': ['Privacy Policy | RektBull', 'What RektBull collects, why, how long it keeps it, who else sees it, and how to download or delete your data. RektBull never holds your keys.'],
@@ -37,10 +38,10 @@ const PAGES = {
 const NAMES = {
   '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'AI agents', '/markets': 'Markets',
   '/opportunities': 'Opportunities', '/portfolio': 'Portfolio', '/research': 'Research', '/find': 'Find money', '/governance': 'Governance',
-  '/trade': 'Trade', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
+  '/trade': 'Trade', '/perps': 'Perps', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
 };
 /** Pages that sit under another in the menu, for breadcrumbs. */
-const PARENT = { '/find': '/opportunities', '/governance': '/opportunities' };
+const PARENT = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade' };
 
 // Pages that are served but not listed or indexed.
 const UNLISTED = {
@@ -122,6 +123,12 @@ const FAQ = {
     ['Can RektBull move my money?', 'No. Your wallet signs each trade, or gives a limited permission written onchain: a most-per-trade and most-per-day, for up to 30 days, that only lets trades go back into your own wallet. RektBull can never withdraw, and you can revoke the permission at any time.'],
     ['What is checked before a trade?', 'The token you\'re buying (sellability, taxes, owner powers, holders) and the trade against your limits, such as the most slippage you accept.'],
     ['What does a trade cost?', 'A fee that can never exceed 1% of the trade, a cap enforced by the Trade Router contract itself, plus the network\'s own fee.'],
+  ],
+  '/perps': [
+    ['Can RektBull withdraw from my Hyperliquid account?', 'No. Orders are signed by a trading key (Hyperliquid calls it an agent wallet) that your own wallet approves. Hyperliquid lets such a key place and cancel orders and set leverage, and never withdraw or transfer. Deposits and withdrawals are made on Hyperliquid itself, from your own wallet.'],
+    ['Where is the trading key kept?', 'For trades you place yourself, the key is made in your browser and stays there: it is never sent to RektBull, and only signatures leave the page. It expires after 30 days, and you can end it at any time.'],
+    ['Where do the prices and positions come from?', 'From Hyperliquid\'s own info API, read when the page loads and every few seconds after. If a figure can\'t be read, the page says so instead of showing an old or estimated one.'],
+    ['How much can I lose?', 'Perpetuals use leverage, so a position can lose all its margin, and with cross margin a losing position draws on the rest of the account. Keep in the account only what you are prepared to lose.'],
   ],
   '/developers': [
     ['How do I add RektBull to Claude or another MCP client?', 'Add the MCP server address shown on this page (it ends in /mcp). In Claude Code: <code>claude mcp add --transport http rektbull https://rektbull.com/mcp</code>. No key is needed for the free tools.'],
@@ -256,7 +263,7 @@ function llms(base, digests = []) {
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/launches'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/launches'].map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),
