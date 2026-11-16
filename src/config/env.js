@@ -67,6 +67,19 @@ const env = {
   devSessionKey: process.env.DEV_SESSION_KEY || '',
   tradeTickMs: int(process.env.TRADE_TICK_MS, 15000),
 
+  // Hyperliquid perps (docs/HYPERLIQUID.md). Off until switched on.
+  hlEnabled: process.env.HL_ENABLED === 'true',
+  hlNetwork: process.env.HL_NETWORK === 'testnet' ? 'testnet' : 'mainnet',
+  // RektBull's share of Hyperliquid's 1,200 weight a minute per IP; reads are refused past it.
+  hlWeightPerMinute: int(process.env.HL_WEIGHT_PER_MINUTE, 1000),
+  // The builder code: RektBull's PUBLIC address that Hyperliquid pays the fee to on each fill, and the fee in
+  // tenths of a basis point (10 = 0.01%). Unset address: orders carry no builder field and no RektBull fee.
+  hlBuilderAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.HL_BUILDER_ADDRESS || '') ? process.env.HL_BUILDER_ADDRESS.toLowerCase() : '',
+  hlBuilderFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_BUILDER_FEE_TENTHS_BPS, 10))), // Hyperliquid's cap on perps is 0.1% (100)
+  // Automatic trading only opens positions in markets at least this deep (both must hold).
+  hlAutoMinOpenInterestUsd: int(process.env.HL_AUTO_MIN_OPEN_INTEREST_USD, 5000000),
+  hlAutoMinDayVolumeUsd: int(process.env.HL_AUTO_MIN_DAY_VOLUME_USD, 5000000),
+
   // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
   // transfer the user signs next to the claim (receive-only wallet; unset = no fee).
   claimFeeWalletEvm: (process.env.CLAIM_FEE_WALLET_EVM || '').toLowerCase(),
