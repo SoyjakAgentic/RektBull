@@ -12,17 +12,21 @@
 //! - The program holds nothing between transactions. It has no admin and no settings; after the audit its
 //!   upgrade authority is removed, so nobody can change it.
 //!
-//! Two program addresses with separate jobs:
+//! Two kinds of program address with separate jobs:
 //! - `delegate` is the only address users approve. It signs one thing: moving a fill's input from the
-//!   order's owner to `transit`. It never signs anything a venue sees.
-//! - `transit` signs the trade on the venue. It is never approved by anyone, so a venue call signed by it
-//!   can only reach what this fill put in it.
+//!   order's owner to that owner's `transit`. It never signs anything a venue sees.
+//! - `transit` (one per owner: ["transit", owner]) signs the trade on the venue. It is never approved by
+//!   anyone, so a venue call signed by it can only reach what this fill put in it, and only that owner's.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
     system_instruction,
+};
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{transfer_fee::TransferFeeAmount, BaseStateWithExtensions, StateWithExtensions},
+    state::Account as SplAccount,
 };
 use anchor_spl::token_interface::{
     self, CloseAccount, Mint, TokenAccount, TokenInterface, TransferChecked,
@@ -74,6 +78,11 @@ pub const JUPITER_SWAPS: [[u8; 8]; 6] = [
     [187, 100, 250, 204, 49, 196, 175, 20],  // route_v2
     [209, 152, 83, 147, 124, 254, 216, 233], // shared_accounts_route_v2
 ];
+
+/// pump.fun's and PumpSwap's close_user_volume_accumulator (the same Anchor id on both): the one other venue
+/// instruction this program sends, from close_volume_account only, so an owner gets back the rent their transit's
+/// volume accounts hold (re-review, N-1). Never from a fill.
+pub const CLOSE_VOLUME_ACCOUNT: [u8; 8] = [249, 69, 164, 218, 150, 103, 84, 138];
 
 /// Whether `data` is one of `venue`'s swap instructions.
 pub fn is_swap(venue: &Pubkey, data: &[u8]) -> bool {
@@ -298,12 +307,15 @@ pub mod rektbull_orders {
         if unwrap_in {
             let left = a.transit.lamports();
             let used = sol_before.saturating_sub(left);
-            fee = fee_on_used(used).min(left);
+            fee = fee_on_used(used);
+            // The fill must leave room for the fee: a venue that used everything can't make it fee-free (re-review, N-2).
+            require!(fee <= left, OrderError::NoRoomForFee);
             send_lamports(&a.transit, &a.fee_wallet.to_account_info(), &a.system_program, fee, transit_seeds)?;
         } else if fee_on_input {
             t_in.reload()?;
             let used = in_before.saturating_sub(t_in.amount);
-            fee = fee_on_used(used).min(t_in.amount);
+            fee = fee_on_used(used);
+            require!(fee <= t_in.amount, OrderError::NoRoomForFee);
             let fee_in = a.fee_in.as_ref().ok_or(OrderError::BadFill)?;
             require_keys_eq!(fee_in.mint, order.input_mint, OrderError::BadFill);
             require_keys_eq!(fee_in.owner, FEE_WALLET, OrderError::BadFill);
@@ -390,6 +402,9 @@ pub mod rektbull_orders {
                     out_mint.decimals,
                 )?;
             }
+            // Transit's account for the output is empty now: its rent goes back to the executor who opened it
+            // (re-review, N-1), when the token program lets it close.
+            close_if_empty(transit_out, out_program, &a.executor.to_account_info(), &a.transit, transit_seeds)?;
             // Unused native input (a curve buy that spent less) goes back to the owner as SOL.
             let rest = a.transit.lamports();
             if rest > 0 {
@@ -411,6 +426,8 @@ pub mod rektbull_orders {
                     a.input_mint.decimals,
                 )?;
             }
+            // Empty now: its rent goes back to the executor who opened it (re-review, N-1).
+            close_if_empty(&a.transit_in, &a.input_token_program, &a.executor.to_account_info(), &a.transit, transit_seeds)?;
         }
 
         // 5. The user's price, on what actually reached them (a token that taxes transfers can't leave
@@ -435,6 +452,57 @@ pub mod rektbull_orders {
         }
         Ok(())
     }
+
+    /// The owner closes one of their transit's volume accounts on pump.fun or PumpSwap (created, at the owner's
+    /// cost, in their first order transaction) and gets its rent back (re-review, N-1). Only the owner can, and
+    /// only that one instruction can be sent: its accounts are the remaining accounts, with transit as the user.
+    pub fn close_volume_account<'info>(ctx: Context<'_, '_, 'info, 'info, CloseVolume<'info>>, venue_data: Vec<u8>) -> Result<()> {
+        let a = &ctx.accounts;
+        require!(*a.venue.key == PUMP_FUN || *a.venue.key == PUMP_AMM, OrderError::VenueNotAllowed);
+        require!(a.venue.executable, OrderError::VenueNotAllowed);
+        require!(venue_data.len() == 8 && venue_data[..] == CLOSE_VOLUME_ACCOUNT[..], OrderError::VenueNotAllowed);
+        let owner_key = a.owner.key();
+        let transit_seeds: &[&[u8]] = &[TRANSIT_SEED, owner_key.as_ref(), &[ctx.bumps.transit]];
+        let metas: Vec<AccountMeta> = ctx
+            .remaining_accounts
+            .iter()
+            .map(|acc| AccountMeta { pubkey: *acc.key, is_signer: *acc.key == a.transit.key(), is_writable: acc.is_writable })
+            .collect();
+        let mut infos: Vec<AccountInfo<'info>> = ctx.remaining_accounts.to_vec();
+        infos.push(a.transit.to_account_info());
+        infos.push(a.venue.to_account_info());
+        invoke_signed(&Instruction { program_id: a.venue.key(), accounts: metas, data: venue_data }, &infos, &[transit_seeds])?;
+        // The rent came back to transit, which holds nothing between transactions: all of it goes to the owner.
+        send_lamports(&a.transit, &a.owner.to_account_info(), &a.system_program, a.transit.lamports(), transit_seeds)?;
+        Ok(())
+    }
+}
+
+/// Closes an empty transit token account, sending its rent to `to`, when the token program allows it: a Token-2022
+/// account holding withheld transfer fees can't be closed, and is left open rather than failing the fill.
+fn close_if_empty<'info>(
+    acc: &InterfaceAccount<'info, TokenAccount>,
+    token_program: &Interface<'info, TokenInterface>,
+    to: &AccountInfo<'info>,
+    transit: &UncheckedAccount<'info>,
+    seeds: &[&[u8]],
+) -> Result<()> {
+    let info = acc.to_account_info();
+    let closable = {
+        let data = info.try_borrow_data()?;
+        match StateWithExtensions::<SplAccount>::unpack(&data) {
+            Ok(s) => s.base.amount == 0 && s.get_extension::<TransferFeeAmount>().map(|t| u64::from(t.withheld_amount) == 0).unwrap_or(true),
+            Err(_) => false,
+        }
+    };
+    if closable {
+        token_interface::close_account(CpiContext::new_with_signer(
+            token_program.to_account_info(),
+            CloseAccount { account: info, destination: to.clone(), authority: transit.to_account_info() },
+            &[seeds],
+        ))?;
+    }
+    Ok(())
 }
 
 fn send_lamports<'info>(
@@ -550,6 +618,18 @@ pub struct Fill<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct CloseVolume<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    /// CHECK: the owner's transit address (a system account, empty between transactions).
+    #[account(mut, seeds = [TRANSIT_SEED, owner.key().as_ref()], bump)]
+    pub transit: UncheckedAccount<'info>,
+    /// CHECK: pump.fun or PumpSwap, checked in the handler.
+    pub venue: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[event]
 pub struct OrderPlaced { pub order: Pubkey, pub owner: Pubkey, pub input_mint: Pubkey, pub output_mint: Pubkey, pub amount_in: u64, pub min_amount_out: u64, pub valid_until: i64 }
 #[event]
@@ -583,6 +663,8 @@ pub enum OrderError {
     Leftover,
     #[msg("arithmetic")]
     Math,
+    #[msg("the venue used too much to leave room for the fee")]
+    NoRoomForFee,
 }
 
 #[cfg(test)]
@@ -607,6 +689,27 @@ mod tests {
         for x in [1u64, 7, 101, 12_345, 1 << 40] {
             assert!(fee_of(x) * 100 <= x);
         }
+    }
+
+    #[test]
+    fn fee_on_used_input_is_at_most_one_percent_of_used_plus_fee() {
+        // The fee when the venue used `used`: FEE_BPS of (used + fee), rounded down (re-review, N-5).
+        assert_eq!(fee_on_used(9_900), 100);
+        assert_eq!(fee_on_used(5_000), 50);
+        assert_eq!(fee_on_used(98), 0);
+        assert_eq!(fee_on_used(0), 0);
+        for used in [1u64, 99, 9_999, 123_457, 1 << 40, u64::MAX / 2] {
+            let fee = fee_on_used(used);
+            assert!((fee as u128) * 100 <= used as u128 + fee as u128, "at most 1% of what the user spent");
+            assert!(fee_of(used + fee) <= fee + 1, "the same as fee_of on the whole, within rounding");
+        }
+    }
+
+    #[test]
+    fn close_volume_account_id_is_the_venues_own() {
+        use sha2::{Digest, Sha256};
+        assert_eq!(Sha256::digest(b"global:close_user_volume_accumulator")[..8], CLOSE_VOLUME_ACCOUNT[..]);
+        assert!(!is_swap(&PUMP_FUN, &CLOSE_VOLUME_ACCOUNT) && !is_swap(&PUMP_AMM, &CLOSE_VOLUME_ACCOUNT), "never from a fill");
     }
 
     #[test]

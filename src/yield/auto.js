@@ -97,7 +97,9 @@ function setupCalls(chainId, { limits = {}, days = 30 } = {}) {
   }
   const assets = Object.keys(limits).filter(a => venues.TOKENS[chain][a]);
   if (assets.length) {
-    const until = Math.floor(Date.now() / 1000) + Math.min(days, 30) * 86400;
+    // 10 minutes short: the Yield Router refuses limits longer than 30 days (MAX_GRANT), and a clock ahead of the
+    // chain's mustn't push a full 30 days past it.
+    const until = Math.floor(Date.now() / 1000) + Math.min(days, 30) * 86400 - 600;
     calls.push({
       to: router, value: '0x0', label: `Set your limits: ${assets.map(a => `${limits[a]} ${a}`).join(', ')} per move, until ${new Date(until * 1000).toISOString().slice(0, 10)}`,
       data: ROUTER.encodeFunctionData('setLimits', [assets.map(a => venues.TOKENS[chain][a].address), assets.map(a => ethers.parseUnits(String(limits[a]), venues.TOKENS[chain][a].decimals)), until]),

@@ -90,9 +90,12 @@ impl Chain {
         self.svm.set_account(a(&p), Account { lamports, data: vec![], owner: a(&system_program::ID), executable: false, rent_epoch: 0 }).unwrap();
     }
     fn exists(&self, p: Pubkey) -> bool { self.svm.get_account(&a(&p)).map(|x| x.lamports > 0).unwrap_or(false) }
+    /// A token account's amount (the same field in Token and Token-2022); 0 for an account that was closed.
     fn token_balance(&self, p: Pubkey) -> u64 {
-        let acc = self.svm.get_account(&a(&p)).unwrap();
-        u64::from_le_bytes(acc.data[64..72].try_into().unwrap()) // the amount field, the same in Token and Token-2022
+        match self.svm.get_account(&a(&p)) {
+            Some(acc) if acc.data.len() >= 72 => u64::from_le_bytes(acc.data[64..72].try_into().unwrap()),
+            _ => 0,
+        }
     }
     fn mint_program(&self, mint: Pubkey) -> Pubkey { pk(&self.svm.get_account(&a(&mint)).expect("mint copied").owner) }
     /// A version-0 transaction with the given lookup tables, checked against the packet limit.
@@ -177,6 +180,12 @@ struct Fill {
 
 impl Chain {
     fn fill(&mut self, f: &Fill, venue: Pubkey, venue_data: Vec<u8>, venue_accounts: Vec<AnchorMeta>, tables: &[Pubkey]) -> Result<usize, String> {
+        // A fill closes transit's emptied token accounts (their rent back to the executor), so the executor opens them
+        // again before each fill, as the trade service does (idempotent).
+        if !self.exists(f.transit_in) { self.ata_of(transit(), f.input_mint); }
+        if let Some(to) = f.transit_out {
+            if !self.exists(to) { self.ata_of(transit(), f.output_mint.unwrap_or(WSOL_MINT)); }
+        }
         let input_program = self.mint_program(f.input_mint);
         let mut metas = rektbull_orders::accounts::Fill {
             executor: key(&self.exec), order: f.order, owner: key(&self.user), delegate: delegate(), transit: transit(),
