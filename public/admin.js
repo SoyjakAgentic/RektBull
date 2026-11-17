@@ -1,4 +1,4 @@
-/* The admin panel: dashboard and health, emergency stops, prices, AI agents, external services, accounts, tools and the banner.
+/* The admin panel: dashboard and health, emergency stops, prices, AI agents, region blocks, external services, accounts, tools and the banner.
  * Every change asks for a reason and is logged on the server. */
 (function () {
   'use strict';
@@ -35,6 +35,20 @@
         class: s.on ? 'btn' : 'btn danger', type: 'button',
         onclick: () => { if (s.on || window.confirm(`Stop ${s.name.toLowerCase()} now?`)) change('stops-msg', `${s.on ? 'Resume' : 'Stop'}: ${s.name}`, 'PUT', `/v1/admin/stops/${s.id}`, { on: !s.on }); },
       }, s.on ? 'Resume' : 'Stop now'))));
+  }
+
+  function regions(r) {
+    $('regions-header').replaceChildren(el('span', { class: r.header ? 'muted' : 'bad' }, r.note), r.header ? ` Your request: ${r.your_country || 'no country'}.` : '');
+    $('regions').replaceChildren(...r.venues.map(v => {
+      const input = el('input', { type: 'text', value: v.countries.join(', '), size: '40', 'aria-label': `${v.name}: blocked countries` });
+      return el('div', { class: 'row' },
+        el('p', {}, el('strong', {}, v.name), ' ', el('span', { class: `tag${v.countries.length ? ' bad' : ''}` }, v.countries.length ? `${v.countries.length} blocked` : 'no blocks')),
+        el('label', { class: 'inline' }, input),
+        el('button', { class: 'btn', type: 'button', onclick: () => {
+          const list = input.value.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(Boolean);
+          change('regions-msg', `${v.name}: block ${list.length ? list.join(', ') : 'no countries'}`, 'PUT', `/v1/admin/regions/${v.id}`, { countries: list });
+        } }, 'Save'));
+    }));
   }
 
   function prices(p) {
@@ -219,6 +233,7 @@
       $('panel').hidden = false;
       say('gate-msg', '');
       stops(o.stops); prices(o.prices); agents(o.agents); log(o.log);
+      regions(await api('GET', '/v1/admin/regions'));
       showTab(tab);
     } catch (err) {
       $('panel').hidden = true;

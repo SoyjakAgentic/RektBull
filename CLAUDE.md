@@ -5,8 +5,14 @@
   or fiat options), prepaid passes, and in-kind fees on claims,
   yield moves, four.meme curve buys paid in BNB and Solana trades paid in SOL
   (a share of what's claimed, moved, spent or sold, in a plain transfer the
-  user signs next to it; see docs/PAYMENTS.md). No recurring pulls and no
-  token approvals asked of users for billing.
+  user signs next to it; see docs/PAYMENTS.md), and a Hyperliquid builder
+  code on perps (docs/HYPERLIQUID.md): the user signs `approveBuilderFee`
+  once, a most-per-fill rate for RektBull's builder address, and Hyperliquid
+  takes the fee (`HL_BUILDER_FEE_TENTHS_BPS`, 0.01% by default) from fills
+  only. That is a capped fee-on-fill permission, not a token approval and not
+  a recurring pull: nothing is taken unless an order the user or their agent
+  placed fills. No recurring pulls and no token approvals asked of users for
+  billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the
   server must never receive an xprv or mnemonic.
@@ -21,6 +27,14 @@
   docs/SOLANA_ORDERS.md).
   Never to any address RektBull controls. RektBull's own keys live in Google Cloud KMS, used only by the
   trade service.
+  **The one exception, approved by the owner: Hyperliquid perps** (docs/HYPERLIQUID.md). Hyperliquid
+  has no onchain spend limits for agents, so the permission is the user's `approveAgent` of RektBull's
+  agent wallet ("rektbull-auto", KMS key, at most 30 days, revocable). Hyperliquid enforces that it can
+  trade and never withdraw or transfer. The user's per-trade, 24-hour, leverage and market limits are
+  enforced by the trade service (`src/hyperliquid/auto.js`), **not onchain**, and the page must say so,
+  and that the most a user can lose is the margin in their Hyperliquid account. Every automatic order
+  is immediate-or-cancel within `HL_AUTO_PRICE_BAND_BPS` of the mark, isolated margin, deep markets
+  only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
   free uses on failure, settle x402 only after the run succeeds. In-kind fees

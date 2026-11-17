@@ -682,6 +682,7 @@ router.delete('/v1/extension/tokens/:jti', requireAuth, async (req, res) => {
 
 router.use(require('./trading'));
 router.use(require('./polymarket'));
+router.use(require('./hyperliquid'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────
 router.get('/v1/admin/provider-usage', requireAuth, requireAdmin, async (_req, res) => res.json({ usage: await usage.report(), ai: await claude.usageReport() }));

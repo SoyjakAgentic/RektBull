@@ -119,6 +119,16 @@ router.post('/v1/admin/accounts/:q/refund', change, async (req, res) => res.json
 router.post('/v1/admin/accounts/:q/pass', change, async (req, res) => res.json(await accounts.extendPass(req.params.q, Number(req.body?.days), { wallet: who(req), reason: reasonOf(req) })));
 router.put('/v1/admin/accounts/:q/blocked', change, async (req, res) => res.json(await accounts.setBlocked(req.params.q, req.body?.blocked, { wallet: who(req), reason: reasonOf(req) })));
 
+/* ── region blocks per trading venue: a country list, never a key or money ── */
+
+const regions = require('../compliance/regions');
+router.get('/v1/admin/regions', admin, async (req, res) => { await settings.reload(); res.json(regions.adminList(req)); });
+router.put('/v1/admin/regions/:venue', change, async (req, res) => {
+  const reason = reasonOf(req);
+  await regions.set(req.params.venue, req.body?.countries, { wallet: who(req), reason });
+  res.json(regions.adminList(req));
+});
+
 /* ── the site banner ── */
 
 const banner = require('../admin/banner');

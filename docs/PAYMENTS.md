@@ -11,6 +11,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
 | **Yield move fee** | Each yield move RektBull prepares: 0.1% of the amount moved, in the moved asset (exits to the wallet are free) | No (proposals need Safety Pro) | `yield/proposals.js` |
+| **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
 
 ## Order a run is paid in
@@ -209,6 +210,41 @@ the trade wherever the trade has a place for it:
 
 No fee can be forced onchain: anyone can call 0x, four.meme or Jupiter directly. The
 fee is what RektBull's checks and the prepared trade cost.
+
+## Perps fees (Hyperliquid builder code)
+
+Perp orders sent through RektBull ([HYPERLIQUID.md](HYPERLIQUID.md)) carry a
+**builder code**: `builder: { b, f }` in the order, where `b` is RektBull's
+builder address (`HL_BUILDER_ADDRESS`, a public address only) and `f` the fee
+in tenths of a basis point (`HL_BUILDER_FEE_TENTHS_BPS`, default 10 = 0.01%).
+The default is what Axiom charges on Hyperliquid ("Axiom takes a 0.01% fee per
+transaction", docs.axiom.trade/perpetuals/deposit, read 16 November 2026).
+
+- **The user approves it once.** Their wallet signs Hyperliquid's
+  `approveBuilderFee` for RektBull's builder address with a **maximum rate**
+  (the same 0.01%). Hyperliquid refuses any order whose fee is above what the
+  user approved, and caps builder fees on perps at 0.1% whatever is approved.
+  It is not a token approval (no token can be pulled with it) and not a
+  recurring pull.
+- **Paid only on fills.** Hyperliquid takes the fee from the user's account
+  when an order fills, and pays it to the builder address. An order that is
+  cancelled, expires or is refused costs nothing: "charge only for work
+  delivered" holds without the payment gate.
+- **Manual and automatic orders alike.** The relay refuses an order that can
+  open a position unless it names RektBull's builder at exactly RektBull's
+  rate, and refuses any other builder address. Orders that can only close a
+  position (reduce-only) may go without it, so a position can always be closed.
+- **Unset address, no fee.** With `HL_BUILDER_ADDRESS` unset, orders are sent
+  with no builder field, and `GET /v1/hyperliquid/config` says so.
+- **The user can take it back** at any time: on the Perps page (an approval
+  for 0%), or on Hyperliquid itself.
+- **What the builder address needs.** Hyperliquid requires a builder to hold
+  at least **100 USDC in perps account value** before it can collect; fees
+  are claimed through Hyperliquid's referral reward claim. Keep that address
+  in a hardware wallet or a Safe: RektBull's servers never hold its key.
+  A user can have at most 10 builder approvals at once.
+- Fees collected show in Hyperliquid's `referral` info for the builder
+  address, and each fill's `builderFee` in the user's fills.
 
 ## NOWPayments (a second checkout)
 

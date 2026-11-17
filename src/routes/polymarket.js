@@ -11,6 +11,7 @@ const markets = require('../polymarket/markets');
 const desk = require('../polymarket/desk');
 const wallets = require('../polymarket/wallets');
 const { requireAuth, requireEvmWallet } = require('../middleware/auth');
+const regions = require('../compliance/regions');
 
 const router = express.Router();
 
@@ -65,7 +66,8 @@ router.get('/v1/polymarket/positions', read(async (req, res) => {
  * the page asks https://polymarket.com/api/geoblock before it offers to trade.)
  */
 function regionGate(req, res, next) {
-  // REGION_CHECK: blockedFor(req, 'polymarket')
+  const r = regions.blockedFor(req, 'polymarket');
+  if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
   next();
 }
 
