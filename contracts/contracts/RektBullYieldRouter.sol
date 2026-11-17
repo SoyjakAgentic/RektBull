@@ -73,16 +73,19 @@ interface ISsrOracle {
  *             distress shows the highest rate);
  *           - a deposit only goes to a venue paying within MIN_GAIN_BPS of the
  *             best venue for that asset, before and after the deposit;
- *           - the fee is FEE_BPS (at most 0.1%) of what's deposited or moved,
- *             paid only to FEE_WALLET, at most once per account and asset per
- *             FEE_COOLDOWN, the user's break-even: the time the smallest move
- *             allowed (MIN_GAIN_BPS more) takes to earn back the fee, so
- *             RektBull can't charge again before a move has paid for itself,
- *             and churning (rates can be pushed within a transaction with a
- *             flash loan: second AI audit, M-1) costs at most one fee per
- *             break-even period. Withdrawals to the
- *             caller are free, and putting the same amount back within
- *             REDEPOSIT_WINDOW pays no fee;
+ *           - the fee is FEE_BPS (at most 0.1%), paid only to FEE_WALLET, on
+ *             money that hasn't paid it in the current fee period: a period
+ *             lasts FEE_COOLDOWN, the user's break-even (the time the smallest
+ *             move allowed, MIN_GAIN_BPS more, takes to earn back the fee).
+ *             Within a period the router keeps how much of the account's money
+ *             in its positions has paid (paidHeld): a deposit pays on new
+ *             money; a move is free up to paidHeld and pays only on the rest;
+ *             a withdrawal turns the paid money it takes out into a credit,
+ *             and putting that back is free. So the same money pays at most
+ *             once per period however often it's moved (churning with a flash
+ *             loan: second AI audit, M-1), dust can't make a period free, and
+ *             a credit can only come from money that paid (re-review, L1, L2).
+ *             Withdrawals to the caller are free;
  *           - an Aave withdrawal (or move out of Aave) that lowers the health
  *             factor of an account borrowing on Aave can't leave it below
  *             MIN_HEALTH_FACTOR, so a hacked RektBull can't push it toward
@@ -108,11 +111,11 @@ contract RektBullYieldRouter is ReentrancyGuard {
     uint16 public constant MAX_FEE_BPS = 10; // 0.1%: the most this router can ever charge
     uint16 public constant MAX_LOSS_BPS = 10; // what a deposit may lose to rounding or a vault's conversion
     uint256 private constant SECONDS_PER_YEAR = 31_536_000;
-    /// @notice Putting back what was withdrawn through this router, within this long, pays no fee.
-    uint256 public constant REDEPOSIT_WINDOW = 7 days;
-    /// @notice At most one fee per account and asset per this long, however many deposits and moves: the user's
-    ///         break-even, FEE_BPS / MIN_GAIN_BPS of a year (0.1% / 1 point = 36.5 days).
+    /// @notice How long a fee period lasts: each unit of an asset pays the fee at most once per period. The user's
+    ///         break-even, FEE_BPS / MIN_GAIN_BPS of a year (0.1% / 1 point = 36.5 days), and never under 30 days.
     uint256 public immutable FEE_COOLDOWN;
+    /// @notice The longest the caller's limits may run: a permission is renewed at least this often.
+    uint256 public constant MAX_GRANT = 30 days;
     /// @notice No deposit or move into a venue paying more than this (APR, 18 decimals): 25%.
     uint256 public constant MAX_RATE = 0.25e18;
     /// @notice The lowest Aave health factor (1e18 = 1.0) a router-driven Aave exit may leave a borrowing account at.
@@ -141,11 +144,11 @@ contract RektBullYieldRouter is ReentrancyGuard {
     mapping(address => uint64) public validUntil;
     mapping(address => mapping(address => uint256)) public maxPerMove; // account => asset => units
     mapping(address => uint256) public lastMoveAt;
-    /// @notice account => asset => when a fee was last charged.
-    mapping(address => mapping(address => uint256)) public lastFeeAt;
-    /// @notice account => asset => what was withdrawn through this router and may be put back without a fee, and until when.
+    /// @notice account => asset => when the current fee period began (its first fee); in it, how much of the
+    ///         account's money in positions has paid the fee, and how much paid money was withdrawn and may be put back free.
+    mapping(address => mapping(address => uint256)) public feePeriodStart;
+    mapping(address => mapping(address => uint256)) public paidHeld;
     mapping(address => mapping(address => uint256)) public redepositCredit;
-    mapping(address => mapping(address => uint256)) public redepositUntil;
 
     event LimitsSet(address indexed account, address[] assets, uint256[] maxPerMove, uint64 validUntil);
     event Revoked(address indexed account);
@@ -166,12 +169,15 @@ contract RektBullYieldRouter is ReentrancyGuard {
     error RateTooHigh(uint256 rate);
 
     constructor(address feeWallet, uint16 feeBps, uint16 minGainBps, uint32 minInterval, Venue[] memory list) {
-        if (feeWallet == address(0) || feeBps > MAX_FEE_BPS || minGainBps == 0 || minInterval < 1 hours || list.length == 0) revert BadConfig();
+        // A minimum gain at or above MAX_RATE would make every move impossible (re-review, L4).
+        if (feeWallet == address(0) || feeBps > MAX_FEE_BPS || minGainBps == 0 || uint256(minGainBps) * 1e14 >= MAX_RATE || minInterval < 1 hours || list.length == 0) revert BadConfig();
         FEE_WALLET = feeWallet;
         FEE_BPS = feeBps;
         MIN_GAIN_BPS = minGainBps;
         MIN_INTERVAL = minInterval;
         FEE_COOLDOWN = uint256(feeBps) * 365 days / minGainBps;
+        // At least one 30-day permission long, so a permission sees at most one fee on the same money (re-review, L4).
+        if (feeBps != 0 && FEE_COOLDOWN < MAX_GRANT) revert BadConfig();
         for (uint256 i; i < list.length; ++i) {
             Venue memory v = list[i];
             if (v.kind == Kind.None || v.target == address(0) || v.asset == address(0) || v.position == address(0)) revert BadConfig();
@@ -195,7 +201,7 @@ contract RektBullYieldRouter is ReentrancyGuard {
 
     /// @notice Sets the caller's per-asset limits and expiry. A RektBull permission must not allow this method.
     function setLimits(address[] calldata assets, uint256[] calldata limits, uint64 until) external {
-        if (assets.length != limits.length || assets.length == 0 || until <= block.timestamp) revert BadConfig();
+        if (assets.length != limits.length || assets.length == 0 || until <= block.timestamp || until > block.timestamp + MAX_GRANT) revert BadConfig();
         for (uint256 i; i < assets.length; ++i) maxPerMove[msg.sender][assets[i]] = limits[i];
         validUntil[msg.sender] = until;
         emit LimitsSet(msg.sender, assets, limits, until);
@@ -239,10 +245,13 @@ contract RektBullYieldRouter is ReentrancyGuard {
         _checkLimits(account, v.asset, amount);
         _checkBest(id, v.asset);
         IERC20(v.asset).safeTransferFrom(account, address(this), amount);
-        // What was withdrawn through this router and is put back within the window pays no fee.
-        uint256 free = block.timestamp < redepositUntil[account][v.asset] ? redepositCredit[account][v.asset] : 0;
-        if (free > amount) free = amount;
-        if (free > 0) redepositCredit[account][v.asset] -= free;
+        // Paid money withdrawn in this period comes back free; the rest is new money and pays.
+        (bool current,, uint256 credit) = _period(account, v.asset);
+        uint256 free = current ? (credit < amount ? credit : amount) : 0;
+        if (free > 0) {
+            redepositCredit[account][v.asset] = credit - free;
+            paidHeld[account][v.asset] += free;
+        }
         uint256 fee = _takeFee(account, v.asset, amount - free);
         _depositFor(v, id, account, amount - fee);
         _checkBest(id, v.asset); // still the best (within MIN_GAIN_BPS) with this deposit in it
@@ -265,7 +274,10 @@ contract RektBullYieldRouter is ReentrancyGuard {
         uint256 start = IERC20(from.asset).balanceOf(address(this));
         _withdrawFrom(from, account, address(this), amount);
         uint256 received = IERC20(from.asset).balanceOf(address(this)) - start;
-        uint256 fee = _takeFee(account, from.asset, received);
+        // Money that has paid in this period moves free; only the part above it pays.
+        (bool current, uint256 held,) = _period(account, from.asset);
+        uint256 free = current ? (held < received ? held : received) : 0;
+        uint256 fee = _takeFee(account, from.asset, received - free);
         _depositFor(to, toId, account, received - fee);
         // Still better after the move: a large move lowers the rate it lands in and raises the one it left
         // (second AI audit, L-1).
@@ -283,10 +295,13 @@ contract RektBullYieldRouter is ReentrancyGuard {
         uint256 paid = IERC20(v.asset).balanceOf(account);
         _withdrawFrom(v, account, account, amount);
         paid = IERC20(v.asset).balanceOf(account) - paid;
-        // That much may be put back without a fee for REDEPOSIT_WINDOW (per asset, never more than came out).
-        uint256 credit = block.timestamp < redepositUntil[account][v.asset] ? redepositCredit[account][v.asset] : 0;
-        redepositCredit[account][v.asset] = credit + paid;
-        redepositUntil[account][v.asset] = block.timestamp + REDEPOSIT_WINDOW;
+        // The paid money that came out may be put back free within the period; money that never paid gives no credit.
+        (bool current, uint256 held, uint256 credit) = _period(account, v.asset);
+        if (current && held > 0) {
+            uint256 out = paid < held ? paid : held;
+            paidHeld[account][v.asset] = held - out;
+            redepositCredit[account][v.asset] = credit + out;
+        }
         emit Withdrawn(account, id, amount);
         _assertUnchanged(v.asset, start);
     }
@@ -315,12 +330,13 @@ contract RektBullYieldRouter is ReentrancyGuard {
     }
 
     /// @dev The best rate any venue for this asset pays right now. A venue whose rate can't be read is skipped,
-    ///      so one broken rate source can't block deposits everywhere (second AI audit, I-3).
+    ///      so one broken rate source can't block deposits everywhere (second AI audit, I-3); so is one above
+    ///      MAX_RATE, which nothing may go into, so a venue in distress can't block deposits elsewhere (re-review, L3).
     function _bestRate(address asset) internal view returns (uint256 best) {
         for (uint256 i; i < venues.length; ++i) {
             if (venues[i].asset != asset) continue;
             try this.rateOf(i) returns (uint256 r) {
-                if (r > best) best = r;
+                if (r > best && r <= MAX_RATE) best = r;
             } catch {}
         }
     }
@@ -339,14 +355,30 @@ contract RektBullYieldRouter is ReentrancyGuard {
         if (toRate < fromRate + uint256(MIN_GAIN_BPS) * 1e14) revert NotBetter(fromRate, toRate);
     }
 
-    /// @dev FEE_BPS of amount, at most once per account and asset per FEE_COOLDOWN.
-    function _takeFee(address account, address asset, uint256 amount) internal returns (uint256 fee) {
-        if (amount == 0 || block.timestamp < lastFeeAt[account][asset] + FEE_COOLDOWN) return 0;
-        fee = amount * FEE_BPS / 10_000;
-        if (fee > 0) {
-            lastFeeAt[account][asset] = block.timestamp;
-            IERC20(asset).safeTransfer(FEE_WALLET, fee);
+    /// @dev Whether the account's fee period for this asset is running, and its paid money held and credit (both 0 when not).
+    function _period(address account, address asset) internal view returns (bool current, uint256 held, uint256 credit) {
+        uint256 start = feePeriodStart[account][asset];
+        current = start != 0 && block.timestamp < start + FEE_COOLDOWN;
+        if (current) {
+            held = paidHeld[account][asset];
+            credit = redepositCredit[account][asset];
         }
+    }
+
+    /// @dev FEE_BPS of amount (money that hasn't paid in the current period), which then counts as paid. The first fee
+    ///      after a period ends starts a new one. An amount whose fee rounds to zero pays nothing and counts as nothing,
+    ///      so dust can't buy free volume (re-review, L1).
+    function _takeFee(address account, address asset, uint256 amount) internal returns (uint256 fee) {
+        fee = amount * FEE_BPS / 10_000;
+        if (fee == 0) return 0;
+        (bool current,,) = _period(account, asset);
+        if (!current) {
+            feePeriodStart[account][asset] = block.timestamp;
+            paidHeld[account][asset] = 0;
+            redepositCredit[account][asset] = 0;
+        }
+        paidHeld[account][asset] += amount;
+        IERC20(asset).safeTransfer(FEE_WALLET, fee);
     }
 
     /// @dev Deposits amount from this router into venue v for account, and checks the position grew by it.

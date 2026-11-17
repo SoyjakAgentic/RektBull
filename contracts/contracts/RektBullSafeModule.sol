@@ -26,10 +26,11 @@ interface ISafe {
  *
  *         The owners stop it at any time with revoke() (a Safe transaction), or
  *         any single owner with revokeFor(); RektBull's session key can give a
- *         session up with renounce(). A session also ends by itself after at
- *         most 30 days. Disabling the module pauses trading but does not end
- *         the session: re-enabling it before the session expires brings it
- *         back, so revoke() is the stop (the app batches it with disabling).
+ *         session up with renounce(), or give up every session at once, for
+ *         good, with retire() (if the key is ever at risk). A session also ends
+ *         by itself after at most 30 days. Disabling the module pauses trading
+ *         but does not end the session: re-enabling it before the session
+ *         expires brings it back, so revoke() is the stop, not disabling alone.
  *         There is no owner or admin, and nothing can be upgraded.
  */
 contract RektBullSafeModule {
@@ -45,9 +46,12 @@ contract RektBullSafeModule {
 
     /// @notice safe => the session key allowed to trade for it, and until when.
     mapping(address => Session) public sessions;
+    /// @notice Keys that gave up all their sessions for good (retire()): they can't trade, and can't be named again.
+    mapping(address => bool) public retired;
 
     event SessionSet(address indexed safe, address indexed key, uint64 validUntil);
     event SessionRevoked(address indexed safe);
+    event KeyRetired(address indexed key);
 
     error BadSession();
     error NotSessionKey();
@@ -66,7 +70,7 @@ contract RektBullSafeModule {
     ///      an outsider (second AI audit, L-2).
     function setSession(address key, uint64 validUntil) external {
         if (msg.data.length != 4 + 32 + 32) revert NotAllowed();
-        if (key == address(0) || validUntil <= block.timestamp || validUntil > block.timestamp + MAX_SESSION) revert BadSession();
+        if (key == address(0) || retired[key] || validUntil <= block.timestamp || validUntil > block.timestamp + MAX_SESSION) revert BadSession();
         sessions[msg.sender] = Session(key, validUntil);
         emit SessionSet(msg.sender, key, validUntil);
     }
@@ -78,18 +82,32 @@ contract RektBullSafeModule {
     }
 
     /// @notice Any single owner of `safe` stops trading at once, without gathering the Safe's threshold.
+    /// @dev Exact calldata, as setSession: forwarded through a Safe's fallback handler, a nested Safe that owns `safe`
+    ///      would otherwise let an outsider end `safe`'s session (re-review, N-1).
     function revokeFor(address safe) external {
+        if (msg.data.length != 4 + 32) revert NotAllowed();
         if (!ISafe(safe).isOwner(msg.sender)) revert NotAllowed();
         _end(safe);
     }
 
-    /// @notice The session key gives up its session for `safe` (RektBull's kill switch if its key is ever at risk).
+    /// @notice The session key gives up its session for `safe`.
     function renounce(address safe) external {
+        if (msg.data.length != 4 + 32) revert NotAllowed();
         if (sessions[safe].key != msg.sender) revert NotSessionKey();
         _end(safe);
     }
 
+    /// @notice The caller, as a session key, gives up every session it has, for good, in one transaction: RektBull's
+    ///         kill switch if its key is ever at risk. A retired key can't trade and can't be named again, even by a
+    ///         setSession() signed earlier and still pending (re-review, N-2). It only ever removes power.
+    function retire() external {
+        retired[msg.sender] = true;
+        emit KeyRetired(msg.sender);
+    }
+
+    /// @dev Ends a session; the event only when there was one (re-review, N-4).
     function _end(address safe) internal {
+        if (sessions[safe].key == address(0)) return;
         delete sessions[safe];
         emit SessionRevoked(safe);
     }
@@ -97,7 +115,7 @@ contract RektBullSafeModule {
     /// @notice The session key trades for `safe`: exactly one call, to the router's swap.
     function swap(address safe, RektBullTradeRouter.SwapParams calldata p) external returns (uint256 amountOut) {
         Session memory s = sessions[safe];
-        if (s.key == address(0) || msg.sender != s.key) revert NotSessionKey();
+        if (s.key == address(0) || msg.sender != s.key || retired[s.key]) revert NotSessionKey();
         if (block.timestamp > s.validUntil) revert SessionExpired();
         (bool ok, bytes memory ret) = ISafe(safe).execTransactionFromModuleReturnData(
             address(ROUTER), 0, abi.encodeCall(RektBullTradeRouter.swap, (p)), CALL

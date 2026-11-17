@@ -144,10 +144,11 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     // Whatever the rates allow on the day (on this copy of Base the rates checked after the move refuse every leg),
     // the fee cooldown is the bound that always holds.
     assert.equal(await router.FEE_COOLDOWN(), BigInt(365 * DAY * 10 / 100), 'the cooldown is the break-even: 36.5 days at 0.1% and 1 point');
-    // One fee on what the position was worth when it paid: the interest it earned before the first move is new money
-    // (re-review L1), so the bound is 0.1% of the most it was worth (what's left plus what was paid), not of the start.
+    // The money pays once in the period; only interest it earned since (money that hasn't paid) can add to that.
+    // The fee is taken on the position as it is at the first move, interest included, and the fee itself leaves
+    // the position, so the bound is 0.1% of the most it was worth: what's left plus what was paid, or the start.
     const mostWorth = worthStart > worthEnd + fees ? worthStart : worthEnd + fees;
-    assert.ok(fees <= mostWorth / 1000n + 1n, `at most one 0.1% fee in the break-even period, not one a day: ${ethers.formatUnits(fees, 6)} USDC on at most ${ethers.formatUnits(mostWorth, 6)}`);
+    assert.ok(fees <= mostWorth / 1000n + 1n, `at most one 0.1% fee on the same money in the break-even period, not one a day: ${ethers.formatUnits(fees, 6)} USDC on at most ${ethers.formatUnits(mostWorth, 6)}`);
     assert.ok(fees < (worthStart * 2n) / 1000n, 'never a second fee: six moves cost less than two fees');
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
@@ -182,11 +183,11 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     assert.ok(hfAfter >= hf - 10n ** 15n, 'and the health factor is where it was');
   });
 
-  it('L-3 (the report\'s L-2): a one-unit withdrawal makes only one unit fee-free', async function () {
+  it('re-review L1 and L2: dust can\'t make a fee period free, and a credit only comes from money that paid', async function () {
     const { user } = await newUser(usdc(60000));
     // Where the router itself accepts this deposit now, best rate first, tried with a dry run (staticCall): live
     // rates move on the fork, and a deposit can move its venue's own rate (Compound's accrues its interest on
-    // the deposit, which can drop a quoted 5% to under 4%). The fee-free credit is per asset, not per venue.
+    // the deposit, which can drop a quoted 5% to under 4%).
     const best = async amount => {
       const ids = [AAVE, COMP, SPK];
       const rates = await Promise.all(ids.map(i => router.rateOf(i)));
@@ -195,25 +196,34 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
       }
       throw new Error('no venue accepts this deposit on the fork now');
     };
-    let held = await best(usdc(100));
-    await (await router.connect(user).deposit(held, usdc(100))).wait(); // pays 0.1 USDC
-    await advance(Number(await router.FEE_COOLDOWN()) + 1); // past the fee cooldown
-    await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait(); // a new 30-day permission
-    await (await router.connect(user).withdraw(held, 1n)).wait(); // one millionth of a dollar out
+    const feeOf = async fn => { const f = await usdcToken.balanceOf(feeWallet); await fn(); return await usdcToken.balanceOf(feeWallet) - f; };
+    // L1: a 0.001 USDC deposit (its fee: 1 unit) used to make a 50,000 USDC deposit a day later fee-free for the whole
+    // period. Now new money always pays.
+    assert.equal(await feeOf(async () => (await router.connect(user).deposit(await best(usdc(0.001)), usdc(0.001))).wait()), 1n);
     await advance(DAY + 1);
-    const fees = await usdcToken.balanceOf(feeWallet);
-    held = await best(usdc(50000));
-    await (await router.connect(user).deposit(held, usdc(50000))).wait();
-    assert.equal(await usdcToken.balanceOf(feeWallet) - fees, (usdc(50000) - 1n) * 10n / 10_000n, 'the fee on all but the one unit put back');
-    // Putting back what was withdrawn, within the window: free.
-    await advance(Number(await router.FEE_COOLDOWN()) + 1);
-    await (await router.connect(user).setLimits([USDC], [usdc(100000)], (await now()) + 30 * DAY)).wait();
+    let held = await best(usdc(50000));
+    assert.equal(await feeOf(async () => (await router.connect(user).deposit(held, usdc(50000))).wait()), usdc(50), 'new money pays its 0.1%');
+    // A move of money that has paid is free, however often (the churn bound, second AI audit M-1).
+    // Withdrawing paid money and putting it back within the period is free too.
+    await advance(DAY + 1);
     const cash = await usdcToken.balanceOf(user.address);
     await (await router.connect(user).withdraw(held, usdc(1000))).wait();
     const back = await usdcToken.balanceOf(user.address) - cash;
     await advance(DAY + 1);
-    const fees2 = await usdcToken.balanceOf(feeWallet);
-    await (await router.connect(user).deposit(await best(back), back)).wait();
-    assert.equal(await usdcToken.balanceOf(feeWallet), fees2, 'no fee on putting back what came out');
+    assert.equal(await feeOf(async () => (await router.connect(user).deposit(await best(back), back)).wait()), 0n, 'putting paid money back is free');
+    // L2: money supplied to Aave directly, never through the router, gives no credit however often it is withdrawn
+    // through the router: 1,000 USDC cycled 5 times used to give 5,000 USDC of fee-free deposits.
+    const other = await newUser(usdc(2000));
+    const pool = new ethers.Contract(AAVE_POOL, ['function supply(address,uint256,address,uint16)'], other.user);
+    await (await usdcToken.connect(other.user).approve(AAVE_POOL, ethers.MaxUint256)).wait();
+    for (let k = 0; k < 5; k++) {
+      await (await pool.supply(USDC, usdc(1000), other.user.address, 0)).wait();
+      await (await router.connect(other.user).withdraw(AAVE, ethers.MaxUint256)).wait();
+    }
+    assert.equal(await router.redepositCredit(other.user.address, USDC), 0n, 'no credit from money that never paid');
+    await advance(DAY + 1);
+    const into = await (async () => { const ids = [AAVE, COMP, SPK]; const rates = await Promise.all(ids.map(i => router.rateOf(i)));
+      for (const id of [...ids].sort((a, b) => (rates[ids.indexOf(b)] > rates[ids.indexOf(a)] ? 1 : -1))) { try { await router.connect(other.user).deposit.staticCall(id, usdc(1000)); return id; } catch {} } })();
+    assert.equal(await feeOf(async () => (await router.connect(other.user).deposit(into, usdc(1000))).wait()), usdc(1), 'it pays like any new money');
   });
 });

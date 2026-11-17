@@ -205,6 +205,13 @@ impl World {
         OrderParams { executor: key(&self.exec), input_mint: input, output_mint: output, output_native: native, amount_in, min_amount_out: min_out, valid_after: 0, valid_until: self.now() + 86_400 }
     }
     fn fill_by(&mut self, executor: &Keypair, f: &Fill) -> Result<(), String> {
+        // A fill closes transit's emptied token accounts (their rent back to the executor), so before each fill the
+        // executor opens any that are missing, as the trade service does.
+        let t = transit_of(&f.owner);
+        if !self.exists(f.transit_in) { self.token_account_at(f.transit_in, f.input_mint, t, 0); }
+        if let Some(to) = f.transit_out {
+            if !self.exists(to) { self.token_account_at(to, f.output_mint.unwrap_or(WSOL_MINT), t, 0); }
+        }
         let out = f.output_mint.is_some();
         let mut metas = rektbull_orders::accounts::Fill {
             executor: key(executor), order: f.order, owner: f.owner, delegate: f.delegate, transit: transit_of(&f.owner),
@@ -285,7 +292,7 @@ fn honest_sale_for_sol() {
     assert_eq!(wd.balance(wd.user_meme), Some(900_000 * MEME));
     assert!(wd.order(order).is_none(), "a fully filled order is closed");
     assert_eq!(wd.lamports(transit()), 0, "transit holds nothing");
-    assert_eq!(wd.balance(wd.transit_meme), Some(0));
+    assert_eq!(wd.balance(wd.transit_meme).unwrap_or(0), 0);
 }
 
 /// A sale through an exchange that pays wrapped SOL (as PumpSwap and Jupiter do), delivered as native SOL.
@@ -309,7 +316,10 @@ fn sale_paid_in_wrapped_sol_delivered_as_sol() {
     assert_eq!(wd.lamports(FEE_WALLET) - fee0, SOL / 100, "the fee: 1% of the SOL out, as SOL");
     assert_eq!(wd.lamports(key(&wd.user)) - user0, 99 * SOL / 100 + wd.order_rent(), "99% to the user as native SOL, and the order's rent");
     let account_rent = wd.rent(spl_token::state::Account::LEN);
-    assert_eq!(wd.lamports(key(&wd.exec)), exec0 + account_rent - 5000, "the executor got the wrapped-SOL account's rent back");
+    // Both of transit's accounts this fill used (its wrapped SOL and its coin account, emptied) are closed, their rent
+    // back to the executor who opened them (re-review, N-1).
+    assert_eq!(wd.lamports(key(&wd.exec)), exec0 + 2 * account_rent - 5000, "the executor got both accounts' rent back");
+    assert!(!wd.exists(wd.transit_meme), "transit's emptied coin account was closed");
     assert!(!wd.exists(transit_wsol), "transit's wrapped-SOL account was closed");
     assert_eq!(wd.lamports(transit()), 0);
 }
@@ -352,7 +362,10 @@ fn honest_buy_paid_in_wrapped_sol_sent_as_sol() {
     assert_eq!(wd.lamports(key(&user)) - user0, SOL - used - fee + wd.order_rent(), "the unused SOL came back as SOL, with the order's rent");
     assert_eq!(wd.balance(wd.user_wsol), Some(SOL));
     let account_rent = wd.rent(spl_token::state::Account::LEN);
-    assert_eq!(wd.lamports(key(&wd.exec)), exec0 + account_rent - 5000, "the executor got the wrapped-SOL account's rent back (less the 5,000-lamport transaction fee)");
+    // Transit's wrapped-SOL account and its coin account (emptied once the tokens reached the user) are both closed,
+    // their rent back to the executor who opened them (re-review, N-1), less the 5,000-lamport transaction fee.
+    assert_eq!(wd.lamports(key(&wd.exec)), exec0 + 2 * account_rent - 5000, "the executor got both accounts' rent back");
+    assert!(!wd.exists(wd.transit_meme), "transit's emptied coin account was closed");
     assert!(!wd.exists(transit_wsol), "transit's wrapped-SOL account was closed");
     assert_eq!(wd.lamports(transit()), 0);
 }
@@ -364,8 +377,8 @@ fn buy_paid_in_usdc_fee_in_usdc() {
     wd.fill(&f).unwrap();
     assert_eq!(wd.balance(wd.fee_usdc), Some(1_000_000), "1 USDC: 1% of 100, never in the meme coin");
     assert_eq!(wd.balance(wd.user_meme), Some(1_000_000 * MEME + 600 * MEME));
-    assert_eq!(wd.balance(wd.transit_usdc), Some(0));
-    assert_eq!(wd.balance(wd.transit_meme), Some(0));
+    assert_eq!(wd.balance(wd.transit_usdc).unwrap_or(0), 0);
+    assert_eq!(wd.balance(wd.transit_meme).unwrap_or(0), 0);
 }
 
 #[test]
@@ -378,7 +391,7 @@ fn unused_token_input_goes_back_to_the_user() {
     let fee = rektbull_orders::fee_on_used(50_000_000);
     assert_eq!(wd.balance(wd.fee_usdc), Some(fee));
     assert_eq!(wd.balance(wd.user_usdc), Some(1_000_000_000 - 100_000_000 + 50_000_000 - fee));
-    assert_eq!(wd.balance(wd.transit_usdc), Some(0));
+    assert_eq!(wd.balance(wd.transit_usdc).unwrap_or(0), 0);
 }
 
 #[test]
@@ -577,7 +590,7 @@ fn funds_sent_to_transit_cant_jam_fills() {
     let order = wd.sell_order(1, 99 * SOL / 100);
     wd.fill(&wd.sale(order, 100_000 * MEME, SOL, transit())).unwrap();
     assert_eq!(wd.lamports(transit()), 0);
-    assert_eq!(wd.balance(wd.transit_meme), Some(0));
+    assert_eq!(wd.balance(wd.transit_meme).unwrap_or(0), 0);
 }
 
 #[test]
@@ -709,7 +722,7 @@ fn random_sequences_keep_the_invariants() {
         let order = wd.sell_order(10_000, 1);
         wd.fill(&wd.sale(order, 100_000 * MEME, SOL, transit())).unwrap();
         assert_eq!(wd.lamports(transit()), 0, "seed {seed}: transit kept SOL");
-        assert_eq!(wd.balance(wd.transit_meme), Some(0), "seed {seed}: transit kept tokens");
+        assert_eq!(wd.balance(wd.transit_meme).unwrap_or(0), 0, "seed {seed}: transit kept tokens");
     }
     println!("{fills_ok} fills went through, {refused} were refused");
     assert!(fills_ok >= 150, "the sequences really fill orders ({fills_ok})");
@@ -765,4 +778,27 @@ fn each_owner_has_their_own_transit() {
     f.transit_in = other_transit_meme;
     fails(wd.fill(&f), "ConstraintTokenOwner|BadFill");
     assert_ne!(transit_of(&key(&wd.user)), transit_of(&other));
+}
+
+/// Re-review N-2: a fill whose venue used everything, leaving no room for the input-side fee, is refused rather than
+/// filled fee-free (the reviewer's proof: the fee was silently 0).
+#[test]
+fn a_fill_that_leaves_no_room_for_the_fee_is_refused() {
+    let mut wd = World::new();
+    let user = wd.user.insecure_clone();
+    let p = wd.params(WSOL_MINT, wd.meme, false, SOL, 1000 * MEME);
+    let order = wd.place_by(&user, 2, p).unwrap();
+    wd.approve(&user, wd.user_wsol, SOL);
+    let transit_wsol = wd.token_account(WSOL_MINT, transit(), 0);
+    let fee0 = wd.lamports(FEE_WALLET);
+    let f = Fill {
+        order, owner: key(&user), source: wd.user_wsol, input_mint: WSOL_MINT, transit_in: transit_wsol,
+        output_mint: Some(wd.meme), transit_out: Some(wd.transit_meme), owner_out: Some(wd.user_meme), fee_in: None,
+        fee_wallet: FEE_WALLET, delegate: delegate(), venue: JUPITER_V6, amount_in: SOL, unwrap_in: true,
+        venue_data: venue_data(1, SOL, 1500 * MEME), // the venue spends all of it
+        venue_accounts: vec![w(transit()), w(vault()), w(wd.vault_meme), r(wd.meme), w(wd.transit_meme), r(TOKEN), r(system_program::ID)],
+    };
+    fails(wd.fill(&f), "NoRoomForFee");
+    assert_eq!(wd.lamports(FEE_WALLET), fee0);
+    assert_eq!(wd.order(order).unwrap().filled_in, 0, "nothing was filled");
 }

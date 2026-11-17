@@ -122,7 +122,9 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
     constructor(address feeWallet, uint16 feeBps, address wrappedNative, address[] memory venues, address[] memory baseAssets)
         EIP712("RektBull Meme Router", "1")
     {
-        if (feeWallet == address(0) || feeBps > MAX_FEE_BPS || venues.length == 0) revert BadConfig();
+        // A wrapped native is required: without one, stray native coin is sent back as native, and one wei sent to the
+        // router could then block fills for a wallet that refuses native coin (re-review, N-2).
+        if (feeWallet == address(0) || feeBps > MAX_FEE_BPS || venues.length == 0 || wrappedNative == address(0)) revert BadConfig();
         FEE_WALLET = feeWallet;
         FEE_BPS = feeBps;
         WRAPPED_NATIVE = IWrappedNative(wrappedNative);
@@ -132,13 +134,24 @@ contract RektBullMemeRouter is ReentrancyGuard, EIP712 {
         }
         isBase[NATIVE] = true;
         // A venue is called with calldata anyone with an order of their own can choose, so a venue must never be a
-        // token users approve to this router (second AI audit, M-1). The deploy pre-flight also refuses any venue
-        // that answers like a token.
+        // token users approve to this router (second AI audit, M-1): refusing orders that trade a venue doesn't
+        // protect approvals of it, since any order can name it as the venue (re-review, N-1). So a venue that
+        // answers like a token (totalSupply or balanceOf) can't be listed at all. A venue that can pull from a
+        // `from` it is given (Permit2-style) is just as dangerous and no call can tell it apart: the deployment's
+        // venue list must be reviewed for that (docs/MEME_ROUTER.md, "Deploying").
         for (uint256 i; i < venues.length; ++i) {
             address v = venues[i];
-            if (v == address(0) || v == NATIVE || v == wrappedNative || isBase[v]) revert BadConfig();
+            if (v == address(0) || v == NATIVE || v == wrappedNative || isBase[v] || _answersLikeAToken(v)) revert BadConfig();
             isVenue[v] = true;
         }
+    }
+
+    /// @dev True when `a` answers totalSupply() or balanceOf(this) with a word, as an ERC-20 does.
+    function _answersLikeAToken(address a) private view returns (bool) {
+        (bool ok, bytes memory out) = a.staticcall(abi.encodeWithSignature("totalSupply()"));
+        if (ok && out.length >= 32) return true;
+        (ok, out) = a.staticcall(abi.encodeWithSignature("balanceOf(address)", address(this)));
+        return ok && out.length >= 32;
     }
 
     /// @dev Native coin arrives from the wrapped native contract (unwrapping) and from venues (a sale for native).

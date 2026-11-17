@@ -101,8 +101,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
     mapping(address => uint256) public spentThisPeriodUsd;
     /// @dev account => token => how much of it this router bought for the account under its current grant and
     ///      hasn't sold back. Selling up to this amount is exempt from the limits. A credit belongs to the grant it
-    ///      was earned under: setLimits() and revoke() move the account's epoch on, and older credits stop counting
-    ///      (second AI audit, M-1: a stale credit could otherwise cover tokens the user got elsewhere).
+    ///      was earned under: revoke(), or setLimits() once the grant has ended, moves the account's epoch on, and
+    ///      older credits stop counting (second AI audit, M-1: a stale credit could otherwise cover tokens the user
+    ///      got elsewhere). Renewing or changing the limits while the grant is still live keeps the credits, so the
+    ///      positions it opened can still be closed in one sale (re-review, N-3).
     struct Credit {
         uint64 epoch;
         uint192 amount;
@@ -178,9 +180,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
             maxPriceAge[tokens[i]] = maxAges[i];
         }
         // A venue is called with calldata the trader chooses, so it must never be a token users approve to the
-        // router (second AI audit, I-2).
+        // router (second AI audit, I-2), nor the spend-permission manager, through which anyone could spend another
+        // wallet's permission (re-review, I-2).
         for (uint256 i; i < venues.length; ++i) {
-            if (venues[i] == address(0) || address(priceFeed[venues[i]]) != address(0)) revert BadConfig();
+            if (venues[i] == address(0) || address(priceFeed[venues[i]]) != address(0) || venues[i] == spendPermissionManager) revert BadConfig();
             isVenue[venues[i]] = true;
         }
     }
@@ -191,8 +194,10 @@ contract RektBullTradeRouter is ReentrancyGuard {
     function setLimits(uint128 perTradeUsd, uint128 perPeriodUsd, uint32 periodSeconds, uint64 validUntil) external {
         if (perTradeUsd == 0 || perPeriodUsd < perTradeUsd || periodSeconds == 0 || validUntil <= block.timestamp) revert BadConfig();
         if (validUntil > block.timestamp + MAX_GRANT) revert BadConfig();
+        // A new grant after the last one ended (or was revoked): earlier sell exemptions end. A renewal while it is
+        // still live keeps them.
+        if (limits[msg.sender].validUntil <= block.timestamp) creditEpoch[msg.sender] += 1;
         limits[msg.sender] = Limits(perTradeUsd, perPeriodUsd, periodSeconds, validUntil);
-        creditEpoch[msg.sender] += 1; // a new grant: earlier sell exemptions end
         periodStartedAt[msg.sender] = block.timestamp;
         spentThisPeriodUsd[msg.sender] = 0;
         emit LimitsSet(msg.sender, perTradeUsd, perPeriodUsd, periodSeconds, validUntil);

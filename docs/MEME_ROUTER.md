@@ -1,8 +1,8 @@
 # The Meme Router: automatic meme trades without holding keys
 
 *Status: the contract and its break-it tests are built
-(`contracts/contracts/RektBullMemeRouter.sol`, 17 tests in
-`contracts/test/memeRouter.test.js`, plus the fuzz tests and Slither below), and checked against four.meme's real
+(`contracts/contracts/RektBullMemeRouter.sol`, tests in
+`contracts/test/memeRouter.test.js` and `memeRouterAudit.test.js`, plus the fuzz tests and Slither below), and checked against four.meme's real
 contracts on a copy of BNB Chain. **Not audited, not deployed, and the trade
 service doesn't use it yet.** Nothing may hold real funds through it until an
 external audit is done and every finding is fixed or explicitly accepted.*
@@ -70,20 +70,32 @@ small caps, and only if you decide it should.
 
 ## How a fill works
 
-`fill(order, signature, { amountIn, venue, spender, venueCalldata, unwrapIn })`, called by the executor:
+`fill(order, signature, { amountIn, venue, spender, venueCalldata, unwrapIn, minAmountOut })`, called by the executor:
 1. Checks the executor, the window, the epoch and cancellation, the
    signature, the size left, and that the venue and spender are allowed.
 2. Pulls `amountIn` of `tokenIn` from the account.
-3. Takes the fee: from the output when it's a base asset (USDC, USDT, WETH,
-   WBNB, the native coin), otherwise from the input. So buys and sells pay in
-   the base asset; only an order from one meme coin straight into another
-   (which the trade service doesn't offer) would pay in a meme coin.
+3. The fee is on the base-asset side (USDC, USDT, WETH, WBNB, the native
+   coin): on the output when that's a base asset, taken after the venue call;
+   otherwise on the input, taken after the venue call on what it used (unused
+   input pays no fee). So buys and sells pay in the base asset; only an order
+   from one meme coin straight into another (which the trade service doesn't
+   offer) would pay in a meme coin. Unused input still counts towards the
+   order's size, and the `Filled` event reports the fill's amount, not what the
+   venue used (re-review, N-3); native coin a venue refunds on a non-unwrap
+   fill is returned wrapped and counts as used for the fee (N-4).
 4. Calls the venue: approves exactly this fill's input to `spender` (reset
    afterwards), or with `unwrapIn`, unwraps WBNB/WETH and sends it as native
    (four.meme's curve is bought with BNB). Unused native comes back wrapped.
 5. Sends the output, and any unused input, to the account.
 6. Checks what reached the account against the user's price, pro rata,
-   after the fee.
+   after the fee, and against the executor's own `minAmountOut`.
+
+**Deploying:** the constructor refuses any venue that answers like a token
+(`totalSupply()` or `balanceOf()`), the wrapped native and the base assets,
+and needs a wrapped native. A venue with a function that pulls from a `from`
+it is given (Permit2-style) can't be told apart by a call, and through it
+anyone could spend approvals given to the router: review every venue's
+functions for that before deploying (the re-review's N-1).
 
 **Exchanges, per chain** (fixed at deployment): 0x's AllowanceHolder
 everywhere (any token with a pool, graduated curve tokens included), four.meme's
