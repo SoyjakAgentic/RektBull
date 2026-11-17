@@ -59,6 +59,32 @@ A stop is read from the database on every pass of the trade service, so it
 takes effect within one tick. It never stops a user acting from their own
 wallet, and revoking always works.
 
+## Region blocks
+
+Per trading venue (Hyperliquid perps, Polymarket), a list of countries where
+trading through RektBull is refused. Every venue starts with **no blocks**. A
+list is two-letter country codes (ISO 3166-1, such as `US`); saving needs a
+reason and is logged like every change (`regions:<venue>`).
+
+- **What a block stops:** opening or adding to a position, leverage and margin
+  changes, and new approvals.
+- **What it never stops:** viewing markets and your own account, cancelling
+  orders, closing positions (reduce-only orders) and taking an approval away.
+  A user can always get out.
+- **Where the country comes from:** one header, named by `GEO_COUNTRY_HEADER`,
+  which the load balancer in front of the app sets. No other header is trusted,
+  because a browser can send any header it likes.
+  - Google Cloud's external HTTPS load balancer: add the custom request header
+    `X-Client-Geo-Location: {client_region}` to the backend service, and set
+    `GEO_COUNTRY_HEADER=X-Client-Geo-Location`.
+  - Cloudflare in front: `GEO_COUNTRY_HEADER=CF-IPCountry`.
+  - Cloud Run's own domain mapping adds no country header. Until one is set
+    up, blocking any country blocks that venue for **everyone**: the panel
+    says so, and shows the country your own request was read as.
+- **Unknown country:** when a venue has blocks and the request carries no
+  country, it's refused (the block fails closed).
+- Changes reach every server within a minute.
+
 ## Dashboard and health
 
 - **Dashboard:** money in (deposits, hosted checkouts, x402), fees paid in

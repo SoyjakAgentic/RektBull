@@ -67,6 +67,11 @@ const env = {
   devSessionKey: process.env.DEV_SESSION_KEY || '',
   tradeTickMs: int(process.env.TRADE_TICK_MS, 15000),
 
+  // Region blocks (src/compliance/regions.js): the ONE request header the load balancer sets to the
+  // client's two-letter country, e.g. X-Client-Geo-Location (Google Cloud) or CF-IPCountry (Cloudflare).
+  // Unset: no country is known, so a venue with blocked countries is blocked for everyone.
+  geoCountryHeader: /^[A-Za-z0-9-]{1,64}$/.test(process.env.GEO_COUNTRY_HEADER || '') ? process.env.GEO_COUNTRY_HEADER : '',
+
   // Hyperliquid perps (docs/HYPERLIQUID.md). Off until switched on.
   hlEnabled: process.env.HL_ENABLED === 'true',
   hlNetwork: process.env.HL_NETWORK === 'testnet' ? 'testnet' : 'mainnet',

@@ -224,4 +224,29 @@ test('signed in: the account, approvals and the relay through the app', { skip: 
   assert.equal(sent.length, 2, 'the withdrawal never reached Hyperliquid');
   const other = await call('POST', '/v1/hyperliquid/exchange', await approval(approve, ethers.Wallet.createRandom()));
   assert.equal(other.status, 403); assert.equal(other.body.error, 'wrong_signer');
+
+  // Region blocks, set as an admin would: opening is refused, getting out isn't.
+  const regions = require('../src/compliance/regions');
+  const headerBefore = env.geoCountryHeader;
+  env.geoCountryHeader = 'X-Test-Country';
+  t.after(() => { env.geoCountryHeader = headerBefore; });
+  await regions.set('hyperliquid', ['us'], { wallet: '0xadmin', reason: 'test' });
+  const from = async (country, body) => {
+    const r = await fetch(`${base}/v1/hyperliquid/exchange`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${issueToken(acct)}`, ...(country ? { 'x-test-country': country } : {}) }, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  const sentBefore = sent.length;
+  const blocked = await from('US', await l1(H.orderAction([order({ tif: 'Gtc' })])));
+  assert.equal(blocked.status, 451); assert.equal(blocked.body.error, 'region_blocked');
+  assert.equal((await from(null, await l1(H.orderAction([order({ tif: 'Gtc' })])))).status, 451, 'no country known: blocked');
+  assert.equal(sent.length, sentBefore, 'nothing blocked reached Hyperliquid');
+  assert.equal((await from('US', await l1(H.orderAction([order({ reduceOnly: true })])))).status, 200, 'closing still works');
+  assert.equal((await from('US', await l1(H.cancelAction([{ asset: 0, oid: 1 }])))).status, 200, 'cancelling still works');
+  assert.equal((await from('DE', await l1(H.orderAction([order({ tif: 'Gtc' })])))).status, 200, 'another country');
+  const cfg = await (await fetch(`${base}/v1/hyperliquid/config`, { headers: { 'x-test-country': 'US' } })).json();
+  assert.equal(cfg.region.blocked, true); assert.match(cfg.region.message, /\(US\)/);
+  const { rows: logged } = await db.query("SELECT action, after FROM admin_log WHERE key = 'regions:hyperliquid'");
+  assert.deepEqual(logged.map(r => [r.action, r.after]), [['regions', { countries: ['US'] }]], 'the change is logged');
+  await regions.set('hyperliquid', [], { wallet: '0xadmin', reason: 'test' });
+  assert.deepEqual(regions.countries('hyperliquid'), []);
 });

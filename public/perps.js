@@ -395,6 +395,7 @@
     $('o-slip').value = hl.config.order.slippage_pct; $('o-slip').max = hl.config.order.max_slippage_pct;
     $('o-usd').min = hl.config.order.min_usd;
     if (!hl.config.enabled) say('order-msg', 'Perps trading is switched off on this server for now. Markets and your account can still be viewed.', 'bad');
+    else if (hl.config.region?.blocked) say('order-msg', hl.config.region.message, 'bad');
     await loadMarkets();
     setInterval(() => { if (!document.hidden) loadMarkets().then(showPlan); }, 5000);
     setInterval(() => { if (!document.hidden) loadAccount(); }, 10000);

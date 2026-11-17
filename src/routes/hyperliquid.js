@@ -14,6 +14,7 @@ const hl = require('../providers/hyperliquid');
 const markets = require('../hyperliquid/markets');
 const relay = require('../hyperliquid/relay');
 const H = require('../../public/hl-core.js');
+const regions = require('../compliance/regions');
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ const APPS = { mainnet: 'https://app.hyperliquid.xyz', testnet: 'https://app.hyp
 
 const refusal = fn => async (req, res) => {
   try { await fn(req, res); } catch (err) {
-    if (err instanceof relay.RelayRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
+    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
     if (err.isHyperliquid || err.isProviderLimit) return res.status(err.status || 503).json({ error: 'hyperliquid_unavailable', message: err.isProviderLimit ? `Hyperliquid couldn't be reached: ${err.message}.` : err.message });
     throw err;
   }
@@ -55,7 +56,31 @@ function config() {
     builder: builderConfig(),
   };
 }
-router.get('/v1/hyperliquid/config', (_req, res) => res.json(config()));
+router.get('/v1/hyperliquid/config', (req, res) => {
+  const r = regions.blockedFor(req, 'hyperliquid');
+  res.json({ ...config(), region: { blocked: r.blocked, country: r.country, message: r.reason } });
+});
+
+const ZERO = '0x0000000000000000000000000000000000000000';
+/**
+ * What a region block stops: anything that can open or add to a position
+ * (an order that isn't reduce-only, a leverage or margin change) and new
+ * approvals. Never cancels, reduce-only orders or taking an approval away,
+ * so a user can always get out. Taking an approval away is a fee approval of
+ * 0%, or the page's "end the key" (an agent under the same name, whose key
+ * the browser threw away, for a day at most: perps.js revokeAgent). Orders
+ * from any agent still pass this relay, which refuses the ones that open.
+ */
+function regionMatters({ type, opens, payload }, now = Date.now()) {
+  const a = payload.action;
+  if (type === 'approveAgent') {
+    if (a.agentAddress.toLowerCase() === ZERO) return false;
+    const until = / valid_until (\d+)$/.exec(a.agentName);
+    return !(until && Number(until[1]) <= now + 86400000 + 60000);
+  }
+  if (type === 'approveBuilderFee') return Number(String(a.maxFeeRate).replace('%', '')) > 0;
+  return opens || type === 'updateLeverage' || type === 'updateIsolatedMargin';
+}
 
 router.get('/v1/hyperliquid/markets', refusal(async (_req, res) => {
   const list = await markets.markets();
@@ -73,9 +98,13 @@ router.get('/v1/hyperliquid/approvals', requireEvmWallet, refusal(async (req, re
 
 /** A signed action, passed on to Hyperliquid. */
 router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, res) => {
-  res.json(await relay.send(req.body, { wallet: req.account.wallet }));
+  res.json(await relay.send(req.body, {
+    wallet: req.account.wallet,
+    before: checked => { if (regionMatters(checked)) regions.refuseIfBlocked(req, 'hyperliquid'); },
+  }));
 }));
 
 module.exports = router;
 module.exports.config = config;
 module.exports.WEB_AGENT = WEB_AGENT;
+module.exports.regionMatters = regionMatters;
