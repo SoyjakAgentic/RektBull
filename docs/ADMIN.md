@@ -59,6 +59,53 @@ A stop is read from the database on every pass of the trade service, so it
 takes effect within one tick. It never stops a user acting from their own
 wallet, and revoking always works.
 
+## Region blocks
+
+Per trading venue (Hyperliquid perps, Polymarket), a list of places where
+trading through RektBull is refused. **Each venue starts with the places it bans
+itself** (`src/compliance/regions.js`, each list with its source):
+
+- **Hyperliquid:** the United States and Ontario (its Terms of Use), and the
+  places under comprehensive US sanctions: Cuba, Iran, North Korea, Syria,
+  and Crimea, Donetsk and Luhansk.
+- **Polymarket:** its own geoblock list (docs.polymarket.com/api-reference/geoblock):
+  - the places it blocks;
+  - the places it allows to close positions only, including the US, the UK,
+    France, Germany, Italy, Poland, Australia, Singapore and Taiwan;
+  - the places its own site limits (Ireland, Japan, the Netherlands, South Korea).
+
+An admin can change a list (country codes such as `US`, region codes such as
+`CA-ON` for Ontario), or set it empty, or go back to the venue's own list.
+Each change needs a reason and is logged (`regions:<venue>`).
+
+- **What a block stops:** opening or adding to a position, leverage and margin
+  changes, and new approvals.
+- **What it never stops:** viewing markets and your own account, cancelling
+  orders, closing positions (reduce-only orders) and taking an approval away.
+  A user can always get out.
+- **Where the country comes from:** one header, named by `GEO_COUNTRY_HEADER`,
+  which the load balancer in front of the app sets. The region within a country
+  comes from `GEO_SUBDIVISION_HEADER`, for blocks such as Ontario. No other
+  header is trusted, because a browser can send any header it likes.
+  - Google Cloud's external HTTPS load balancer: add the custom request
+    headers `X-Client-Geo-Location: {client_region}` and
+    `X-Client-Geo-Subdivision: {client_region_subdivision}` to the backend
+    service. Set `GEO_COUNTRY_HEADER=X-Client-Geo-Location` and
+    `GEO_SUBDIVISION_HEADER=X-Client-Geo-Subdivision`.
+  - Cloudflare in front: `GEO_COUNTRY_HEADER=CF-IPCountry` and
+    `GEO_SUBDIVISION_HEADER=CF-Region-Code` (a managed transform).
+  - Cloud Run's own domain mapping adds no country header. **Until one is set
+    up, every venue is blocked for everyone, because the venues' own lists are
+    on from the start.** Set the header before switching trading on. The
+    panel says so, and shows where your own request was read as coming from.
+  - Without the region header, a list naming regions of a country (Ontario)
+    blocks that whole country (Canada).
+- **Unknown country or region:** when a venue has blocks and the request
+  carries no country, it's refused. When the list names regions of the
+  user's country and the region is unknown, it's refused too. Blocks fail
+  closed.
+- Changes reach every server within a minute.
+
 ## Dashboard and health
 
 - **Dashboard:** money in (deposits, hosted checkouts, x402), fees paid in

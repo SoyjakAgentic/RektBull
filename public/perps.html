@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Trade desk · Perps</span>
+      <h1>Perpetuals on Hyperliquid, <em>from your own account</em></h1>
+      <p>Browse Hyperliquid's perp markets and trade them from your own Hyperliquid account. Your money stays in that account and your wallet's keys stay in your wallet: RektBull can place orders only through a trading key you approve, and a trading key can never withdraw.</p>
+      <p><a href="/trade">Spot tokens are on the Trade desk.</a></p>
+    </div>
+  </section>
+  <main class="tool">
+    <p class="notice" role="note"><strong>Not financial advice.</strong> Perpetuals use leverage: a small move against you can lose all the margin in a position, and RektBull never picks a market or a side. Every figure here is read from Hyperliquid's info API.</p>
+
+    <section class="card" id="markets-card">
+      <h2>Markets <span class="tag" id="net-tag" hidden>Test network</span></h2>
+      <div class="row">
+        <input id="m-filter" placeholder="Find a market, e.g. BTC" autocomplete="off" spellcheck="false" aria-label="Find a market">
+        <label class="small"><input type="checkbox" id="m-auto-only"> Only markets open to automatic trading</label>
+      </div>
+      <div class="tablewrap"><table class="rank" id="m-table">
+        <thead><tr><th>Market</th><th class="num">Mark price</th><th class="num">24 h</th><th class="num">Funding / hour</th><th class="num">Open interest</th><th class="num">24 h volume</th><th class="num">Max leverage</th></tr></thead>
+        <tbody id="markets"><tr><td colspan="7" class="muted">Reading Hyperliquid's markets…</td></tr></tbody>
+      </table></div>
+      <p id="markets-msg" class="msg small muted"></p>
+    </section>
+
+    <section class="card" id="connect-card">
+      <h2>1. Connect your wallet</h2>
+      <p class="muted">Sign in with the wallet that owns your Hyperliquid account. Looking at your positions needs only the sign-in.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" class="primary" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="account-card" hidden>
+      <h2>Your Hyperliquid account</h2>
+      <div id="acct-tiles" class="grid"></div>
+      <p class="small muted">To add or take out money, use <a id="deposit-link" href="https://app.hyperliquid.xyz/trade" rel="noopener" target="_blank">Hyperliquid's own app</a> with this wallet. RektBull never sends a deposit, a withdrawal or a transfer, and its trading keys can't.</p>
+      <h3>Positions</h3>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Market</th><th>Side</th><th class="num">Size</th><th class="num">Entry</th><th class="num">Value</th><th class="num">Unrealized PnL</th><th class="num">Liquidation price</th><th class="num">Margin</th><th></th></tr></thead><tbody id="positions"></tbody></table></div>
+      <p id="positions-msg" class="msg small"></p>
+      <h3>Open orders</h3>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Market</th><th>Order</th><th class="num">Price</th><th class="num">Size</th><th></th></tr></thead><tbody id="orders"></tbody></table></div>
+      <p id="orders-msg" class="msg small"></p>
+      <p id="account-source" class="small muted"></p>
+    </section>
+
+    <section class="card" id="setup-card" hidden>
+      <h2>2. A trading key for this browser</h2>
+      <p class="muted">Hyperliquid signs orders for its own chain (chain id 1337), which wallets such as MetaMask won't sign. So, as Hyperliquid's own app does, this page makes a <strong>trading key</strong> in your browser and your wallet approves it once. Hyperliquid lets that key place and cancel orders and set leverage. It can't withdraw or transfer.</p>
+      <ul class="small muted">
+        <li>The key is made and kept in this browser only. It is never sent to RektBull or anyone else; orders are signed here and only the signature leaves.</li>
+        <li>It expires by itself after <span id="agent-days">30</span> days. Clearing this site's data removes it, and you can end it at any time below.</li>
+        <li>Anyone who can use this browser profile can trade with it until then, so don't approve one on a shared computer.</li>
+      </ul>
+      <p id="agent-status" class="msg"></p>
+      <div class="row">
+        <button id="agent-approve" class="primary">Make a trading key and approve it</button>
+        <button id="agent-revoke" class="danger" hidden>End this trading key</button>
+      </div>
+      <div id="fee-box" hidden>
+        <h3>RektBull's fee</h3>
+        <p id="fee-note" class="small muted"></p>
+        <p id="fee-status" class="msg"></p>
+        <div class="row">
+          <button id="fee-approve" class="primary">Approve the fee</button>
+          <button id="fee-revoke" class="link" hidden>Take the approval away</button>
+        </div>
+      </div>
+      <p id="setup-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="order-card" hidden>
+      <h2>3. Trade <span id="o-coin-title"></span></h2>
+      <div id="o-market-facts" class="small muted"></div>
+      <div class="grid">
+        <label>Market<select id="o-coin"></select></label>
+        <label>Side<select id="o-side"><option value="buy">Buy / long</option><option value="sell">Sell / short</option></select></label>
+        <label>Order type
+          <select id="o-type">
+            <option value="market">Market (fills now, or is cancelled)</option>
+            <option value="limit">Limit</option>
+            <option value="tp">Take-profit (closes a position)</option>
+            <option value="sl">Stop-loss (closes a position)</option>
+          </select>
+        </label>
+        <label id="o-usd-wrap">Size (USD)<input id="o-usd" type="number" min="10" step="1" value="50"></label>
+        <label id="o-px-wrap" hidden>Limit price<input id="o-px" type="number" min="0" step="any"></label>
+        <label id="o-trigger-wrap" hidden>Trigger price<input id="o-trigger" type="number" min="0" step="any"></label>
+        <label id="o-slip-wrap">Most slippage (%)<input id="o-slip" type="number" min="0.1" max="5" step="0.1" value="1"></label>
+        <label id="o-reduce-wrap"><span>Reduce only</span><select id="o-reduce"><option value="false">No: may open or add</option><option value="true">Yes: can only close</option></select></label>
+      </div>
+      <div id="o-plan" class="plan" hidden></div>
+      <div class="row"><button id="o-go" class="primary">Place order</button></div>
+      <p id="order-msg" class="msg"></p>
+      <h3>Leverage and margin for <span id="l-coin"></span></h3>
+      <div class="grid">
+        <label>Leverage (x)<input id="l-lev" type="number" min="1" step="1" value="3"></label>
+        <label>Margin<select id="l-mode"><option value="cross">Cross: shares your whole account's margin</option><option value="isolated">Isolated: only this position's margin</option></select></label>
+      </div>
+      <button id="l-set">Set leverage</button>
+      <p id="lev-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="auto-card" hidden>
+      <h2>4. Automatic trading (optional)</h2>
+      <p class="small">Let RektBull's AI agents open and close positions for you, within limits you set. You approve RektBull's agent wallet with your own wallet, for up to 30 days.</p>
+      <ul class="small">
+        <li><strong>Hyperliquid enforces:</strong> <span id="auto-hl"></span></li>
+        <li><strong>RektBull enforces, not onchain:</strong> <span id="auto-rb"></span></li>
+        <li><strong>The most you can lose:</strong> <span id="auto-lose"></span></li>
+      </ul>
+      <p id="auto-off" class="msg bad" hidden></p>
+      <div id="auto-form">
+        <div class="grid">
+          <label>Most per trade (USD)<input id="a-trade" type="number" min="10" step="1" value="100"></label>
+          <label>Most opened per 24 hours (USD)<input id="a-day" type="number" min="10" step="1" value="500"></label>
+          <label>Most leverage (x)<input id="a-lev" type="number" min="1" step="1" value="3"></label>
+          <label>Days<input id="a-days" type="number" min="1" max="30" step="1" value="30"></label>
+          <label>Markets<input id="a-markets" type="text" placeholder="Any deep market, or BTC, ETH"></label>
+        </div>
+        <div class="row"><button id="auto-grant" class="primary">Approve automatic trading</button></div>
+      </div>
+      <p id="auto-status" class="msg"></p>
+      <div class="row"><button id="auto-revoke" class="danger" hidden>Stop automatic trading</button></div>
+      <h3>Automatic orders</h3>
+      <div class="tablewrap"><table class="rank" id="auto-intents"><thead><tr><th>When</th><th>Order</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="auto-msg" class="msg"></p>
+    </section>
+  </main>
+
+  <!--#footer:Figures from Hyperliquid's info API. Perpetuals can lose all the margin in a position. Not financial advice.-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/hl-core.js"></script>
+  <script src="/perps-auto.js"></script>
+  <script src="/perps.js"></script>
+</body>
+</html>

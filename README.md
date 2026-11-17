@@ -34,6 +34,9 @@ payments.
 | `POST/GET /v1/trading/permissions` | Register an automatic-trading permission (checked in full before it's stored) |
 | `GET /v1/trading/auto/delegation`, `GET /v1/trading/auto/allowances` | The exact permission to sign, and the approvals the router needs |
 | `POST/GET /v1/trading/auto/intents` | Automatic trades (Base Sepolia until the audit): simulated, then sent by RektBull's session key through the user's permission |
+| `GET /perps`, `GET /v1/hyperliquid/markets`, `…/account`, `…/approvals` | Hyperliquid perps: markets for everyone; the signed-in wallet's own margin, positions, orders and approvals (docs/HYPERLIQUID.md) |
+| `POST /v1/hyperliquid/exchange` | Passes on an order, cancel, leverage change or approval signed in the browser; never a transfer or withdrawal |
+| `GET /v1/hyperliquid/auto`, `POST …/auto/grant`, `…/auto/revoke`, `POST/DELETE …/auto/intents` | Automatic perps trading through RektBull's agent, within the user's limits (enforced by RektBull, not onchain) |
 
 Token checks cover Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and
 Solana. Example:
@@ -142,6 +145,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
 - [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
+- [docs/HYPERLIQUID.md](docs/HYPERLIQUID.md): perps on Hyperliquid, manual and automatic, and what's enforced where
 - [docs/TRADE_DESK_STATUS.md](docs/TRADE_DESK_STATUS.md): where the trade desk was paused, and how to pick it back up
 - [docs/AUDIT_BRIEF.md](docs/AUDIT_BRIEF.md): scope, guarantees and questions for the contract audit
 - [docs/REAL_WALLET_TESTING.md](docs/REAL_WALLET_TESTING.md): the checklist for testing MetaMask, Safe and Coinbase by hand

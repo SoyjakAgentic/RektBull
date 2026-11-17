@@ -32,7 +32,7 @@ test('the About page states it in full, covering every desk', async () => {
 });
 
 test('the money pages carry a notice; the results say it too', async () => {
-  for (const [route, words] of [['/find', 'not recommendations'], ['/governance', 'never says how to vote'], ['/trade', 'never picks what to buy or sell'], ['/opportunities', 'never as a recommendation']]) {
+  for (const [route, words] of [['/find', 'not recommendations'], ['/governance', 'never says how to vote'], ['/trade', 'never picks what to buy or sell'], ['/perps', 'never picks a market or a side'], ['/opportunities', 'never as a recommendation']]) {
     const html = await get(route);
     assert.match(html, /<p class="notice" role="note"><strong>Not financial advice\.<\/strong>/, route);
     assert.ok(html.includes(words), `${route}: ${words}`);

@@ -1,0 +1,88 @@
+{
+ "marginSummary": {
+  "accountValue": "3228732.8292569998",
+  "totalNtlPos": "2927522.8948010001",
+  "totalRawUsd": "3469826.2573560001",
+  "totalMarginUsed": "146376.144691"
+ },
+ "crossMarginSummary": {
+  "accountValue": "3228732.8292569998",
+  "totalNtlPos": "2927522.8948010001",
+  "totalRawUsd": "3469826.2573560001",
+  "totalMarginUsed": "146376.144691"
+ },
+ "crossMaintenanceMarginUsed": "29275.228869",
+ "withdrawable": "2935980.5398189998",
+ "assetPositions": [
+  {
+   "type": "oneWay",
+   "position": {
+    "coin": "BTC",
+    "szi": "-0.10389",
+    "leverage": {
+     "type": "cross",
+     "value": 20
+    },
+    "entryPx": "65045.3",
+    "positionValue": "6791.60097",
+    "unrealizedPnl": "-34.035896",
+    "returnOnEquity": "-0.1007342012",
+    "liquidationPx": "30557044.9834792912",
+    "marginUsed": "339.580048",
+    "maxLeverage": 50,
+    "cumFunding": {
+     "allTime": "-612211.824764",
+     "sinceOpen": "-2.178214",
+     "sinceChange": "0.0"
+    }
+   }
+  },
+  {
+   "type": "oneWay",
+   "position": {
+    "coin": "ETH",
+    "szi": "-4.2404",
+    "leverage": {
+     "type": "cross",
+     "value": 20
+    },
+    "entryPx": "1820.8",
+    "positionValue": "7771.80512",
+    "unrealizedPnl": "-50.881509",
+    "returnOnEquity": "-0.1318016123",
+    "liquidationPx": "748880.2017460989",
+    "marginUsed": "388.590256",
+    "maxLeverage": 50,
+    "cumFunding": {
+     "allTime": "-483610.050501",
+     "sinceOpen": "0.423533",
+     "sinceChange": "-0.09698"
+    }
+   }
+  },
+  {
+   "type": "oneWay",
+   "position": {
+    "coin": "ATOM",
+    "szi": "2785.04",
+    "leverage": {
+     "type": "cross",
+     "value": 20
+    },
+    "entryPx": "1.3235",
+    "positionValue": "3718.0284",
+    "unrealizedPnl": "32.016146",
+    "returnOnEquity": "0.1737169808",
+    "liquidationPx": null,
+    "marginUsed": "185.90142",
+    "maxLeverage": 50,
+    "cumFunding": {
+     "allTime": "-30248.357317",
+     "sinceOpen": "-228.634345",
+     "sinceChange": "0.0"
+    }
+   }
+  }
+ ],
+ "time": 1794867784888
+}

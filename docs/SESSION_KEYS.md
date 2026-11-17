@@ -205,6 +205,24 @@ output to the user, fee at most 1% to the fixed fee wallet, a reference-price
 check), with per-period caps. If neither can enforce "output back to the user" onchain, Solana stays
 **approve-each only**: the user signs every trade.
 
+## 3a. Hyperliquid perps: the one exception
+
+Hyperliquid has no onchain spend limits for agent wallets, so automatic perps
+trading can't meet "limits enforced onchain". The owner approved this
+exception on 16 November 2026, and CLAUDE.md records it. The user's wallet
+approves RektBull's agent wallet (`approveAgent`, "rektbull-auto", at most
+30 days).
+
+- **Hyperliquid enforces** that the agent can trade, and can never withdraw or
+  transfer.
+- **RektBull's trade service enforces** the user's per-trade, 24-hour,
+  leverage and market limits, isolated margin, deep markets only, and prices
+  within 0.5% of the mark. None of these are onchain.
+- **The most a user can lose** is the margin in their Hyperliquid account. The
+  page says so.
+
+Details: [HYPERLIQUID.md](HYPERLIQUID.md).
+
 ## 4. Where keys live (Google Cloud KMS)
 
 KMS holds only RektBull's **own** few keys, never user keys, so the per-key

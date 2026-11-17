@@ -67,6 +67,39 @@ const env = {
   devSessionKey: process.env.DEV_SESSION_KEY || '',
   tradeTickMs: int(process.env.TRADE_TICK_MS, 15000),
 
+  // Region blocks (src/compliance/regions.js): the ONE request header the load balancer sets to the
+  // client's two-letter country, e.g. X-Client-Geo-Location (Google Cloud) or CF-IPCountry (Cloudflare).
+  // Unset: no country is known, so a venue with blocked countries is blocked for everyone.
+  geoCountryHeader: /^[A-Za-z0-9-]{1,64}$/.test(process.env.GEO_COUNTRY_HEADER || '') ? process.env.GEO_COUNTRY_HEADER : '',
+  // And the region within the country (for blocks such as CA-ON, Ontario): e.g. X-Client-Geo-Subdivision set to
+  // Google Cloud's {client_region_subdivision}, or Cloudflare's CF-Region-Code. Unset: a list naming regions of a
+  // country blocks that whole country.
+  geoSubdivisionHeader: /^[A-Za-z0-9-]{1,64}$/.test(process.env.GEO_SUBDIVISION_HEADER || '') ? process.env.GEO_SUBDIVISION_HEADER : '',
+
+  // Hyperliquid perps (docs/HYPERLIQUID.md). Off until switched on.
+  hlEnabled: process.env.HL_ENABLED === 'true',
+  hlNetwork: process.env.HL_NETWORK === 'testnet' ? 'testnet' : 'mainnet',
+  // RektBull's share of Hyperliquid's 1,200 weight a minute per IP; reads are refused past it.
+  hlWeightPerMinute: int(process.env.HL_WEIGHT_PER_MINUTE, 1000),
+  // The builder code: RektBull's PUBLIC address that Hyperliquid pays the fee to on each fill, and the fee in
+  // tenths of a basis point (10 = 0.01%). Unset address: orders carry no builder field and no RektBull fee.
+  hlBuilderAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.HL_BUILDER_ADDRESS || '') ? process.env.HL_BUILDER_ADDRESS.toLowerCase() : '',
+  hlBuilderFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_BUILDER_FEE_TENTHS_BPS, 10))), // Hyperliquid's cap on perps is 0.1% (100)
+  // Automatic trading only opens positions in markets at least this deep (both must hold).
+  hlAutoMinOpenInterestUsd: int(process.env.HL_AUTO_MIN_OPEN_INTEREST_USD, 5000000),
+  hlAutoMinDayVolumeUsd: int(process.env.HL_AUTO_MIN_DAY_VOLUME_USD, 5000000),
+  // Automatic trading (src/hyperliquid/auto.js): off until switched on. RektBull's agent wallet key lives in
+  // Cloud KMS (KMS_HL_AGENT_KEY_VERSION); HL_AGENT_ADDRESS is its PUBLIC address, which users approve.
+  // DEV_HL_AGENT_KEY is a throwaway key for Hyperliquid's testnet only, refused in production and on mainnet.
+  hlAutoEnabled: process.env.HL_AUTO_ENABLED === 'true',
+  hlAgentAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.HL_AGENT_ADDRESS || '') ? process.env.HL_AGENT_ADDRESS.toLowerCase() : '',
+  kmsHlAgentKeyVersion: process.env.KMS_HL_AGENT_KEY_VERSION || '',
+  devHlAgentKey: process.env.DEV_HL_AGENT_KEY || '',
+  // The most leverage an automatic position may use (and the user may allow), and how far from Hyperliquid's
+  // mark price an automatic order may fill, in basis points (also the most mark and oracle may differ).
+  hlAutoMaxLeverage: Math.min(50, Math.max(1, int(process.env.HL_AUTO_MAX_LEVERAGE, 10))),
+  hlAutoPriceBandBps: Math.min(500, Math.max(5, int(process.env.HL_AUTO_PRICE_BAND_BPS, 50))),
+
   // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
   // transfer the user signs next to the claim (receive-only wallet; unset = no fee).
   claimFeeWalletEvm: (process.env.CLAIM_FEE_WALLET_EVM || '').toLowerCase(),

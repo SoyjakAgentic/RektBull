@@ -145,7 +145,11 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
     // the fee cooldown is the bound that always holds.
     assert.equal(await router.FEE_COOLDOWN(), BigInt(365 * DAY * 10 / 100), 'the cooldown is the break-even: 36.5 days at 0.1% and 1 point');
     // The money pays once in the period; only interest it earned since (money that hasn't paid) can add to that.
-    assert.ok(fees <= (worthEnd > worthStart ? worthEnd : worthStart) / 1000n + 1n, `at most one 0.1% fee on the same money in the break-even period, not one a day: ${ethers.formatUnits(fees, 6)} USDC`);
+    // The fee is taken on the position as it is at the first move, interest included, and the fee itself leaves
+    // the position, so the bound is 0.1% of the most it was worth: what's left plus what was paid, or the start.
+    const mostWorth = worthStart > worthEnd + fees ? worthStart : worthEnd + fees;
+    assert.ok(fees <= mostWorth / 1000n + 1n, `at most one 0.1% fee on the same money in the break-even period, not one a day: ${ethers.formatUnits(fees, 6)} USDC on at most ${ethers.formatUnits(mostWorth, 6)}`);
+    assert.ok(fees < (worthStart * 2n) / 1000n, 'never a second fee: six moves cost less than two fees');
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
 

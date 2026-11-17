@@ -65,6 +65,7 @@ async function main() {
       await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
       await require('./trade/autonomous').tick(); // send and confirm automatic trades
       await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
+      await require('./hyperliquid/auto').tick(); // automatic perps orders (does nothing unless HL_AUTO_ENABLED)
     }), env.tradeTickMs);
     logger.info('trade service started');
   }

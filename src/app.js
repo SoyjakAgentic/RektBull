@@ -77,9 +77,9 @@ function createApp() {
   const send = html => (html.includes('<!--#facts-->')
     ? async (req, res, next) => { try { res.type('html').send(html.replace('<!--#facts-->', await glance(req.path))); } catch (err) { next(err); } }
     : (_req, res) => res.type('html').send(html));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
-  // Find money and Governance sit under Opportunities in the menu.
-  const MENU = { '/find': '/opportunities', '/governance': '/opportunities' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/perps': 'perps.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
+  // Find money and Governance sit under Opportunities in the menu; Perps under Trade.
+  const MENU = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade' };
   for (const [route, file] of Object.entries(PAGES)) {
     app.get(route, send(render(file, MENU[route] || route, route)));
   }
@@ -154,6 +154,7 @@ function createApp() {
     if (!key || req.params.file !== key) return next();
     text('text/plain', 86400)(req, res, key);
   });
+  // The Perps page signs Hyperliquid orders in the browser with ethers (already served) and public/hl-core.js.
   app.get('/vendor/ethers.umd.min.js', (_req, res) => res.sendFile(path.join(path.dirname(require.resolve('ethers')), '..', 'dist', 'ethers.umd.min.js')));
   // Fonts are served from here, not a font CDN, so no visitor's address goes to a third party.
   const FONTS = {
