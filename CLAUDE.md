@@ -11,7 +11,11 @@
   takes the fee (`HL_BUILDER_FEE_TENTHS_BPS`, 0.01% by default) from fills
   only. That is a capped fee-on-fill permission, not a token approval and not
   a recurring pull: nothing is taken unless an order the user or their agent
-  placed fills. No recurring pulls and no token approvals asked of users for
+  placed fills. A Polymarket builder code works the same way
+  (docs/POLYMARKET.md): `POLYMARKET_BUILDER_CODE` is signed into every order the
+  user's wallet signs, and Polymarket charges the builder fee (0.01% by
+  default, the rates set on RektBull's builder profile) on fills only and pays
+  it out. No recurring pulls and no token approvals asked of users for
   billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the

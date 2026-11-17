@@ -119,7 +119,7 @@ const env = {
   polymarketBuilderApiKey: process.env.POLYMARKET_BUILDER_API_KEY || '',
   polymarketBuilderApiSecret: process.env.POLYMARKET_BUILDER_API_SECRET || '',
   polymarketBuilderApiPassphrase: process.env.POLYMARKET_BUILDER_API_PASSPHRASE || '',
-  // Automatic Polymarket trading with Polymarket Session Keys: built, and off until the owner switches it on.
+  // Automatic Polymarket trading (Polymarket Session Keys): NOT built yet; waits on the owner's decision (docs/POLYMARKET.md).
   polymarketAutoEnabled: process.env.POLYMARKET_AUTO_ENABLED === 'true',
 
   // Payments: x402 (pay per call in USDC on Base)
