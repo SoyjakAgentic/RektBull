@@ -17,13 +17,14 @@
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 const db = require('../config/db');
+const env = require('../config/env');
 const pm = require('../providers/polymarket');
 const rpc = require('../providers/rpc');
 const { cached } = require('../lib/cache');
 const { CHAIN_ID, C, APPROVALS, WALLET_TYPES } = require('./contracts');
 
 const MAX = ethers.MaxUint256;
-const ERC20 = new ethers.Interface(['function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address) view returns (uint256)']);
+const ERC20 = new ethers.Interface(['function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)']);
 const ERC1155 = new ethers.Interface(['function setApprovalForAll(address operator, bool approved)', 'function isApprovedForAll(address account, address operator) view returns (bool)']);
 const POSITIONS = new ethers.Interface([
   'function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount)',
@@ -145,6 +146,27 @@ function redeemCalls({ positionSystem, negRisk, conditionId, assetId, shares }) 
   ];
 }
 
+/**
+ * RektBull's share of the profit on a redemption (catalog: polymarket_profit):
+ * payout (what Polymarket values the redeemed shares at, $1 a winning share)
+ * minus cost (the shares' average price times their number), both from
+ * Polymarket's Data API. Nothing on a loss, without a fee wallet, or under a cent.
+ */
+function profitShare(redeemed) {
+  const bps = require('../payments/catalog').product('polymarket_profit').fee_bps;
+  const sum = f => redeemed.reduce((s, x) => s + f(x), 0);
+  const payout = sum(x => Number(x.current_value) || 0);
+  const cost = sum(x => (Number(x.avg_price) || 0) * (Number(x.current_size) || 0));
+  const profit = Math.max(0, payout - cost);
+  const units = BigInt(Math.floor(profit * bps / 10000 * 1e6));
+  const r2 = v => Math.round(v * 100) / 100;
+  const out = { bps, payout_usd: r2(payout), cost_usd: r2(cost), profit_usd: r2(profit), fee_usd: Number(units) / 1e6, fee_units: 0n, source: pm.SOURCES.data };
+  if (!env.polymarketFeeWallet) return { ...out, fee_usd: 0, note: 'No profit share: RektBull\'s fee wallet isn\'t set.' };
+  if (profit <= 0) return { ...out, fee_usd: 0, note: 'No profit share: this redemption isn\'t a profit.' };
+  if (units < 10000n) return { ...out, fee_usd: 0, note: 'No profit share: it would be under a cent.' };
+  return { ...out, fee_units: units };
+}
+
 /** Which calls a batch of `kind` makes. Every one targets a documented Polymarket contract or the wallet itself; money only ever goes to the wallet or its owner. */
 async function callsFor(kind, w, input, st) {
   if (kind === 'approvals') {
@@ -161,7 +183,15 @@ async function callsFor(kind, w, input, st) {
     const m = p.slug ? await pm.market(p.slug) : null;
     if (!m) throw new WalletRefused('The position\'s market couldn\'t be read from Polymarket, so RektBull can\'t tell which contract redeems it. Redeem it on polymarket.com.');
     const positionSystem = m.version === 'v2' ? 'v2' : 'ctf';
-    return { calls: redeemCalls({ positionSystem, negRisk: !!p.negative_risk, conditionId: p.condition_id, assetId, shares: p.current_size }), detail: { asset_id: assetId, title: p.title, outcome: p.outcome, shares: p.current_size, position_system: positionSystem } };
+    const calls = redeemCalls({ positionSystem, negRisk: !!p.negative_risk, conditionId: p.condition_id, assetId, shares: p.current_size });
+    // A CTF redemption redeems every outcome of the market this wallet holds; a V2 one, this position only.
+    const redeemed = positionSystem === 'v2' ? [p] : positions.filter(x => x.condition_id === p.condition_id && x.redeemable);
+    const share = profitShare(redeemed);
+    if (share.fee_units > 0n) {
+      calls.push({ target: C.pUSD, value: '0', data: ERC20.encodeFunctionData('transfer', [env.polymarketFeeWallet, share.fee_units]),
+        what: `RektBull's profit share: ${share.bps / 100}% of your ${share.profit_usd} pUSD profit (${share.payout_usd} paid out, ${share.cost_usd} paid for the shares), ${share.fee_usd} pUSD to RektBull. It's in the same transaction as the redemption, so it's paid only if the redemption goes through.` });
+    }
+    return { calls, detail: { asset_id: assetId, title: p.title, outcome: p.outcome, shares: p.current_size, position_system: positionSystem, profit_share: { ...share, fee_units: String(share.fee_units) } } };
   }
   if (kind === 'withdraw') {
     const amount = Math.floor(Number(input.amount_usd) * 1e6);
@@ -271,4 +301,4 @@ async function fundCalls(account, input) {
   };
 }
 
-module.exports = { depositWalletAddress, approvalStatus, resolve, status, prepare, submit, progress, deploy, fundCalls, batchTypedData, redeemCalls, WalletRefused, BATCH_TYPES, SESSION, SESSION_DAYS_HOURS };
+module.exports = { profitShare, depositWalletAddress, approvalStatus, resolve, status, prepare, submit, progress, deploy, fundCalls, batchTypedData, redeemCalls, WalletRefused, BATCH_TYPES, SESSION, SESSION_DAYS_HOURS };

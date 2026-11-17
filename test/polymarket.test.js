@@ -511,6 +511,27 @@ test('polymarket: wallet set-up and manual orders, end to end', { skip: !DB && '
     assert.equal(redeem.status, 201);
     assert.deepEqual(redeem.body.typed_data.message.calls.map(c => c.target), [C.conditionalTokens, pos.negative_risk ? C.negRiskCtfCollateralAdapter : C.ctfCollateralAdapter]);
     assert.equal((await u.api('POST', '/v1/polymarket/wallet/transactions', { kind: 'redeem', asset_id: '999' })).status, 404);
+    assert.match(redeem.body.detail.profit_share.note, /fee wallet isn't set/, 'no fee wallet: no profit share');
+
+    // The profit share: 10% of the profit, a pUSD transfer after the redemption in the same signed batch.
+    const feeWallet = '0x' + 'fe'.repeat(20);
+    env.polymarketFeeWallet = feeWallet;
+    try {
+      await clearCache();
+      const withFee = await u.api('POST', '/v1/polymarket/wallet/transactions', { kind: 'redeem', asset_id: pos.token_id });
+      assert.equal(withFee.status, 201, JSON.stringify(withFee.body));
+      const calls = withFee.body.typed_data.message.calls;
+      assert.equal(calls.length, 3);
+      assert.equal(calls[2].target, C.pUSD, 'the last call, after the redemption');
+      const [to, amount] = new ethers.Interface(['function transfer(address to, uint256 amount)']).decodeFunctionData('transfer', calls[2].data);
+      assert.equal(to.toLowerCase(), feeWallet);
+      assert.equal(amount, 1000000n, `10% of a $10 profit (10 shares paid $10, bought at ${pos.avg_price})`);
+      assert.match(withFee.body.steps[2].what, /10% of your 10 pUSD profit/);
+      // On a loss, or a profit too small to share: nothing.
+      assert.equal(wallets.profitShare([{ current_value: 5, avg_price: 0.8, current_size: 10 }]).fee_units, 0n, 'paid $8, got $5: no share');
+      assert.equal(wallets.profitShare([{ current_value: 10, avg_price: 0.6, current_size: 10 }]).fee_units, 400000n, 'paid $6, got $10: 10% of $4');
+      assert.equal(wallets.profitShare([{ current_value: 1, avg_price: 0.9995, current_size: 1 }]).fee_units, 0n, 'under a cent');
+    } finally { env.polymarketFeeWallet = ''; }
   });
 
   await t.test('region blocks: buying and set-up are refused, selling and getting money out are not', async () => {

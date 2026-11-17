@@ -11,6 +11,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **Free points** | 30 a month per signed-in wallet (10 for a wallet with no transactions yet) | Yes | `payments/points.js` |
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
 | **Yield move fee** | Each yield move RektBull prepares: 0.1% of the amount moved, in the moved asset (exits to the wallet are free) | No (proposals need Safety Pro) | `yield/proposals.js` |
+| **Polymarket profit share** | Winnings redeemed through `/predictions`: 10% of the profit, a pUSD transfer in the same batch | Yes (wallet sign-in) | `polymarket/wallets.js` (`profitShare`) |
 | **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.01% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
 | **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
@@ -257,6 +258,23 @@ caps them at 1% and 0.5%), and pays it out daily to the profile's wallet. An
 order that doesn't fill, or is cancelled, costs nothing. No approval is asked
 for billing, and RektBull never touches the user's money. Fills with the code
 are public at `clob.polymarket.com/builder/trades`.
+
+## Polymarket profit share (redemptions)
+
+When a user redeems Polymarket winnings through `/predictions`, the batch
+their wallet signs ends with a pUSD transfer to RektBull
+(`POLYMARKET_FEE_WALLET`, a public address). The transfer is **10% of the
+profit** (catalog `polymarket_profit`, editable in the admin panel up to 10%).
+Profit is what the redeemed shares pay out, minus what they cost (average price
+times shares), both from Polymarket's Data API. A CTF redemption redeems every
+outcome of the market held, so all of them count.
+
+- It's in the same transaction as the redemption, so it's paid only if the
+  redemption goes through.
+- Nothing is taken on a loss, under a cent, or with no fee wallet set.
+- The wallet shows the amount and how it was worked out before signing.
+- Redeeming on polymarket.com is free, and so is selling before resolution.
+  The share applies only to redemptions RektBull prepares.
 
 ## NOWPayments (a second checkout)
 

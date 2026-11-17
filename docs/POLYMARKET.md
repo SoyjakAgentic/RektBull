@@ -77,6 +77,15 @@ This is a Polymarket **builder fee**. RektBull's builder code
 - **Records.** Fills carrying the builder code are listed publicly at
   `clob.polymarket.com/builder/trades?builder_code=…`.
 
+### Profit share on redemptions
+
+Winnings redeemed through the page carry **10% of the profit**: the payout
+minus what the shares cost, from Polymarket's Data API. It's a pUSD transfer
+to `POLYMARKET_FEE_WALLET` in the same batch as the redemption, so it's paid
+only if the redemption goes through. Nothing is taken on a loss. The rate is
+the `polymarket_profit` price in the admin panel (at most 10%). Redeeming on
+polymarket.com, or selling before the market resolves, skips it.
+
 ## Region blocks
 
 Polymarket blocks, or allows only closing positions from, many countries
@@ -127,6 +136,7 @@ the Session Key batches is in `src/polymarket/wallets.js` (`session_authorize`,
 | `POLYMARKET_ENABLED` | Trading on `/predictions` |
 | `POLYMARKET_BUILDER_CODE` | RektBull's public builder code (bytes32), from polymarket.com > Settings > Builders |
 | `POLYMARKET_BUILDER_TAKER_FEE_BPS`, `POLYMARKET_BUILDER_MAKER_FEE_BPS` | The profile's rates, shown to users (1 = 0.01%) |
+| `POLYMARKET_FEE_WALLET` | Public address for the profit share on redemptions (unset: none) |
 | `POLYMARKET_BUILDER_API_KEY`, `…_SECRET`, `…_PASSPHRASE` | RektBull's Builder API key for the relayer (Secret Manager) |
 
 ## Tests

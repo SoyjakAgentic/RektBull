@@ -116,6 +116,19 @@ const PRODUCTS = {
     pro_fee_bps: 300,
     x402: false,
   },
+  // Polymarket winnings redeemed through RektBull: a share of the PROFIT (what the
+  // redemption pays minus what the redeemed shares cost) goes to RektBull in a
+  // pUSD transfer in the same batch the user signs, so it's paid only if the
+  // redemption goes through. Nothing on a loss; redeeming on polymarket.com is free.
+  polymarket_profit: {
+    kind: 'fee',
+    title: 'Polymarket profit share',
+    description: 'When you redeem Polymarket winnings through RektBull, 10% of the profit (what the redemption pays minus what those shares cost you) is sent to RektBull in the same transaction you sign. Nothing is taken on a loss.',
+    price_cents: 0,
+    fee_bps: 1000,
+    pro_fee_bps: 1000,
+    x402: false,
+  },
   // Yield proposals are in Safety Pro; each move RektBull prepares carries a
   // 0.1% fee, a plain transfer in the moved asset that the user signs with
   // the move (exits to the wallet are free).
