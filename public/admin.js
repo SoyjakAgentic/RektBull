@@ -37,6 +37,19 @@
       }, s.on ? 'Resume' : 'Stop now'))));
   }
 
+  function rewards(r) {
+    const value = el('input', { type: 'number', step: '0.01', min: '0.001', value: r.point_usd, size: '6' });
+    const rebate = el('input', { type: 'number', step: '1', min: '0', max: '100', value: r.rebate_bps / 100, size: '5' });
+    const note = el('textarea', { rows: '2', cols: '70', 'aria-label': 'What the Points page says about a token' }, r.token_note);
+    $('rewards').replaceChildren(
+      el('p', { class: 'small' }, `${Number(r.supply.issued).toLocaleString('en-US')} of ${Number(r.cap).toLocaleString('en-US')} points issued; ${Number(r.supply.remaining).toLocaleString('en-US')} remain.`),
+      el('label', { class: 'inline' }, 'A point is worth $ ', value), ' ',
+      el('label', { class: 'inline' }, 'Rebate (% of fees) ', rebate), el('br'),
+      el('label', {}, 'Token wording, shown on the Points page', el('br'), note), el('br'),
+      el('button', { class: 'btn', type: 'button', onclick: () => change('rewards-msg', `RektBull Points: $${value.value} a point, ${rebate.value}% rebate`, 'PUT', '/v1/admin/rewards', { point_usd: Number(value.value), rebate_bps: Math.round(Number(rebate.value) * 100), token_note: note.value }) }, 'Save'),
+      el('button', { class: 'btn ghost', type: 'button', onclick: () => change('rewards-msg', 'RektBull Points: back to the defaults', 'PUT', '/v1/admin/rewards', { default: true }) }, 'Defaults'));
+  }
+
   function regions(r) {
     $('regions-header').replaceChildren(el('span', { class: r.header ? 'muted' : 'bad' }, r.note), r.header ? ` Your request: ${r.your_region || r.your_country || 'no country'}.` : '');
     $('regions').replaceChildren(...r.venues.map(v => {
@@ -237,6 +250,7 @@
       say('gate-msg', '');
       stops(o.stops); prices(o.prices); agents(o.agents); log(o.log);
       regions(await api('GET', '/v1/admin/regions'));
+      rewards(await api('GET', '/v1/admin/rewards'));
       showTab(tab);
     } catch (err) {
       $('panel').hidden = true;

@@ -129,6 +129,17 @@ router.put('/v1/admin/regions/:venue', change, async (req, res) => {
   res.json(regions.adminList(req));
 });
 
+/* ── RektBull Points: the point's value, the rebate, the token wording (never a balance: nothing here moves value) ── */
+
+const rewardPoints = require('../rewards/points');
+router.get('/v1/admin/rewards', admin, async (_req, res) => { await settings.reload(); res.json({ ...rewardPoints.config(), defaults: rewardPoints.DEFAULTS, supply: await rewardPoints.supply() }); });
+router.put('/v1/admin/rewards', change, async (req, res) => {
+  const reason = reasonOf(req);
+  const value = req.body?.default ? null : { ...(settings.get('rewards') || {}), ...rewardPoints.checkSettings(req.body || {}) };
+  await settings.set('rewards', value, { wallet: who(req), action: value ? 'rewards' : 'rewards_default', reason });
+  res.json({ ...rewardPoints.config(), supply: await rewardPoints.supply() });
+});
+
 /* ── the site banner ── */
 
 const banner = require('../admin/banner');

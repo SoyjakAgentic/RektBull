@@ -149,6 +149,7 @@
       };
       line('EVM wallet', a.wallet, 'evm');
       line('Solana wallet', a.solana_wallet, 'solana');
+      rows.push(el('a', { href: '/points', class: 'acct-menu-link' }, 'RektBull Points'));
       rows.push(el('button', { type: 'button', onclick: signOut }, 'Sign out'));
       m.replaceChildren(...rows);
     } catch (err) { m.replaceChildren(el('p', { class: 'acct-menu-note' }, err.message)); }

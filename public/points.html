@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Account · Points</span>
+      <h1>RektBull Points, <em>back on every trading fee</em></h1>
+      <p id="how">A share of the trading fees you pay RektBull comes back to you as RektBull Points, which you can spend on subscriptions.</p>
+    </div>
+  </section>
+  <main class="tool">
+    <p class="notice" role="note" id="token-note"></p>
+
+    <section class="card" id="balance-card">
+      <h2>Your points</h2>
+      <div id="balance" class="tiles"><p class="muted">Sign in (the button at the top right) to see your points.</p></div>
+      <p id="supply" class="small muted"></p>
+    </section>
+
+    <section class="card" id="spend-card">
+      <h2>Spend them on a subscription</h2>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Subscription</th><th class="num">Price</th><th class="num">Points</th><th></th></tr></thead><tbody id="subs"></tbody></table></div>
+      <p id="spend-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="history-card" hidden>
+      <h2>History</h2>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>When</th><th>What</th><th class="num">Fee</th><th class="num">Points</th></tr></thead><tbody id="history"></tbody></table></div>
+    </section>
+  </main>
+
+  <!--#footer:RektBull Points are a rebate of trading fees, spendable on subscriptions. Not financial advice.-->
+  <script src="/common.js"></script>
+  <script src="/points.js"></script>
+</body>
+</html>

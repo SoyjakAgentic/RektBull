@@ -360,6 +360,10 @@ async function confirm(intent) {
     })]);
   });
   logger.info('autonomous trade confirmed', { intent: intent.id });
+  // RektBull Points: the router's fee in dollars (fee / the base amount it was taken from, times the trade's value).
+  const base = intent.side === 'buy' ? amountIn : amountOut + ev.args.fee;
+  const feeUsd = base > 0n ? valueUsd * Number(ev.args.fee) / Number(base) : 0;
+  if (feeUsd > 0) await require('../rewards/points').safeCredit({ accountId: intent.account_id, source: 'auto_swap', ref: intent.id, feeUsd });
 }
 
 /** One pass: confirm what was sent, then send what is queued, one at a time. */

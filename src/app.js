@@ -79,7 +79,7 @@ function createApp() {
   const send = html => (html.includes('<!--#facts-->')
     ? async (req, res, next) => { try { res.type('html').send(html.replace('<!--#facts-->', await glance(req.path))); } catch (err) { next(err); } }
     : (_req, res) => res.type('html').send(html));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/perps': 'perps.html', '/predictions': 'predictions.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/perps': 'perps.html', '/predictions': 'predictions.html', '/points': 'points.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
   // Find money and Governance sit under Opportunities in the menu; Perps under Trade.
   const MENU = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade', '/predictions': '/trade' };
   for (const [route, file] of Object.entries(PAGES)) {
