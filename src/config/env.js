@@ -84,6 +84,17 @@ const env = {
   // Automatic trading only opens positions in markets at least this deep (both must hold).
   hlAutoMinOpenInterestUsd: int(process.env.HL_AUTO_MIN_OPEN_INTEREST_USD, 5000000),
   hlAutoMinDayVolumeUsd: int(process.env.HL_AUTO_MIN_DAY_VOLUME_USD, 5000000),
+  // Automatic trading (src/hyperliquid/auto.js): off until switched on. RektBull's agent wallet key lives in
+  // Cloud KMS (KMS_HL_AGENT_KEY_VERSION); HL_AGENT_ADDRESS is its PUBLIC address, which users approve.
+  // DEV_HL_AGENT_KEY is a throwaway key for Hyperliquid's testnet only, refused in production and on mainnet.
+  hlAutoEnabled: process.env.HL_AUTO_ENABLED === 'true',
+  hlAgentAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.HL_AGENT_ADDRESS || '') ? process.env.HL_AGENT_ADDRESS.toLowerCase() : '',
+  kmsHlAgentKeyVersion: process.env.KMS_HL_AGENT_KEY_VERSION || '',
+  devHlAgentKey: process.env.DEV_HL_AGENT_KEY || '',
+  // The most leverage an automatic position may use (and the user may allow), and how far from Hyperliquid's
+  // mark price an automatic order may fill, in basis points (also the most mark and oracle may differ).
+  hlAutoMaxLeverage: Math.min(50, Math.max(1, int(process.env.HL_AUTO_MAX_LEVERAGE, 10))),
+  hlAutoPriceBandBps: Math.min(500, Math.max(5, int(process.env.HL_AUTO_PRICE_BAND_BPS, 50))),
 
   // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
   // transfer the user signs next to the claim (receive-only wallet; unset = no fee).

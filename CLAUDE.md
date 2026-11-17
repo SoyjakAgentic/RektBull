@@ -27,6 +27,14 @@
   docs/SOLANA_ORDERS.md).
   Never to any address RektBull controls. RektBull's own keys live in Google Cloud KMS, used only by the
   trade service.
+  **The one exception, approved by the owner: Hyperliquid perps** (docs/HYPERLIQUID.md). Hyperliquid
+  has no onchain spend limits for agents, so the permission is the user's `approveAgent` of RektBull's
+  agent wallet ("rektbull-auto", KMS key, at most 30 days, revocable). Hyperliquid enforces that it can
+  trade and never withdraw or transfer. The user's per-trade, 24-hour, leverage and market limits are
+  enforced by the trade service (`src/hyperliquid/auto.js`), **not onchain**, and the page must say so,
+  and that the most a user can lose is the margin in their Hyperliquid account. Every automatic order
+  is immediate-or-cancel within `HL_AUTO_PRICE_BAND_BPS` of the mark, isolated margin, deep markets
+  only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
   free uses on failure, settle x402 only after the run succeeds. In-kind fees

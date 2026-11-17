@@ -15,6 +15,7 @@ const markets = require('../hyperliquid/markets');
 const relay = require('../hyperliquid/relay');
 const H = require('../../public/hl-core.js');
 const regions = require('../compliance/regions');
+const auto = require('../hyperliquid/auto');
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ const APPS = { mainnet: 'https://app.hyperliquid.xyz', testnet: 'https://app.hyp
 
 const refusal = fn => async (req, res) => {
   try { await fn(req, res); } catch (err) {
-    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
+    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked || err instanceof auto.AutoRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
     if (err.isHyperliquid || err.isProviderLimit) return res.status(err.status || 503).json({ error: 'hyperliquid_unavailable', message: err.isProviderLimit ? `Hyperliquid couldn't be reached: ${err.message}.` : err.message });
     throw err;
   }
@@ -100,8 +101,35 @@ router.get('/v1/hyperliquid/approvals', requireEvmWallet, refusal(async (req, re
 router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, res) => {
   res.json(await relay.send(req.body, {
     wallet: req.account.wallet,
-    before: checked => { if (regionMatters(checked)) regions.refuseIfBlocked(req, 'hyperliquid'); },
+    before: checked => {
+      // RektBull's own agent is approved only through /auto/grant, so its limits are always recorded with it.
+      const a = checked.payload.action;
+      if (a.type === 'approveAgent' && (a.agentAddress.toLowerCase() === env.hlAgentAddress || a.agentName.startsWith(auto.AGENT_NAME))) {
+        throw new relay.RelayRefused('RektBull\'s automatic-trading agent is approved from the Automatic trading section, with your limits.', 422, 'use_auto_grant');
+      }
+      if (regionMatters(checked)) regions.refuseIfBlocked(req, 'hyperliquid');
+    },
   }));
+}));
+
+/* ── automatic trading (hyperliquid/auto.js): RektBull's agent, the user's limits, enforced by the trade service ── */
+
+router.get('/v1/hyperliquid/auto', requireEvmWallet, refusal(async (req, res) => res.json(await auto.overview(req.account))));
+
+router.post('/v1/hyperliquid/auto/grant', requireEvmWallet, refusal(async (req, res) => {
+  res.status(201).json(await auto.grant(req.account, req.body, { before: () => regions.refuseIfBlocked(req, 'hyperliquid') }));
+}));
+
+router.post('/v1/hyperliquid/auto/revoke', requireEvmWallet, refusal(async (req, res) => res.json(await auto.revoke(req.account, req.body || {}))));
+
+router.post('/v1/hyperliquid/auto/intents', requireEvmWallet, refusal(async (req, res) => {
+  if (req.body?.side !== 'close') regions.refuseIfBlocked(req, 'hyperliquid');
+  res.status(201).json(await auto.queue(req.account, req.body || {}));
+}));
+
+router.delete('/v1/hyperliquid/auto/intents/:id', requireEvmWallet, refusal(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  res.json(await auto.cancel(req.account, req.params.id));
 }));
 
 module.exports = router;

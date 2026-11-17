@@ -106,13 +106,13 @@ async function account(user, { ms = 4000 } = {}) {
  * What the account has approved: its agent wallets (name, address, expiry)
  * and the most RektBull's builder address may charge on a fill.
  */
-async function approvals(user) {
+async function approvals(user, { ms = 5000 } = {}) {
   if (!isAddress(user)) throw Object.assign(new Error('user must be a wallet address (0x and 40 hex characters)'), { status: 400 });
   user = user.toLowerCase();
   const builder = env.hlBuilderAddress;
   const [agents, fee] = await Promise.all([
-    part(() => hl.info({ type: 'extraAgents', user }, { ms: 5000 })),
-    builder ? part(() => hl.info({ type: 'maxBuilderFee', user, builder }, { ms: 5000 })) : null,
+    part(() => hl.info({ type: 'extraAgents', user }, { ms })),
+    builder ? part(() => hl.info({ type: 'maxBuilderFee', user, builder }, { ms })) : null,
   ]);
   const out = { user, network: hl.network(), source: hl.SOURCE };
   if (agents.ok) out.agents = (agents.value || []).map(a => ({ name: a.name, address: String(a.address).toLowerCase(), valid_until: a.validUntil ?? null }));
