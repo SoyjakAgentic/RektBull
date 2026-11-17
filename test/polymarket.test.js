@@ -511,6 +511,23 @@ test('polymarket: wallet set-up and manual orders, end to end', { skip: !DB && '
     assert.equal((await u.api('POST', '/v1/polymarket/wallet/transactions', { kind: 'redeem', asset_id: '999' })).status, 404);
   });
 
+  await t.test('region blocks: buying and set-up are refused, selling and getting money out are not', async () => {
+    const regions = require('../src/compliance/regions');
+    await regions.set('polymarket', ['US'], { wallet: '0xadmin', reason: 'test' });
+    try {
+      // No country header is set up here, so a venue with blocks is blocked for everyone (fails closed).
+      const buy = await u.api('POST', '/v1/polymarket/orders', { asset_id: assetId, market_slug: m.slug, side: 'BUY', order_type: 'GTC', price: '0.02', size: '100' });
+      assert.equal(buy.status, 451); assert.equal(buy.body.error, 'region_blocked');
+      assert.equal((await u.api('POST', '/v1/polymarket/wallet/transactions', { kind: 'approvals' })).status, 451);
+      const sell = await u.api('POST', '/v1/polymarket/orders', { asset_id: assetId, market_slug: m.slug, side: 'SELL', order_type: 'FAK', size: '50' });
+      assert.notEqual(sell.status, 451, 'selling is never blocked');
+      const out = await u.api('POST', '/v1/polymarket/wallet/transactions', { kind: 'withdraw', amount: '1' });
+      assert.notEqual(out.status, 451, 'withdrawing is never blocked');
+    } finally {
+      await regions.set('polymarket', [], { wallet: '0xadmin', reason: 'test' });
+    }
+  });
+
   await t.test('signed out: nothing is prepared', async () => {
     const res = await fetch(`${url}/v1/polymarket/orders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     assert.equal(res.status, 401);

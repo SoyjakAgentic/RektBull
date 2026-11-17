@@ -66,6 +66,9 @@ router.get('/v1/polymarket/positions', read(async (req, res) => {
  * the page asks https://polymarket.com/api/geoblock before it offers to trade.)
  */
 function regionGate(req, res, next) {
+  // Getting out is never blocked: selling, redeeming winnings, withdrawing, and sending what was already prepared.
+  const kind = String(req.body?.kind || '');
+  if (req.path.endsWith('/submit') || (req.path.endsWith('/transactions') && kind !== 'approvals') || (req.path === '/v1/polymarket/orders' && String(req.body?.side || '').toUpperCase() === 'SELL')) return next();
   const r = regions.blockedFor(req, 'polymarket');
   if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
   next();
