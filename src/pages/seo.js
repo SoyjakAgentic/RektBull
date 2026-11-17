@@ -28,6 +28,7 @@ const PAGES = {
   '/governance': ['DAO Votes Decoded: Snapshot and Onchain | RektBull', 'See the DAO votes open for your wallet, with each proposal\'s actions decoded and flagged, and vote from your own wallet. Never a recommendation.'],
   '/launches': ['New Meme Coins, Checked for Rugs and Bundles | RektBull', 'New tokens on Base, Ethereum, Arbitrum and BNB Chain with their warning signs. Buying runs a honeypot, tax and bundle check first; your wallet signs.'],
   '/trade': ['Trade Crypto With Limits You Set | RektBull', 'Every token checked before you buy, within limits you set. Your wallet signs each trade, or gives a limited permission you can revoke any time.'],
+  '/points': ['RektBull Points: Rebates on Trading Fees | RektBull', 'Earn RektBull Points back on the trading fees you pay RektBull, and spend them on subscriptions. See your balance and history.'],
   '/predictions': ['Polymarket Predictions From Your Own Wallet | RektBull', 'Browse Polymarket prediction markets and trade them from your own wallet: order books, resolution sources and your positions. Your wallet signs every order.'],
   '/perps': ['Hyperliquid Perps From Your Own Account | RektBull', 'Trade Hyperliquid perpetuals from your own account: live markets, positions and liquidation prices. Trading keys can trade but never withdraw.'],
   '/developers': ['Crypto Safety API and MCP Server for Agents | RektBull', 'Give your app or AI agent RektBull\'s checks: a remote MCP server, a REST API with every fact sourced, and pay-per-call with x402 in USDC.'],
@@ -39,7 +40,7 @@ const PAGES = {
 const NAMES = {
   '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'AI agents', '/markets': 'Markets',
   '/opportunities': 'Opportunities', '/portfolio': 'Portfolio', '/research': 'Research', '/find': 'Find money', '/governance': 'Governance',
-  '/trade': 'Trade', '/perps': 'Perps', '/predictions': 'Predictions', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
+  '/trade': 'Trade', '/perps': 'Perps', '/predictions': 'Predictions', '/points': 'Points', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
 };
 /** Pages that sit under another in the menu, for breadcrumbs. */
 const PARENT = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade', '/predictions': '/trade' };
@@ -130,6 +131,12 @@ const FAQ = {
     ['Where is the trading key kept?', 'For trades you place yourself, the key is made in your browser and stays there: it is never sent to RektBull, and only signatures leave the page. It expires after 30 days, and you can end it at any time.'],
     ['Where do the prices and positions come from?', 'From Hyperliquid\'s own info API, read when the page loads and every few seconds after. If a figure can\'t be read, the page says so instead of showing an old or estimated one.'],
     ['How much can I lose?', 'Perpetuals use leverage, so a position can lose all its margin, and with cross margin a losing position draws on the rest of the account. Keep in the account only what you are prepared to lose.'],
+  ],
+  '/points': [
+    ['How do I earn RektBull Points?', 'Trade through RektBull: a share of every trading fee you pay comes back as points (25% by default, at $0.10 a point). That covers swaps you sign or automate, Hyperliquid perps, Polymarket trading fees and the Polymarket profit share. Points are credited once the trade is confirmed.'],
+    ['What can I do with them?', 'Spend them on subscriptions such as Safety Pro, at the point\'s value. The page also says what is planned for points at a future RektBull token launch.'],
+    ['Is there a limit?', 'At most 1,000,000,000 RektBull Points will ever be issued. When they run out, rebates stop; points you already have stay yours.'],
+    ['Are these the free points for safety checks?', 'No. The monthly free points for checks are a separate allowance. RektBull Points are earned from trading fees.'],
   ],
   '/predictions': [
     ['Does RektBull hold my money or keys?', 'No. Your wallet signs every order and every set-up step, and your Polymarket wallet belongs to your own key. Signed orders go from your browser straight to Polymarket, with Polymarket API credentials made in your browser and kept in that tab only.'],
@@ -270,7 +277,7 @@ function llms(base, digests = []) {
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/launches'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/points', '/launches'].map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),

@@ -100,7 +100,7 @@ router.get('/v1/hyperliquid/approvals', requireEvmWallet, refusal(async (req, re
 
 /** A signed action, passed on to Hyperliquid. */
 router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, res) => {
-  res.json(await relay.send(req.body, {
+  const out = await relay.send(req.body, {
     wallet: req.account.wallet,
     before: checked => {
       // RektBull's own agent is approved only through /auto/grant, so its limits are always recorded with it.
@@ -110,7 +110,14 @@ router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, re
       }
       if (regionMatters(checked)) regions.refuseIfBlocked(req, 'hyperliquid');
     },
-  }));
+  });
+  // RektBull Points: a rebate of the builder fee on what filled (Hyperliquid's own answer, not the page's).
+  const b = req.body?.action?.builder;
+  const filledUsd = (out.results || []).filter(r => r.filled).reduce((s, r) => s + r.size * r.avg_px, 0);
+  if (out.type === 'order' && b && filledUsd > 0) {
+    await require('../rewards/points').safeCredit({ accountId: req.account.id, source: 'perps', ref: `${req.account.id}:${req.body.nonce}`, feeUsd: filledUsd * b.f / 100000 });
+  }
+  res.json(out);
 }));
 
 /* ── automatic trading (hyperliquid/auto.js): RektBull's agent, the user's limits, enforced by the trade service ── */

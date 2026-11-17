@@ -272,6 +272,11 @@ async function progress(account, id) {
       await db.query('UPDATE polymarket_batches SET status = $2, tx_hash = COALESCE($3, tx_hash), error = $4 WHERE id = $1', [id, next, t.transaction_hash || null, next === 'failed' ? String(t.error_msg || t.state).slice(0, 300) : null]);
       Object.assign(b, { status: next, tx_hash: t.transaction_hash || b.tx_hash, error: next === 'failed' ? t.error_msg || t.state : null });
       if (b.kind.startsWith('session_')) await require('./auto').batchSettled(b);
+      // RektBull Points: a rebate of the profit share, once the redemption that paid it is confirmed.
+      const share = b.detail?.profit_share;
+      if (next === 'confirmed' && b.kind === 'redeem' && share?.fee_usd > 0) {
+        await require('../rewards/points').safeCredit({ accountId: b.account_id, source: 'polymarket_profit', ref: b.id, feeUsd: share.fee_usd });
+      }
     }
   }
   return { id, kind: b.kind, status: b.status, tx_hash: b.tx_hash || null, ...(b.error ? { error: b.error } : {}), source: pm.SOURCES.relayer };

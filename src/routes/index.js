@@ -139,6 +139,22 @@ router.get('/v1/admin/hosted-invoices', requireAuth, requireAdmin, async (req, r
   res.json({ invoices: rows });
 });
 
+/* ── RektBull Points (rewards/points.js): a rebate of trading fees, spent on subscriptions ── */
+const rewardPoints = require('../rewards/points');
+router.get('/v1/points', requireAuth, async (req, res) => res.json(await rewardPoints.overview(req.account.id)));
+router.get('/v1/points/info', (_req, res) => {
+  const c = rewardPoints.config();
+  res.json({ point_usd: c.point_usd, rebate_pct: c.rebate_bps / 100, cap: c.cap, token_note: c.token_note, subscriptions: rewardPoints.passPrices(c) });
+});
+router.post('/v1/points/passes/:product', requireAuth, async (req, res) => {
+  try {
+    res.status(201).json(await rewardPoints.buyPass(req.account.id, req.params.product));
+  } catch (err) {
+    if (err instanceof rewardPoints.NotEnoughPoints) return res.status(402).json({ error: err.code, message: err.message });
+    throw err;
+  }
+});
+
 router.post('/v1/passes/:product', requireAuth, async (req, res) => {
   try {
     res.status(201).json(await passes.buy(req.account.id, req.params.product, `manual:${req.account.id}:${Date.now()}`));

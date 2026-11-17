@@ -17,8 +17,9 @@
   default, the rates set on RektBull's builder profile) on fills only and pays
   it out. Polymarket winnings redeemed through RektBull carry a 10% share of
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
-  transfer in the same batch the user signs. No recurring pulls and no token
-  approvals asked of users for billing.
+  transfer in the same batch the user signs. RektBull Points (docs/POINTS.md),
+  a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
+  passes. No recurring pulls and no token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
   user signs. Deposit addresses derive from `CRYPTO_DEPOSIT_XPUB` (public); the
   server must never receive an xprv or mnemonic.

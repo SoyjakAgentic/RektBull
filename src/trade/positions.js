@@ -73,6 +73,9 @@ async function record(row, amount) {
     await c.query(`UPDATE trade_proposals SET status = 'confirmed', finished_at = now() WHERE id = $1`, [row.id]);
   });
   logger.info('trade confirmed', { proposal: row.id, side: row.side, chain: row.chain });
+  // RektBull Points: a rebate of the fee this trade paid (rewards/points.js). Never blocks the trade.
+  const feeUsd = row.plan?.summary?.fee?.usd;
+  if (feeUsd > 0) await require('../rewards/points').safeCredit({ accountId: row.account_id, source: 'swap', ref: row.id, feeUsd });
 }
 
 async function tick() {
