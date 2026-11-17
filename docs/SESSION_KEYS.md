@@ -163,11 +163,19 @@ exactly what this design rules out.
   limits earn the exemption (the output of an exempt sale doesn't), so what
   can be sold freely is capped by the capped buys. (Fixed after the November
   2026 audit: finding H-1, AUDIT_BRIEF.md section 8.) The exemption belongs to
-  the grant it was earned under: revoking or setting new limits ends it, so a
-  credit from an old grant can't cover tokens the user got elsewhere (the
-  second AI audit's M-1). Because exits don't count, up to **twice** the daily
-  limit can change hands in a day (four times across the change of day): the
-  permission screen says so. Grants last at most 30 days onchain too.
+  the grant it was earned under: revoking, or setting limits after the grant
+  has ended, ends it, so a credit from an old grant can't cover tokens the user
+  got elsewhere (the second AI audit's M-1). Renewing or changing the limits
+  while the grant is still live keeps it, so the positions it opened can still
+  be closed in one sale (the re-review's N-3). Because exits don't count, one
+  sale of everything bought can be larger than the per-trade and daily limits,
+  and over a whole grant up to **twice** (days × daily limit) can change hands;
+  the permission screen says so (the re-review's N-1 corrected an earlier
+  "twice the limit in a day"). Moving bought tokens out of the wallet doesn't
+  reduce what may be sold exempt within the grant (N-2, accepted: at most the
+  grant's buys, each sale still price-checked). Grants last at most 30 days
+  onchain too; the app asks for 10 minutes less, so a clock ahead of the chain
+  can't make a full 30 days fail (N-4).
 - **The worst case of a bad price is bounded:** a hacked RektBull could take
   at most the price bound (2%) on each trade, within the limits. Lower the bound
   for liquid pairs if that's too much.
@@ -368,10 +376,14 @@ ordinary Safe transactions. The named key may then ask the module to make the
 Safe call one function, the router's `swap`: nothing else, no value, never a
 delegatecall. Sessions last at most 30 days; owners stop it with `revoke()`, or
 any one owner with `revokeFor(safe)`, and RektBull's session key can give a
-session up with `renounce(safe)`. Disabling the module only pauses it:
-re-enabling it brings the session back, so the app always batches `revoke()`
-with disabling. `setSession` and `revoke` refuse calls forwarded by a Safe's
-fallback handler (the second AI audit, AUDIT_BRIEF.md section 8). The router applies its rules with the Safe as the
+session up with `renounce(safe)`, or give up every session it has at once, for
+good, with `retire()` (RektBull's kill switch if the key is ever at risk; a
+retired key can't trade or be named again). Disabling the module only pauses
+it: re-enabling it brings the session back, so `revoke()` is the stop, and the
+app's stop button must send it with the disabling (to build with the trade
+service integration; the re-review's N-3). `setSession`, `revoke`, `revokeFor`
+and `renounce` refuse calls forwarded by a Safe's fallback handler (the second
+AI audit and its re-review, AUDIT_BRIEF.md section 8). The router applies its rules with the Safe as the
 account. A Safe is linked to RektBull by one of its owners, who signs in with
 their own wallet; RektBull checks onchain that they own it.
 

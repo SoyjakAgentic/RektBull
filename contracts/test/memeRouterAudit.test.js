@@ -32,15 +32,21 @@ describe('Meme Router: the second AI audit\'s findings', () => {
     const Router = await ethers.getContractFactory('RektBullMemeRouter');
     await reverts(Router.deploy(feeWallet.address, 100, WNAT.target, [split.target, WNAT.target], [USDC.target]), 'BadConfig');
     await reverts(Router.deploy(feeWallet.address, 100, WNAT.target, [split.target, USDC.target], [USDC.target]), 'BadConfig');
-    // A token wrongly listed as a venue (not one the constructor can recognise): orders for it are refused.
+    // Any other token listed as a venue: it answers like a token, so the router can't be deployed with it (re-review,
+    // N-1: refusing orders that trade a venue didn't protect approvals of it, since any order can name it as the venue).
     const JUNK = await ethers.deployContract('MockERC20', ['Junk', 'JUNK', 18]);
-    const router = await deploy([split.target, JUNK.target]);
-    await JUNK.mint(user.address, 10n * E18); await JUNK.connect(user).approve(router.target, ethers.MaxUint256);
+    await reverts(Router.deploy(feeWallet.address, 100, WNAT.target, [split.target, JUNK.target], [USDC.target]), 'BadConfig');
+    // And an order can't trade a venue.
+    const router = await deploy([split.target]);
     await MEME.mint(attacker.address, 1n); await MEME.connect(attacker).approve(router.target, 1n);
-    const o = { account: attacker.address, executor: attacker.address, tokenIn: MEME.target, tokenOut: JUNK.target, amountIn: 1n, minAmountOut: 1n, validAfter: 0, validUntil: (await now()) + 3600, epoch: 0, salt: 1 };
-    const f = { amountIn: 1n, venue: JUNK.target, spender: split.target, unwrapIn: false, minAmountOut: 0n, venueCalldata: JUNK.interface.encodeFunctionData('transferFrom', [user.address, router.target, 10n * E18]) };
+    const o = { account: attacker.address, executor: attacker.address, tokenIn: MEME.target, tokenOut: split.target, amountIn: 1n, minAmountOut: 1n, validAfter: 0, validUntil: (await now()) + 3600, epoch: 0, salt: 1 };
+    const f = { amountIn: 1n, venue: split.target, spender: split.target, unwrapIn: false, minAmountOut: 0n, venueCalldata: '0x' };
     await reverts(router.connect(attacker).fill(o, await attacker.signTypedData(dom(router), types, o), f), 'NotAllowed');
-    assert.equal(await JUNK.balanceOf(user.address), 10n * E18, 'the bystander kept everything they approved');
+  });
+
+  it('re-review N-2: a router needs a wrapped native coin', async () => {
+    const Router = await ethers.getContractFactory('RektBullMemeRouter');
+    await reverts(Router.deploy(feeWallet.address, 100, ethers.ZeroAddress, [split.target], [USDC.target]), 'BadConfig');
   });
 
   it('M-2 (documented worst case): a hacked executor can fill a stop-loss at its floor, never below it', async () => {

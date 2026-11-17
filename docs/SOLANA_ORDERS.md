@@ -1,7 +1,7 @@
 # The Solana order program: automatic meme trades without holding keys
 
 *Status: the program and its tests are built
-(`solana/programs/rektbull-orders`, 23 break-it tests, a random-sequence
+(`solana/programs/rektbull-orders`, 28 break-it tests, a random-sequence
 invariant test, and checks against pump.fun's, PumpSwap's and Jupiter's real
 programs on copies of mainnet). **Not audited, not deployed, and the trade service doesn't use it
 yet.** Nothing may hold real funds through it until an external audit is done
@@ -86,7 +86,13 @@ rent.)
    account. PumpSwap and Jupiter pay wrapped SOL, so for an order paying out
    native SOL through them, transit's wrapped-SOL account is closed into SOL
    first (its rent goes back to the executor who opened it). Unused input goes back: tokens to the account they came from, SOL
-   to the owner.
+   to the owner. Transit's token accounts the fill emptied are closed, their
+   rent back to the executor who opened them (a Token-2022 account holding
+   withheld transfer fees can't close and is left open); the trade service
+   opens them again before the next fill (re-review, N-1).
+   An input-side fee must fit in what the venue left: a fill that leaves no
+   room for it is refused (`NoRoomForFee`, re-review N-2), so the trade service
+   leaves the 1% as headroom.
 6. **The user's price, on what actually reached them** (the owner's SOL or
    token balance, before and after), and transit must end holding nothing.
 7. The fill is added to the order; a completed order closes and its rent goes
@@ -243,7 +249,19 @@ the trader, then copies every account and program they touch; then
     doesn't pass a hook's extra accounts). pump.fun's coins don't use hooks;
   - pump.fun's volume rewards for trades through the program accrue to the
     user's own transit's volume account, which the program has no instruction
-    to claim. Users trading by hand keep their own.
+    to claim. Users trading by hand keep their own. The owner can close that
+    account and get its rent back with `close_volume_account` (owner-signed;
+    it sends only pump.fun's or PumpSwap's `close_user_volume_accumulator`,
+    never from a fill; re-review, N-1);
+  - the swap allowlist pins instruction names of three upgradeable programs
+    while this one becomes immutable: a future pump.fun `buy_v4`, or a Jupiter
+    route variant not on the list, can't be filled (users can only cancel), and
+    an upgrade could change what a listed one does; the price check stays the
+    backstop (re-review, N-3). The trade service only builds listed variants;
+  - transit's token accounts other than `transit_in` and `transit_out` (a
+    Jupiter route's intermediate ones) aren't checked for leftovers; a hacked
+    executor could park surplus above the user's price there, within the
+    documented worst case and only that owner's (re-review, N-4).
 - These are not an audit.
 
 ## Building

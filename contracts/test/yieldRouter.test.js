@@ -158,9 +158,9 @@ describe('RektBull Yield Router: break-it tests on Base mainnet', function () {
     assert.ok(await router.positionOf(low, user.address) <= 1n, 'the old position is empty');
     const pos = await router.positionOf(high, user.address);
     assert.ok(pos >= usdc(1996.9), `moved ${ethers.formatUnits(pos, 6)}`);
-    // The deposit above paid this asset's fee a day ago: within FEE_COOLDOWN (the break-even) the move pays none (second AI
-    // audit, M-1: at most one fee per account and asset per week, however often it is moved).
-    assert.equal(await usdcToken.balanceOf(feeWallet), fees, 'no second fee within the cooldown');
+    // The deposit above paid on 1,000 USDC a day ago: within the fee period (FEE_COOLDOWN, the break-even) that much moves
+    // free, however often (second AI audit, M-1). Only money that hasn't paid (here, the day's interest) pays, a fraction of a cent.
+    assert.ok(await usdcToken.balanceOf(feeWallet) - fees < usdc(0.01), 'paid money moves free in the fee period');
     assert.equal(await usdcToken.balanceOf(router.target), 0n);
   });
 
