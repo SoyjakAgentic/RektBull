@@ -120,6 +120,11 @@ async function resolution(conditionId) {
   return out?.data?.[0] || null;
 }
 
+/** Whether a Deposit Wallet exists at `address` (a public relayer read). */
+const deployed = address => read('relayer', RELAYER, '/deployed', { address, type: 'WALLET' });
+/** The next nonce for a Deposit Wallet batch signed by `signer` (a public relayer read). */
+const walletNonce = signer => read('relayer', RELAYER, '/v1/account/transactions/params', { address: signer, type: 'WALLET' });
+
 /* ── Relayer: gasless wallet transactions, with RektBull's own Builder API key ── */
 
 const builderConfigured = () => !!(env.polymarketBuilderApiKey && env.polymarketBuilderApiSecret && env.polymarketBuilderApiPassphrase);
@@ -155,5 +160,5 @@ async function relayer(method, path, { params, body } = {}) {
 module.exports = {
   GAMMA, CLOB, DATA, RELAYER, SOURCES, http, PolymarketUnavailable,
   events, event, market, search, book, builderTrades, positions, resolution,
-  relayer, builderHeaders, builderConfigured,
+  relayer, builderHeaders, builderConfigured, deployed, walletNonce,
 };
