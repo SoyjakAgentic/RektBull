@@ -59,6 +59,8 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   await require('../src/config/migrate').migrate();
   t.after(() => db.getPool().end());
   require('../src/admin/settings').reset();
+  // These requests carry no country, so the venues' own region lists would refuse them: clear Hyperliquid's here.
+  await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const { issueToken } = require('../src/auth/siwe');
   const server = require('../src/app').createApp().listen(0);
   t.after(() => server.close());

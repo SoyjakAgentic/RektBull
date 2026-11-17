@@ -125,7 +125,7 @@ const regions = require('../compliance/regions');
 router.get('/v1/admin/regions', admin, async (req, res) => { await settings.reload(); res.json(regions.adminList(req)); });
 router.put('/v1/admin/regions/:venue', change, async (req, res) => {
   const reason = reasonOf(req);
-  await regions.set(req.params.venue, req.body?.countries, { wallet: who(req), reason });
+  await regions.set(req.params.venue, req.body?.default ? null : req.body?.countries, { wallet: who(req), reason });
   res.json(regions.adminList(req));
 });
 

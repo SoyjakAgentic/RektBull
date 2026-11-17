@@ -109,15 +109,16 @@ approves it once. See [PAYMENTS.md](PAYMENTS.md#perps-fees-hyperliquid-builder-c
 
 ## Region blocks
 
-These are set per venue in the admin panel, and start with none
-([ADMIN.md](ADMIN.md#region-blocks)).
+These are set per venue in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)).
+They start with Hyperliquid's own list: the United States and Ontario (its
+Terms of Use), plus the places under comprehensive US sanctions.
 
 - **What they stop:** opening positions, leverage changes and new approvals,
   for manual and automatic trading alike.
 - **What they never stop:** viewing, cancelling, closing, revoking.
 
-Axiom's own terms couldn't be read (the page refused automated fetches), and
-its docs name no restricted countries, so no blocks are preset.
+`GEO_COUNTRY_HEADER` must be set before trading is switched on. Without it,
+the blocks refuse everyone.
 
 ## Settings
 
@@ -131,7 +132,7 @@ its docs name no restricted countries, so no blocks are preset.
 | `HL_AUTO_MAX_LEVERAGE`, `HL_AUTO_PRICE_BAND_BPS` | Leverage cap (10), price band (50 = 0.5%) |
 | `HL_AUTO_MIN_OPEN_INTEREST_USD`, `HL_AUTO_MIN_DAY_VOLUME_USD` | How deep a market must be for automatic opens ($5M each) |
 | `HL_WEIGHT_PER_MINUTE` | RektBull's share of Hyperliquid's 1,200 request weight a minute per IP |
-| `GEO_COUNTRY_HEADER` | The load balancer's country header, for region blocks |
+| `GEO_COUNTRY_HEADER`, `GEO_SUBDIVISION_HEADER` | The load balancer's country and region headers, for region blocks |
 
 ## Before switching automatic trading on
 
