@@ -126,7 +126,7 @@
   async function loadApprovals() {
     if (!RB.signedIn() || !hl.wallet) return;
     try {
-      hl.approvals = await api('GET', '/v1/hyperliquid/approvals');
+      hl.approvals = await api('GET', '/v1/hyperliquid/approvals?fresh=1');
     } catch (err) {
       hl.approvals = { agents_error: err.message };
     }
@@ -380,6 +380,7 @@
     $('setup-card').hidden = false;
     await Promise.all([loadAccount(), loadApprovals()]);
     if (hl.afterSignIn) await hl.afterSignIn();
+    if (RB.state.hlAuto) await RB.state.hlAuto.load();
     showPlan();
   }
 

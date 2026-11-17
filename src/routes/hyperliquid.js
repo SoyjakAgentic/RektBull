@@ -94,7 +94,8 @@ router.get('/v1/hyperliquid/account', requireEvmWallet, refusal(async (req, res)
 }));
 
 router.get('/v1/hyperliquid/approvals', requireEvmWallet, refusal(async (req, res) => {
-  res.json(await markets.approvals(req.account.wallet));
+  // fresh=1 right after the page sends an approval, so it sees what it just approved.
+  res.json(await markets.approvals(req.account.wallet, req.query.fresh ? { ms: 0 } : {}));
 }));
 
 /** A signed action, passed on to Hyperliquid. */

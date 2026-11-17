@@ -110,12 +110,39 @@
       <button id="l-set">Set leverage</button>
       <p id="lev-msg" class="msg"></p>
     </section>
+
+    <section class="card" id="auto-card" hidden>
+      <h2>4. Automatic trading (optional)</h2>
+      <p class="small">Let RektBull's AI agents open and close positions for you, within limits you set. You approve RektBull's agent wallet with your own wallet, for up to 30 days.</p>
+      <ul class="small">
+        <li><strong>Hyperliquid enforces:</strong> <span id="auto-hl"></span></li>
+        <li><strong>RektBull enforces, not onchain:</strong> <span id="auto-rb"></span></li>
+        <li><strong>The most you can lose:</strong> <span id="auto-lose"></span></li>
+      </ul>
+      <p id="auto-off" class="msg bad" hidden></p>
+      <div id="auto-form">
+        <div class="grid">
+          <label>Most per trade (USD)<input id="a-trade" type="number" min="10" step="1" value="100"></label>
+          <label>Most opened per 24 hours (USD)<input id="a-day" type="number" min="10" step="1" value="500"></label>
+          <label>Most leverage (x)<input id="a-lev" type="number" min="1" step="1" value="3"></label>
+          <label>Days<input id="a-days" type="number" min="1" max="30" step="1" value="30"></label>
+          <label>Markets<input id="a-markets" type="text" placeholder="Any deep market, or BTC, ETH"></label>
+        </div>
+        <div class="row"><button id="auto-grant" class="primary">Approve automatic trading</button></div>
+      </div>
+      <p id="auto-status" class="msg"></p>
+      <div class="row"><button id="auto-revoke" class="danger" hidden>Stop automatic trading</button></div>
+      <h3>Automatic orders</h3>
+      <div class="tablewrap"><table class="rank" id="auto-intents"><thead><tr><th>When</th><th>Order</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="auto-msg" class="msg"></p>
+    </section>
   </main>
 
   <!--#footer:Figures from Hyperliquid's info API. Perpetuals can lose all the margin in a position. Not financial advice.-->
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/hl-core.js"></script>
+  <script src="/perps-auto.js"></script>
   <script src="/perps.js"></script>
 </body>
 </html>
