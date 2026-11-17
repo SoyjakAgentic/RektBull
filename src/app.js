@@ -10,7 +10,9 @@ const routes = require('./routes');
 function createApp() {
   const app = express();
   app.set('trust proxy', 1); // behind Cloud Run's load balancer
-  app.use(helmet());
+  // The Predictions page sends the user's signed orders from the browser straight to Polymarket's order
+  // book, and asks Polymarket's geoblock check first: those two hosts only, on top of helmet's defaults.
+  app.use(helmet({ contentSecurityPolicy: { directives: { connectSrc: ["'self'", 'https://clob.polymarket.com', 'https://polymarket.com'] } } }));
   app.use(require('compression')()); // gzip: about half the bytes on a first visit
   app.use(express.json({ limit: '100kb' }));
   // The API is rate-limited per IP; pages and their files aren't (one page load makes many requests).
@@ -77,9 +79,9 @@ function createApp() {
   const send = html => (html.includes('<!--#facts-->')
     ? async (req, res, next) => { try { res.type('html').send(html.replace('<!--#facts-->', await glance(req.path))); } catch (err) { next(err); } }
     : (_req, res) => res.type('html').send(html));
-  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/perps': 'perps.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
+  const PAGES = { '/': 'home.html', '/discover': 'discover.html', '/markets': 'markets.html', '/opportunities': 'opportunities.html', '/portfolio': 'portfolio.html', '/research': 'research.html', '/safety': 'safety.html', '/find': 'find.html', '/trade': 'trade.html', '/perps': 'perps.html', '/predictions': 'predictions.html', '/launches': 'launches.html', '/governance': 'governance.html', '/extension': 'extension.html', '/developers': 'developers.html', '/agents': 'agents.html', '/about': 'about.html', '/privacy': 'privacy.html' };
   // Find money and Governance sit under Opportunities in the menu; Perps under Trade.
-  const MENU = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade' };
+  const MENU = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade', '/predictions': '/trade' };
   for (const [route, file] of Object.entries(PAGES)) {
     app.get(route, send(render(file, MENU[route] || route, route)));
   }

@@ -681,6 +681,7 @@ router.delete('/v1/extension/tokens/:jti', requireAuth, async (req, res) => {
 });
 
 router.use(require('./trading'));
+router.use(require('./polymarket'));
 router.use(require('./hyperliquid'));
 
 // ── Admin ───────────────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ const PAGES = {
   '/governance': ['DAO Votes Decoded: Snapshot and Onchain | RektBull', 'See the DAO votes open for your wallet, with each proposal\'s actions decoded and flagged, and vote from your own wallet. Never a recommendation.'],
   '/launches': ['New Meme Coins, Checked for Rugs and Bundles | RektBull', 'New tokens on Base, Ethereum, Arbitrum and BNB Chain with their warning signs. Buying runs a honeypot, tax and bundle check first; your wallet signs.'],
   '/trade': ['Trade Crypto With Limits You Set | RektBull', 'Every token checked before you buy, within limits you set. Your wallet signs each trade, or gives a limited permission you can revoke any time.'],
+  '/predictions': ['Polymarket Predictions From Your Own Wallet | RektBull', 'Browse Polymarket prediction markets and trade them from your own wallet: order books, resolution sources and your positions. Your wallet signs every order.'],
   '/perps': ['Hyperliquid Perps From Your Own Account | RektBull', 'Trade Hyperliquid perpetuals from your own account: live markets, positions and liquidation prices. Trading keys can trade but never withdraw.'],
   '/developers': ['Crypto Safety API and MCP Server for Agents | RektBull', 'Give your app or AI agent RektBull\'s checks: a remote MCP server, a REST API with every fact sourced, and pay-per-call with x402 in USDC.'],
   '/about': ['About RektBull: How the Checks Work and Our Sources', 'Who runs RektBull, how each check works, every data source it uses, how the weekly digest is written and reviewed, and what RektBull never does.'],
@@ -38,10 +39,10 @@ const PAGES = {
 const NAMES = {
   '/': 'Home', '/safety': 'Safety', '/extension': 'Extension', '/discover': 'Discover', '/agents': 'AI agents', '/markets': 'Markets',
   '/opportunities': 'Opportunities', '/portfolio': 'Portfolio', '/research': 'Research', '/find': 'Find money', '/governance': 'Governance',
-  '/trade': 'Trade', '/perps': 'Perps', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
+  '/trade': 'Trade', '/perps': 'Perps', '/predictions': 'Predictions', '/launches': 'Launches', '/developers': 'Developers', '/about': 'About', '/privacy': 'Privacy',
 };
 /** Pages that sit under another in the menu, for breadcrumbs. */
-const PARENT = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade' };
+const PARENT = { '/find': '/opportunities', '/governance': '/opportunities', '/perps': '/trade', '/predictions': '/trade' };
 
 // Pages that are served but not listed or indexed.
 const UNLISTED = {
@@ -129,6 +130,12 @@ const FAQ = {
     ['Where is the trading key kept?', 'For trades you place yourself, the key is made in your browser and stays there: it is never sent to RektBull, and only signatures leave the page. It expires after 30 days, and you can end it at any time.'],
     ['Where do the prices and positions come from?', 'From Hyperliquid\'s own info API, read when the page loads and every few seconds after. If a figure can\'t be read, the page says so instead of showing an old or estimated one.'],
     ['How much can I lose?', 'Perpetuals use leverage, so a position can lose all its margin, and with cross margin a losing position draws on the rest of the account. Keep in the account only what you are prepared to lose.'],
+  ],
+  '/predictions': [
+    ['Does RektBull hold my money or keys?', 'No. Your wallet signs every order and every set-up step, and your Polymarket wallet belongs to your own key. Signed orders go from your browser straight to Polymarket, with Polymarket API credentials made in your browser and kept in that tab only.'],
+    ['What does RektBull charge?', 'A Polymarket builder fee on what fills, 0.01% by default, charged and paid out by Polymarket only when an order fills. An order that doesn\'t fill, or is cancelled, costs nothing. Polymarket\'s own fee on some markets is separate.'],
+    ['Where do the figures come from?', 'From Polymarket\'s own Gamma, order-book and Data APIs, each named where it\'s shown. Positions and PnL are Polymarket\'s own figures. If something can\'t be read, the page says so.'],
+    ['How much can I lose?', 'Everything you put into a position: shares in an outcome that doesn\'t happen are worth nothing when the market resolves.'],
   ],
   '/developers': [
     ['How do I add RektBull to Claude or another MCP client?', 'Add the MCP server address shown on this page (it ends in /mcp). In Claude Code: <code>claude mcp add --transport http rektbull https://rektbull.com/mcp</code>. No key is needed for the free tools.'],
@@ -263,7 +270,7 @@ function llms(base, digests = []) {
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/launches'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/launches'].map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),

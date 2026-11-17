@@ -110,6 +110,24 @@ const env = {
   // {"8453": "0x…"}: the deployed Yield Router on each chain (none yet).
   yieldRouters: json('YIELD_ROUTERS', {}),
 
+  // Polymarket (docs/POLYMARKET.md). Off until switched on; orders are signed by the user's wallet and sent from their browser.
+  polymarketEnabled: process.env.POLYMARKET_ENABLED === 'true',
+  // RektBull's builder code: a PUBLIC 32-byte id from polymarket.com > Settings > Builders, signed into every order.
+  // Polymarket pays the builder fee on fills only. Without it no order is prepared (an unpaid desk isn't offered).
+  polymarketBuilderCode: /^0x[0-9a-fA-F]{64}$/.test(process.env.POLYMARKET_BUILDER_CODE || '') ? process.env.POLYMARKET_BUILDER_CODE.toLowerCase() : '',
+  // The fee rates set on that builder profile, in basis points (1 = 0.01%). Polymarket charges what the PROFILE says
+  // (taker at most 100, maker at most 50, whole basis points); these must say the same, since users are shown them.
+  polymarketTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS, 1))),
+  polymarketMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS, 1))),
+  // Where the profit share on redemptions goes (catalog: polymarket_profit): a PUBLIC address only. Unset: no profit share.
+  polymarketFeeWallet: /^0x[0-9a-fA-F]{40}$/.test(process.env.POLYMARKET_FEE_WALLET || '') ? process.env.POLYMARKET_FEE_WALLET : '',
+  // RektBull's own Builder API key, for Polymarket's gasless relayer (wallet set-up, redemptions). RektBull's secret, never a user's.
+  polymarketBuilderApiKey: process.env.POLYMARKET_BUILDER_API_KEY || '',
+  polymarketBuilderApiSecret: process.env.POLYMARKET_BUILDER_API_SECRET || '',
+  polymarketBuilderApiPassphrase: process.env.POLYMARKET_BUILDER_API_PASSPHRASE || '',
+  // Automatic Polymarket trading (Polymarket Session Keys): NOT built yet; waits on the owner's decision (docs/POLYMARKET.md).
+  polymarketAutoEnabled: process.env.POLYMARKET_AUTO_ENABLED === 'true',
+
   // Payments: x402 (pay per call in USDC on Base)
   x402PayTo: (process.env.X402_PAY_TO || '').toLowerCase(),
   x402Network: process.env.X402_NETWORK || 'base',
