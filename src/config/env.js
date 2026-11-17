@@ -71,6 +71,10 @@ const env = {
   // client's two-letter country, e.g. X-Client-Geo-Location (Google Cloud) or CF-IPCountry (Cloudflare).
   // Unset: no country is known, so a venue with blocked countries is blocked for everyone.
   geoCountryHeader: /^[A-Za-z0-9-]{1,64}$/.test(process.env.GEO_COUNTRY_HEADER || '') ? process.env.GEO_COUNTRY_HEADER : '',
+  // And the region within the country (for blocks such as CA-ON, Ontario): e.g. X-Client-Geo-Subdivision set to
+  // Google Cloud's {client_region_subdivision}, or Cloudflare's CF-Region-Code. Unset: a list naming regions of a
+  // country blocks that whole country.
+  geoSubdivisionHeader: /^[A-Za-z0-9-]{1,64}$/.test(process.env.GEO_SUBDIVISION_HEADER || '') ? process.env.GEO_SUBDIVISION_HEADER : '',
 
   // Hyperliquid perps (docs/HYPERLIQUID.md). Off until switched on.
   hlEnabled: process.env.HL_ENABLED === 'true',

@@ -85,8 +85,9 @@ Australia, Singapore and Taiwan (api-reference/geoblock), checked on the IP
 that sends the order. Here that's the user's own browser. The page asks
 Polymarket's geoblock check before it offers to send.
 
-RektBull's own region blocks are set per venue in the admin panel and start
-empty ([ADMIN.md](ADMIN.md#region-blocks)).
+RektBull's region blocks for Polymarket **start with that same list**:
+blocked and close-only alike, plus the places Polymarket's own site limits.
+They're set per venue in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)).
 
 - **What they stop:** buying, wallet set-up and approvals.
 - **What they never stop:** selling, redeeming, withdrawing, or sending what

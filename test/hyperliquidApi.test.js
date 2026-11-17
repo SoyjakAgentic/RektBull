@@ -185,6 +185,8 @@ test('signed in: the account, approvals and the relay through the app', { skip: 
   await require('../src/config/migrate').migrate();
   t.after(() => db.getPool().end());
   require('../src/admin/settings').reset();
+  // These requests carry no country, so the venues' own region lists would refuse them: clear Hyperliquid's here.
+  await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const { issueToken } = require('../src/auth/siwe');
   const server = require('../src/app').createApp().listen(0);
   t.after(() => server.close());
@@ -245,8 +247,8 @@ test('signed in: the account, approvals and the relay through the app', { skip: 
   assert.equal((await from('DE', await l1(H.orderAction([order({ tif: 'Gtc' })])))).status, 200, 'another country');
   const cfg = await (await fetch(`${base}/v1/hyperliquid/config`, { headers: { 'x-test-country': 'US' } })).json();
   assert.equal(cfg.region.blocked, true); assert.match(cfg.region.message, /\(US\)/);
-  const { rows: logged } = await db.query("SELECT action, after FROM admin_log WHERE key = 'regions:hyperliquid'");
-  assert.deepEqual(logged.map(r => [r.action, r.after]), [['regions', { countries: ['US'] }]], 'the change is logged');
+  const { rows: logged } = await db.query("SELECT action, after FROM admin_log WHERE key = 'regions:hyperliquid' ORDER BY id");
+  assert.deepEqual([logged.at(-1).action, logged.at(-1).after], ['regions', { countries: ['US'] }], 'the change is logged');
   await regions.set('hyperliquid', [], { wallet: '0xadmin', reason: 'test' });
   assert.deepEqual(regions.countries('hyperliquid'), []);
 });

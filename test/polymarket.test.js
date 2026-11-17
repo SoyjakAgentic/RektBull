@@ -313,6 +313,8 @@ async function harness(t) {
   const env = require('../src/config/env');
   Object.assign(env, { polymarketEnabled: true, polymarketBuilderCode: BUILDER, polymarketTakerFeeBps: 1, polymarketMakerFeeBps: 1,
     polymarketBuilderApiKey: 'key-id', polymarketBuilderApiSecret: crypto.randomBytes(32).toString('base64'), polymarketBuilderApiPassphrase: 'pass' });
+  // These requests carry no country, so Polymarket's own region list would refuse them: clear it here.
+  await require('../src/compliance/regions').set('polymarket', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const server = require('../src/app').createApp().listen(0);
   t.after(() => server.close());
   const url = `http://127.0.0.1:${server.address().port}`;

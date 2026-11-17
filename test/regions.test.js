@@ -29,13 +29,21 @@ test('the country comes only from the header named by GEO_COUNTRY_HEADER', () =>
   } finally { env.geoCountryHeader = before; }
 });
 
-test('blocks: none by default; a listed country is blocked; an unknown country is blocked when there are blocks', () => {
+test('blocks: each venue\'s own list to begin with; a listed country is blocked; an unknown country is blocked', () => {
   const before = env.geoCountryHeader;
   env.geoCountryHeader = 'X-Country';
   try {
     withSettings({}, () => {
-      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid').blocked, false, 'no blocks to begin with');
-      assert.equal(regions.blockedFor(req(), 'polymarket').blocked, false);
+      // Each venue starts with the places it bans itself.
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid').blocked, true, 'Hyperliquid: the United States');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'IR' }), 'hyperliquid').blocked, true, 'sanctioned');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'DE' }), 'hyperliquid').blocked, false);
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'DE' }), 'polymarket').blocked, true, 'Polymarket: Germany is close-only');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'PT' }), 'polymarket').blocked, false);
+      assert.equal(regions.blockedFor(req(), 'polymarket').blocked, true, 'no country known: blocked');
+    });
+    withSettings({ 'regions:hyperliquid': { countries: [] } }, () => {
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid').blocked, false, 'an admin can clear a list');
     });
     withSettings({ 'regions:hyperliquid': { countries: ['US', 'CU'] } }, () => {
       const us = regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid');
@@ -43,23 +51,40 @@ test('blocks: none by default; a listed country is blocked; an unknown country i
       assert.equal(regions.blockedFor(req({ 'X-Country': 'DE' }), 'hyperliquid').blocked, false);
       const unknown = regions.blockedFor(req(), 'hyperliquid');
       assert.equal(unknown.blocked, true, 'fails closed'); assert.match(unknown.reason, /couldn't tell which country/);
-      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'polymarket').blocked, false, 'per venue');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'DE' }), 'polymarket').blocked, true, 'per venue: Polymarket keeps its own list');
       assert.throws(() => regions.refuseIfBlocked(req({ 'X-Country': 'CU' }), 'hyperliquid'), e => e instanceof regions.RegionBlocked && e.status === 451);
     });
     assert.throws(() => regions.blockedFor(req(), 'nowhere'), /unknown venue/);
   } finally { env.geoCountryHeader = before; }
 });
 
-test('the admin\'s list: two-letter codes, de-duplicated and sorted', () => {
-  assert.deepEqual(regions.checkList(['us', ' CU', 'US']), ['CU', 'US']);
+test('regions within a country: Ontario is blocked on Hyperliquid, the rest of Canada isn\'t', () => {
+  const before = [env.geoCountryHeader, env.geoSubdivisionHeader];
+  env.geoCountryHeader = 'X-Country'; env.geoSubdivisionHeader = 'X-Sub';
+  try {
+    withSettings({}, () => {
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'CA', 'X-Sub': 'CAON' }), 'hyperliquid').blocked, true, 'Google\'s form, CAON');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'CA', 'X-Sub': 'ON' }), 'hyperliquid').blocked, true, 'Cloudflare\'s form, ON');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'CA', 'X-Sub': 'CA-ON' }), 'hyperliquid').region, 'CA-ON');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'CA', 'X-Sub': 'NS' }), 'hyperliquid').blocked, false, 'Nova Scotia');
+      const unknown = regions.blockedFor(req({ 'X-Country': 'CA' }), 'hyperliquid');
+      assert.equal(unknown.blocked, true, 'region unknown: blocked'); assert.match(unknown.reason, /CA-ON/);
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'UA', 'X-Sub': 'UA43' }), 'hyperliquid').blocked, true, 'Crimea');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'UA', 'X-Sub': 'UA30' }), 'hyperliquid').blocked, false, 'Kyiv');
+    });
+  } finally { [env.geoCountryHeader, env.geoSubdivisionHeader] = before; }
+});
+
+test('the admin\'s list: country and region codes, de-duplicated and sorted', () => {
+  assert.deepEqual(regions.checkList(['us', ' CU', 'US', 'ca-on']), ['CA-ON', 'CU', 'US']);
   assert.deepEqual(regions.checkList([]), []);
-  assert.throws(() => regions.checkList(['USA']), /Not two-letter/);
+  assert.throws(() => regions.checkList(['USA']), /Not country codes/);
   assert.throws(() => regions.checkList('US'), /must be a list/);
   const before = env.geoCountryHeader;
   env.geoCountryHeader = '';
   try {
     const list = withSettings({}, () => regions.adminList(req()));
-    assert.match(list.note, /everyone is blocked/, 'the panel warns when no country header is set');
+    assert.match(list.note, /blocked for everyone/, 'the panel warns when no country header is set');
     assert.deepEqual(list.venues.map(v => v.id), ['hyperliquid', 'polymarket']);
   } finally { env.geoCountryHeader = before; }
 });

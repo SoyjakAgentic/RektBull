@@ -38,16 +38,19 @@
   }
 
   function regions(r) {
-    $('regions-header').replaceChildren(el('span', { class: r.header ? 'muted' : 'bad' }, r.note), r.header ? ` Your request: ${r.your_country || 'no country'}.` : '');
+    $('regions-header').replaceChildren(el('span', { class: r.header ? 'muted' : 'bad' }, r.note), r.header ? ` Your request: ${r.your_region || r.your_country || 'no country'}.` : '');
     $('regions').replaceChildren(...r.venues.map(v => {
-      const input = el('input', { type: 'text', value: v.countries.join(', '), size: '40', 'aria-label': `${v.name}: blocked countries` });
+      const input = el('textarea', { rows: '2', cols: '60', 'aria-label': `${v.name}: blocked countries` }, v.countries.join(', '));
       return el('div', { class: 'row' },
-        el('p', {}, el('strong', {}, v.name), ' ', el('span', { class: `tag${v.countries.length ? ' bad' : ''}` }, v.countries.length ? `${v.countries.length} blocked` : 'no blocks')),
+        el('p', {}, el('strong', {}, v.name), ' ', el('span', { class: `tag${v.countries.length ? ' bad' : ''}` }, v.countries.length ? `${v.countries.length} blocked` : 'no blocks'), ' ',
+          el('span', { class: 'small muted' }, v.changed ? 'changed from the venue\'s own list' : 'the venue\'s own list'), el('br'),
+          el('span', { class: 'small muted' }, `Venue's list: ${v.venue_list_source}.`)),
         el('label', { class: 'inline' }, input),
         el('button', { class: 'btn', type: 'button', onclick: () => {
           const list = input.value.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(Boolean);
           change('regions-msg', `${v.name}: block ${list.length ? list.join(', ') : 'no countries'}`, 'PUT', `/v1/admin/regions/${v.id}`, { countries: list });
-        } }, 'Save'));
+        } }, 'Save'),
+        v.changed ? el('button', { class: 'btn ghost', type: 'button', onclick: () => change('regions-msg', `${v.name}: back to the venue's own list`, 'PUT', `/v1/admin/regions/${v.id}`, { default: true }) }, 'Venue\'s list') : '');
     }));
   }
 

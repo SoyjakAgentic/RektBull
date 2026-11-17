@@ -31,6 +31,8 @@ const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtur
   Object.assign(env, { polymarketEnabled: true, polymarketBuilderCode: BUILDER, polymarketTakerFeeBps: 1, polymarketMakerFeeBps: 1,
     polymarketBuilderApiKey: 'key-id', polymarketBuilderApiSecret: crypto.randomBytes(32).toString('base64'), polymarketBuilderApiPassphrase: 'pass' });
 
+  // The browser's requests carry no country, so Polymarket's own region list would refuse them: clear it here.
+  await require('../../src/compliance/regions').set('polymarket', [], { wallet: '0xtest', reason: 'tests run from no country' });
   // RektBull's side of Polymarket: stand-ins for Gamma, the CLOB's book, the Data API and the relayer.
   const events = fx('events.json');
   const m = events[0].markets[0];
