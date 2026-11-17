@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--#meta-->
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <!--#header-->
+
+  <section class="pagehead">
+    <div class="wrap">
+      <span class="eyebrow">Trade desk · Predictions</span>
+      <h1>Prediction markets on Polymarket, <em>from your own wallet</em></h1>
+      <p>Browse Polymarket's markets and trade them from your own Polymarket wallet. Your wallet signs every order and every set-up step; your signed orders go from this browser straight to Polymarket. RektBull never holds your money, your keys or your Polymarket API credentials.</p>
+      <p><a href="/trade">Spot tokens are on the Trade desk</a> · <a href="/perps">perps on the Perps page</a>.</p>
+    </div>
+  </section>
+  <main class="tool">
+    <p class="notice" role="note"><strong>Not financial advice.</strong> A prediction market can lose everything you put in, and RektBull never picks an outcome. Figures are read from Polymarket's own APIs, each named where it's shown.</p>
+
+    <section class="card" id="events-card">
+      <div class="chart-head">
+        <h2>Markets</h2>
+        <input id="q" placeholder="Search Polymarket, e.g. election" autocomplete="off" spellcheck="false" aria-label="Search markets">
+      </div>
+      <div id="events" class="stack"><p class="muted">Reading Polymarket's markets…</p></div>
+      <p id="events-msg" class="msg small muted"></p>
+    </section>
+
+    <section class="card" id="connect-card">
+      <h2>Connect your wallet</h2>
+      <p class="muted">Sign in with the wallet that owns your Polymarket wallet. Browsing needs no sign-in.</p>
+      <div id="wallets" class="row"></div>
+      <button id="signin" class="primary" disabled>Sign in with this wallet</button>
+      <p id="connect-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="market-card" hidden>
+      <h2 id="mk-title"></h2>
+      <div id="mk-facts" class="small muted"></div>
+      <div id="mk-resolution" class="small"></div>
+      <div class="grid">
+        <label>Outcome<select id="o-outcome"></select></label>
+        <label>Side<select id="o-side"><option value="BUY">Buy</option><option value="SELL">Sell</option></select></label>
+        <label>Order type
+          <select id="o-type">
+            <option value="FAK">Market (fills what it can now)</option>
+            <option value="FOK">Market, all or nothing</option>
+            <option value="GTC">Limit (rests until filled or cancelled)</option>
+          </select>
+        </label>
+        <label id="o-usd-wrap">Spend (USD, fees included)<input id="o-usd" type="number" min="1" step="1" value="10"></label>
+        <label id="o-size-wrap" hidden>Shares<input id="o-size" type="number" min="0" step="any"></label>
+        <label id="o-price-wrap" hidden>Limit price (0 to 1)<input id="o-price" type="number" min="0" max="1" step="any"></label>
+      </div>
+      <div id="book" class="small"></div>
+      <div class="row"><button id="o-prepare">Check the order</button><button id="o-go" class="primary" hidden>Sign and send</button></div>
+      <div id="o-plan" class="plan" hidden></div>
+      <p id="order-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="wallet-card" hidden>
+      <h2>Your Polymarket wallet</h2>
+      <p class="small muted">Polymarket trades from a <strong>Deposit Wallet</strong>: a smart wallet that belongs to your own wallet's key. Polymarket's relayer pays its gas. Set-up is two steps your wallet signs.</p>
+      <div id="w-status"></div>
+      <div class="row">
+        <button id="w-deploy" hidden>1. Create the Polymarket wallet</button>
+        <button id="w-approve" hidden>2. Approve Polymarket's exchange</button>
+        <button id="w-creds">Connect to Polymarket's order book</button>
+      </div>
+      <details id="w-approvals-box"><summary>What the approvals allow</summary><ul id="w-approvals" class="small"></ul></details>
+      <h3>Add money</h3>
+      <p class="small muted">From your own Polygon USDC.e: two transactions from your wallet (approve exactly this amount, then wrap it into pUSD, Polymarket's collateral, credited to your Polymarket wallet).</p>
+      <div class="row"><label class="inline">USD<input id="w-fund-usd" type="number" min="1" step="1" value="20" size="6"></label><button id="w-fund">Add</button></div>
+      <p id="wallet-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="positions-card" hidden>
+      <h2>Your positions</h2>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Market</th><th>Outcome</th><th class="num">Shares</th><th class="num">Avg</th><th class="num">Now</th><th class="num">Value</th><th class="num">PnL</th><th></th></tr></thead><tbody id="positions"></tbody></table></div>
+      <p id="positions-msg" class="msg small muted"></p>
+      <h3>Orders sent from here</h3>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>When</th><th>Order</th><th>Status</th><th></th></tr></thead><tbody id="orders"></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <h2>RektBull's fee</h2>
+      <p id="fee-how" class="small"></p>
+    </section>
+  </main>
+
+  <!--#footer:Figures from Polymarket's Gamma, CLOB and Data APIs. A prediction market can lose everything you put in. Not financial advice.-->
+  <script src="/vendor/ethers.umd.min.js"></script>
+  <script src="/common.js"></script>
+  <script src="/predictions.js"></script>
+</body>
+</html>
