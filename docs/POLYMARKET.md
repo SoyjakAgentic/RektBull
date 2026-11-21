@@ -77,6 +77,28 @@ This is a Polymarket **builder fee**. RektBull's builder code
 - **Records.** Fills carrying the builder code are listed publicly at
   `clob.polymarket.com/builder/trades?builder_code=…`.
 
+### The AI builder code
+
+The owner decided on 21 November 2026 that trades from the AI pay more than
+trades users make themselves. Polymarket sets one rate per builder profile, so
+this is a **second builder profile** with its own code
+(`POLYMARKET_AI_BUILDER_CODE`, `src/polymarket/builders.js`):
+
+- **Used on:** orders prepared from an approved AI proposal (they name it,
+  `rule_id`), and every automatic entry. Never on orders users make themselves.
+- **Its rates:** Polymarket's highest by default, **1%** of what fills when the
+  order takes liquidity and **0.5%** when it rests in the book
+  (`POLYMARKET_AI_BUILDER_TAKER_FEE_BPS`, `…_MAKER_FEE_BPS`; they must match
+  that profile). An automatic entry always takes liquidity, so it pays 1%.
+- **Charged by Polymarket on fills only**, like the main code, and rebated in
+  RektBull Points the same way (`polymarket/fills.js` reads both codes' feeds).
+- **A proposal's limit:** an order from a proposal can't pay more than the
+  proposal's limit price; RektBull refuses to prepare it.
+- **Unset:** the AI's orders carry the main code at its rates.
+- **Before switching it on:** Polymarket's docs neither allow nor forbid two
+  profiles for one app, and Polymarket can revoke a builder's fees at its
+  discretion. Confirm with Polymarket's builder support first.
+
 ### Profit share on redemptions
 
 Winnings redeemed through the page carry **10% of the profit**: the payout
@@ -152,10 +174,15 @@ checks the user's country (from `GEO_COUNTRY_HEADER` and
 open the page, and places nothing while that country is on the Polymarket list,
 or unknown while the list is set. Stopping is never blocked.
 
-**The fee:** `auto_fee_pct` (1%) of what fills, at least `auto_fee_min_usd`
-($0.25), from Safety Pro AI credits (the 30-day allowance, then a top-up),
-charged only when an entry fills. Nothing is charged for an order that doesn't
-fill. The builder fee and the profit share on redemptions apply as usual.
+**The fees**, both only when an entry fills:
+
+- the **AI builder fee**, 1% of what fills, charged by Polymarket (above);
+- the **automation fee**, `auto_fee_pct` (1%) of what fills, at least
+  `auto_fee_min_usd` ($0.25), from Safety Pro AI credits (the 30-day
+  allowance, then a top-up). No entry is placed without AI credits for it.
+
+Nothing is charged for an order that doesn't fill. The profit share on
+redemptions applies as usual.
 
 **Turning it off** marks the key revoked at once, so RektBull places nothing
 more, then gives the user the revocation to sign so Polymarket ends the key too.
@@ -184,6 +211,7 @@ The worker ends keys past their stop date every 15 minutes (`polymarket_auto`).
 | `POLYMARKET_BUILDER_TAKER_FEE_BPS`, `POLYMARKET_BUILDER_MAKER_FEE_BPS` | The profile's rates, shown to users (1 = 0.01%) |
 | `POLYMARKET_FEE_WALLET` | Public address for the profit share on redemptions (unset: none) |
 | `POLYMARKET_BUILDER_API_KEY`, `…_SECRET`, `…_PASSPHRASE` | RektBull's Builder API key for the relayer (Secret Manager) |
+| `POLYMARKET_AI_BUILDER_CODE`, `POLYMARKET_AI_BUILDER_TAKER_FEE_BPS`, `…_MAKER_FEE_BPS` | The AI builder profile's code and rates (100 and 50 by default), for orders from the AI |
 | `POLYMARKET_AUTO_ENABLED` | Automatic trading through Session Keys (also switched on in the admin panel) |
 | `POLYMARKET_SESSION_ADDRESS`, `KMS_POLYMARKET_SESSION_KEY_VERSION` | RektBull's Session Key: its public address, and its KMS key |
 

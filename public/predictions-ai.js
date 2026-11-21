@@ -29,7 +29,7 @@
     if (!RB.signedIn()) { $('ai-about').textContent = 'Sign in to see AI proposals (part of Safety Pro).'; return; }
     try {
       const out = await api('GET', '/v1/ai/proposals');
-      $('ai-about').textContent = `${out.about} Each proposal costs $${out.price_usd} of AI credits and is offered only when the AI's probability beats the price by ${out.edge_pct} points.${out.offered.polymarket ? '' : ' Proposals aren\'t switched on yet: RektBull is building the track record first.'}`;
+      $('ai-about').textContent = `${out.about} A proposal is offered only when the AI's probability beats the price by ${out.edge_pct} points; acting on one costs $${out.price_usd} of AI credits. ${out.ai_fee ? out.ai_fee.how : ''}${out.offered.polymarket ? '' : ' Proposals aren\'t switched on yet: RektBull is building the track record first.'}`;
       $('ai-settings').hidden = false;
       $('ai-on').checked = !!out.settings.polymarket;
       $('ai-max').value = out.settings.max_per_day;
@@ -37,13 +37,13 @@
       $('ai-credits').textContent = c ? `AI credits: ${c.left_pct}% of this month's allowance left, $${Number(c.topup_usd).toFixed(2)} top-up.` : 'AI proposals need Safety Pro.';
       $('ai-list').replaceChildren(...(out.proposals.filter(p => p.venue === 'polymarket').map(p => el('div', { class: 'row proposal' },
         el('div', {},
-          el('strong', {}, `Buy "${p.side}" at up to ${pct(p.price_limit)}`), ' ', el('span', { class: 'small muted' }, `· ${p.status} · $${p.price_usd} from your ${p.paid_from === 'topup' ? 'top-up' : 'allowance'}`),
+          el('strong', {}, `Buy "${p.side}" at up to ${pct(p.price_limit)}`), ' ', el('span', { class: 'small muted' }, `· ${p.status}${p.paid_from ? ` · $${p.price_usd} from your ${p.paid_from === 'topup' ? 'top-up' : 'allowance'}` : ''}`),
           el('div', {}, p.forecast.question),
           el('div', { class: 'small' }, `AI: ${pct(p.forecast.ai_prob)} for ${p.forecast.outcome}, market ${pct(p.forecast.market_prob)}, ${p.forecast.confidence} confidence (${p.forecast.model}).`),
           el('p', { class: 'small' }, p.forecast.reasoning),
           el('div', { class: 'small' }, 'Sources: ', ...p.forecast.sources.map((u, i) => [i ? ', ' : '', el('a', { href: u, target: '_blank', rel: 'noopener nofollow' }, new URL(u).hostname)]).flat())),
         p.status === 'offered' ? el('div', {},
-          el('button', { class: 'btn primary', type: 'button', onclick: () => approve(p) }, 'Review the order'),
+          el('button', { class: 'btn primary', type: 'button', onclick: () => approve(p) }, `Review the order ($${p.price_usd})`),
           el('button', { class: 'btn ghost', type: 'button', onclick: () => act(p, 'dismiss') }, 'Dismiss')) : '')))
         .concat(out.proposals.length ? [] : [el('p', { class: 'muted' }, 'No proposals yet.')]));
     } catch (err) { say('ai-msg', err.message, 'bad'); }
@@ -58,6 +58,7 @@
     try {
       await api('POST', `/v1/ai/proposals/${p.id}/approve`, {});
       await pm().openMarket(p.market);
+      pm().proposal = { id: p.id, asset_id: p.asset_id }; // the order carries RektBull's AI builder code and the proposal's limit
       const sel = $('o-outcome');
       if (p.asset_id && [...sel.options].some(o => o.value === p.asset_id)) sel.value = p.asset_id;
       $('o-side').value = 'BUY';

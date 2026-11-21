@@ -108,7 +108,7 @@ function disclosures() {
     can_do: 'The key can place orders on Polymarket\'s order book for your Polymarket wallet. Polymarket doesn\'t let it withdraw your money.',
     limits: 'Your per-order and daily limits, your stop date and the markets are enforced by RektBull\'s servers, not onchain: Polymarket has no such limits for Session Keys.',
     what_it_does: `Only buys, from a researched AI forecast at medium or high confidence that beats the price by at least ${s.auto_edge_pct} points, as a fill-and-kill order at no worse than the forecast's limit price, at least $${s.auto_min_order_usd}. It never sells: positions are held until the market resolves, or you sell them yourself.`,
-    fee: `RektBull's fee is ${s.auto_fee_pct}% of each automated buy that fills, at least $${s.auto_fee_min_usd}, from your Safety Pro AI credits. Nothing is charged for an order that doesn't fill. Polymarket's own fee, RektBull's builder fee, and the profit share on winnings redeemed through RektBull apply as usual.`,
+    fee: `Two fees, both only when an automated buy fills: RektBull's AI builder fee of ${require('./builders').pct(require('./builders').ai().takerBps)} of what fills, charged by Polymarket on the fill, and RektBull's automation fee of ${s.auto_fee_pct}% of what fills, at least $${s.auto_fee_min_usd}, from your Safety Pro AI credits. Nothing is charged for an order that doesn't fill. Polymarket's own fee and the profit share on winnings redeemed through RektBull apply as usual.`,
     revoking: 'Ending the key stops RektBull at once, and Polymarket cancels any open orders it placed (this can take a few minutes).',
     servers: 'Automated orders are sent from RektBull\'s servers, not your browser, so RektBull checks your country when you turn this on and each time you come back, and stops if you\'re in a place where Polymarket isn\'t offered.',
     most_you_can_lose: 'What\'s in your Polymarket wallet. Keep there only what you are willing to let it trade.',
@@ -225,8 +225,9 @@ async function place(sess, forecast, plan) {
   };
   try {
     const { book, market } = await desk.context(plan.assetId, forecast.market);
+    const aiB = require('./builders').ai(); // automatic entries carry the AI builder code
     const built = orders.build({ asset_id: plan.assetId, side: 'BUY', order_type: 'FAK', amount_usd: String(amount), max_slippage_pct: 3 }, {
-      book, platformFee: market.platform_fee, builder: env.polymarketBuilderCode, takerBps: env.polymarketTakerFeeBps, makerBps: env.polymarketMakerFeeBps,
+      book, platformFee: market.platform_fee, builder: aiB.code, takerBps: aiB.takerBps, makerBps: aiB.makerBps,
       walletType: 'deposit', wallet: sess.wallet, signer: sess.wallet,
     });
     if (Number(built.summary.price) > plan.priceLimit) return finish('refused', { error: `The price is now ${built.summary.price}, past the forecast's limit of ${plan.priceLimit}: the edge is gone. Nothing was sent.` });

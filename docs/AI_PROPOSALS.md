@@ -41,12 +41,17 @@ is under the admin panel's daily AI budget.
 
 ## What a user pays
 
-- **Price and when it's charged:** each proposal costs `proposal_usd` ($0.05
-  by default) of Safety Pro AI credits, charged when it's offered. A proposal
-  is never charged twice.
+- **Seeing a proposal is free.** **Acting on one** ("Review the order") costs
+  `proposal_usd` ($0.25 by default) of Safety Pro AI credits, charged once.
+  Ten proposals acted on cost $2.50. Dismissing one is free.
+- **The AI builder fee:** the order from a proposal carries RektBull's AI
+  builder code (docs/POLYMARKET.md): 1% of what fills when it takes liquidity,
+  0.5% when it rests in the book, charged by Polymarket on fills only. It
+  can't pay more than the proposal's limit price.
 - **Order of payment:** the 30-day allowance pays first, then an AI top-up
   (docs/PAYMENTS.md, $5, $20 or $50, paid with credits or RektBull Points).
-  With neither, no proposal is offered.
+  With neither, no proposal is offered, and one already offered can't be
+  acted on until the user tops up.
 - **Daily limit:** users set how many proposals a day they want (1 to 50).
 
 ## What approving does
@@ -66,7 +71,9 @@ The AI gives the probability and its sources; the rules in code decide:
 - **Price:** no worse than the AI's probability minus the edge.
 - **Size:** the user's limits, at least $25.
 - **Exits:** buys only; no automatic selling.
-- **Fee:** 1% of what fills, at least $0.25, from AI credits, only on a fill.
+- **Fees:** the AI builder fee (1% of what fills, charged by Polymarket), and
+  the automation fee (1% of what fills, at least $0.25, from AI credits), both
+  only on a fill.
 
 ## Before switching proposals on
 

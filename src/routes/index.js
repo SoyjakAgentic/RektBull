@@ -168,13 +168,19 @@ router.get('/v1/ai/proposals', requireAuth, async (req, res) => {
     settings: await aiProposals.getSettings(req.account.id), proposals: await aiProposals.list(req.account.id),
     ai_credits: await require('../payments/aiAllowance').status(req.account.id),
     offered: { polymarket: !!s.polymarket_proposals, hyperliquid: !!s.hyperliquid_proposals }, price_usd: s.proposal_usd, edge_pct: s.edge_pct,
-    about: 'AI proposals are suggestions from a shared AI forecast, offered when its probability beats the market price by the edge shown. Each costs AI credits from Safety Pro (the 30-day allowance first, then a top-up). Nothing is traded until you check the order and sign it yourself. Not financial advice: check the public track record.',
+    about: 'AI proposals are suggestions from a shared AI forecast, offered when its probability beats the market price by the edge shown. Seeing one is free; acting on one costs AI credits from Safety Pro (the 30-day allowance first, then a top-up). Nothing is traded until you check the order and sign it yourself. Not financial advice: check the public track record.',
+    ai_fee: require('../polymarket/desk').config().ai_fee,
   });
 });
 router.put('/v1/ai/proposals/settings', requireAuth, async (req, res) => res.json(await aiProposals.saveSettings(req.account.id, req.body || {})));
 router.post('/v1/ai/proposals/:id/:action(approve|dismiss)', requireAuth, async (req, res) => {
   if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
-  res.json(await aiProposals.act(req.account.id, req.params.id, req.params.action === 'approve' ? 'approved' : 'dismissed'));
+  try {
+    res.json(await aiProposals.act(req.account.id, req.params.id, req.params.action === 'approve' ? 'approved' : 'dismissed'));
+  } catch (err) {
+    if (err.status === 402 || err.status === 409 || err.status === 400) return res.status(err.status).json({ error: err.code || 'refused', message: err.message });
+    throw err;
+  }
 });
 
 /* ── Safety Pro AI top-ups (payments/aiTopups.js): AI usage on top of the 30-day allowance ── */

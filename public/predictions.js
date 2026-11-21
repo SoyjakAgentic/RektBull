@@ -41,6 +41,7 @@
     try {
       const { market: m } = await api('GET', `/v1/polymarket/markets/${encodeURIComponent(slug)}`);
       pm.market = m;
+      pm.proposal = null; // a proposal applies only to the order it filled in
       $('market-card').hidden = false;
       $('mk-title').textContent = m.question;
       $('mk-facts').textContent = `Volume ${big(m.volume_usd)} · liquidity ${big(m.liquidity_usd)} · ends ${m.end_date ? new Date(m.end_date).toLocaleString() : 'not set'} · ${m.platform_fee_note}${m.accepting_orders ? '' : ' · NOT accepting orders now'}`;
@@ -81,6 +82,7 @@
       if (!$('o-usd-wrap').hidden) body.amount_usd = $('o-usd').value;
       if (!$('o-size-wrap').hidden) body.size = $('o-size').value;
       if (!$('o-price-wrap').hidden) body.price = $('o-price').value;
+      if (pm.proposal && pm.proposal.asset_id === body.asset_id && body.side === 'BUY') body.proposal_id = pm.proposal.id;
       const p = pm.prepared = await api('POST', '/v1/polymarket/orders', body);
       const s = p.summary;
       $('o-plan').hidden = false;

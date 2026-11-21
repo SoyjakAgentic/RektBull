@@ -12,7 +12,9 @@ Crypto only. Every paid run goes through the same payment gate
 | **Safety Pro** (a pass) | Every Safety desk check for a fixed time | Yes | `payments/passes.js` |
 | **Yield move fee** | Each yield move RektBull prepares: 0.1% of the amount moved, in the moved asset (exits to the wallet are free) | No (proposals need Safety Pro) | `yield/proposals.js` |
 | **Polymarket profit share** | Winnings redeemed through `/predictions`: 10% of the profit, a pUSD transfer in the same batch | Yes (wallet sign-in) | `polymarket/wallets.js` (`profitShare`) |
-| **Automation fee** (Polymarket) | Each automatic entry RektBull's Session Key places that fills: 1% of what filled, at least $0.25, from Safety Pro AI credits | Yes (wallet sign-in; Safety Pro) | `polymarket/auto.js` |
+| **AI builder fee** (Polymarket) | Orders from an AI proposal or an automatic entry: 1% of what fills taking liquidity, 0.5% resting, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/builders.js` |
+| **AI proposal fee** | Acting on an AI proposal: $0.25 of Safety Pro AI credits, once (seeing it is free) | Yes (Safety Pro) | `forecasts/proposals.js` |
+| **Automation fee** (Polymarket) | Each automatic entry RektBull's Session Key places that fills: 1% of what filled, at least $0.25, from Safety Pro AI credits, on top of the AI builder fee | Yes (wallet sign-in; Safety Pro) | `polymarket/auto.js` |
 | **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.01% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
 | **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
@@ -292,6 +294,17 @@ it resets, a user can top it up from the Safety page (`payments/aiTopups.js`,
   an active Safety Pro pass. What's left never expires.
 - **Failed and cached runs:** a failed run is never counted, and a cached
   answer costs nothing.
+
+## Polymarket AI fees
+
+Trades from the AI pay more than trades users make themselves:
+
+- **AI builder fee.** Orders from an AI proposal or an automatic entry carry
+  RektBull's second builder code (`POLYMARKET_AI_BUILDER_CODE`): 1% of what
+  fills taking liquidity, 0.5% resting, charged by Polymarket on fills only.
+- **AI proposal fee.** Acting on a proposal costs $0.25 of AI credits, once.
+  Seeing one is free.
+- **Automation fee** (below).
 
 ## Polymarket automation fee
 

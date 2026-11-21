@@ -31,7 +31,9 @@ function unavailable() {
   return null;
 }
 
-const feeText = () => `${env.polymarketTakerFeeBps / 100}% of what fills when your order takes liquidity, ${env.polymarketMakerFeeBps / 100}% when it rests and is filled`;
+const builders = require('./builders');
+const feeText = (b = builders.main()) => builders.feeText(b);
+const feeHow = b => `RektBull's fee is a Polymarket builder fee: ${feeText(b)}. Polymarket charges it only on fills and pays it to RektBull's builder profile; an order that doesn't fill, or is cancelled, costs nothing. It is added to any fee Polymarket itself charges on the market.`;
 
 /** What the page needs to know: public values only. */
 function config() {
@@ -43,8 +45,12 @@ function config() {
     builder_code: env.polymarketBuilderCode || null,
     fee: {
       taker_bps: env.polymarketTakerFeeBps, maker_bps: env.polymarketMakerFeeBps,
-      how: `RektBull's fee is a Polymarket builder fee: ${feeText()}. Polymarket charges it only on fills and pays it to RektBull's builder profile; an order that doesn't fill, or is cancelled, costs nothing. It is added to any fee Polymarket itself charges on the market.`,
+      how: feeHow(builders.main()),
       source: 'docs.polymarket.com/programs/builders/fees',
+    },
+    ai_fee: {
+      taker_bps: builders.ai().takerBps, maker_bps: builders.ai().makerBps, separate_code: builders.ai().id === 'ai',
+      how: `Orders from an AI proposal or an automatic entry carry RektBull's AI builder fee: ${feeText(builders.ai())}, charged by Polymarket on fills only. RektBull's AI fee comes on top, from AI credits: $${require('../forecasts/settings').get().proposal_usd} when you act on a proposal; for automatic entries, ${require('../forecasts/settings').get().auto_fee_pct}% of what fills, at least $${require('../forecasts/settings').get().auto_fee_min_usd}.`,
     },
     wallet_types: Object.fromEntries(Object.entries(WALLET_TYPES).map(([k, v]) => [k, { label: v.label, about: v.about, signature_type: v.signature_type }])),
     contracts: C,
@@ -76,10 +82,15 @@ async function prepare(account, input = {}, { source = 'user', ruleId = null } =
   if (!/^[0-9]{1,80}$/.test(String(input.asset_id || ''))) throw new OrderRefused('asset_id must be the outcome\'s numeric id');
   const w = await wallets.resolve(account, { walletType: input.wallet_type, address: input.address });
   const { book, market, outcome } = await context(input.asset_id, input.market_slug);
+  // An order from an approved AI proposal carries the AI builder code, and never pays more than the proposal's limit.
+  const proposal = input.proposal_id ? await require('../forecasts/proposals').forOrder(account.id, input.proposal_id, input) : null;
+  if (proposal) { source = 'rule'; ruleId = proposal.id; }
+  const b = proposal ? builders.ai() : builders.main();
   const built = orders.build(input, {
-    book, platformFee: market.platform_fee, builder: env.polymarketBuilderCode, takerBps: env.polymarketTakerFeeBps, makerBps: env.polymarketMakerFeeBps,
+    book, platformFee: market.platform_fee, builder: b.code, takerBps: b.takerBps, makerBps: b.makerBps,
     walletType: w.wallet_type, wallet: w.wallet, signer: w.signer,
   });
+  if (proposal && Number(built.summary.price) > Number(proposal.price_limit)) throw new OrderRefused(`That would pay up to ${built.summary.price}, more than the proposal's limit of ${Number(proposal.price_limit)}: the AI's edge would be gone. Use a limit price at or under it.`, 'past_proposal_limit');
   const orderHash = ethers.TypedDataEncoder.hash({ name: 'Polymarket CTF Exchange', ...exchangeFor(book), chainId: CHAIN_ID }, { Order: orders.TYPES.Order }, built.order);
   const id = crypto.randomUUID();
   const s = built.summary;
@@ -87,13 +98,13 @@ async function prepare(account, input = {}, { source = 'user', ruleId = null } =
   await db.query(
     `INSERT INTO polymarket_orders (id, account_id, wallet, signer, wallet_type, asset_id, condition_id, market_slug, title, outcome, side, order_type, price, shares, notional_usd, builder, order_hash, source, rule_id, prepared)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [id, account.id, lower(w.wallet), lower(w.signer), w.wallet_type, String(input.asset_id), market.condition_id, market.slug, market.question, outcome.name, s.side, s.order_type, s.price, s.shares, s.notional_usd, env.polymarketBuilderCode, orderHash, source, ruleId, JSON.stringify(prepared)],
+    [id, account.id, lower(w.wallet), lower(w.signer), w.wallet_type, String(input.asset_id), market.condition_id, market.slug, market.question, outcome.name, s.side, s.order_type, s.price, s.shares, s.notional_usd, b.code, orderHash, source, ruleId, JSON.stringify(prepared)],
   );
   return {
     id, wallet: w.wallet, signer: w.signer, wallet_type: w.wallet_type, market: { slug: market.slug, question: market.question, outcome: outcome.name },
     ...prepared,
     send: { method: 'POST', url: pm.CLOB + '/order', path: '/order', note: 'Sent from your browser with your own Polymarket API credentials; RektBull\'s server never sees them or your signature.' },
-    fee: { ...s.fees, how: config().fee.how },
+    fee: { ...s.fees, how: feeHow(b), ...(proposal ? { ai: true } : {}) },
     book: { best_bid: book.best_bid, best_ask: book.best_ask, tick_size: book.tick_size, min_order_size: book.min_order_size, source: book.source, read_at: book.read_at },
     resolution: market.resolution,
     not_advice: 'RektBull prepared this order from what you entered. It never picks an outcome, and a prediction market can lose everything you put in.',

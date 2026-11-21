@@ -75,21 +75,30 @@ test('screen, research, propose, resolve', { skip: !DB && 'set TEST_DATABASE_URL
     assert.match(r.reasoning, /How it resolves: Official announcement/);
   });
 
-  await t.test('proposals on: offered to the user who asked, charged to their AI credits', async () => {
+  await t.test('proposals on: offered free to the user who asked; acting on one is charged to their AI credits, once', async () => {
     await turnOn({ polymarket: true, polymarket_proposals: true });
     await db.query(`DELETE FROM ai_forecasts WHERE stage = 'research'`); // research alpha again today
     const out = await forecasts.tick({ force: true });
     assert.equal(out.offered, 1);
     const list = await proposals.list(a.id);
     assert.equal(list.length, 1);
-    assert.deepEqual([list[0].side, list[0].asset_id, list[0].price_limit, list[0].price_usd, list[0].paid_from], ['Yes', 'alpha-yes', 0.67, 0.05, 'allowance']);
+    assert.deepEqual([list[0].side, list[0].asset_id, list[0].price_limit, list[0].price_usd, list[0].paid_from], ['Yes', 'alpha-yes', 0.67, 0.25, null]);
     assert.equal(list[0].forecast.ai_prob, 0.75);
     assert.equal((await proposals.list(b.id)).length, 0, 'not offered to a user who didn\'t ask');
-    const ai = await require('../src/payments/aiAllowance').status(a.id);
-    assert.equal(ai.used_usd, 0.05, 'the proposal\'s price came out of the 30-day allowance');
+    const allowance = require('../src/payments/aiAllowance');
+    assert.equal((await allowance.status(a.id)).used_usd, 0, 'offering it costs nothing');
     const approved = await proposals.act(a.id, list[0].id, 'approved');
     assert.equal(approved.status, 'approved');
+    assert.equal(approved.paid_from, 'allowance');
+    assert.equal((await allowance.status(a.id)).used_usd, 0.25, 'acting on it: $0.25 from the 30-day allowance');
     await assert.rejects(proposals.act(a.id, list[0].id, 'dismissed'), /Only an offered proposal/);
+    await assert.rejects(proposals.act(a.id, list[0].id, 'approved'), /Only an offered proposal/, 'never charged twice');
+    assert.equal((await allowance.status(a.id)).used_usd, 0.25);
+    // An order from it: the account's own approved proposal, for its outcome, a buy.
+    assert.equal((await proposals.forOrder(a.id, list[0].id, { asset_id: 'alpha-yes', side: 'BUY' })).id, list[0].id);
+    await assert.rejects(proposals.forOrder(a.id, list[0].id, { asset_id: 'alpha-no', side: 'BUY' }), /isn't the outcome/);
+    await assert.rejects(proposals.forOrder(a.id, list[0].id, { asset_id: 'alpha-yes', side: 'SELL' }), /is a buy/);
+    await assert.rejects(proposals.forOrder(b.id, list[0].id, { asset_id: 'alpha-yes', side: 'BUY' }), /No such proposal/);
   });
 
   await t.test('a researched forecast with no real source is dropped, never stored as a guess', async () => {

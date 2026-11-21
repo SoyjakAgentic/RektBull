@@ -16,7 +16,7 @@ const DEFAULTS = {
   research_per_day: 30,         // at most this many researched forecasts a day (web search is the costly part)
   web_searches: 3,              // per researched forecast
   edge_pct: 8,                  // propose only when the AI's probability beats the price by this many points
-  proposal_usd: 0.05,           // what one proposal costs a user in AI credits
+  proposal_usd: 0.25,           // what acting on one proposal costs a user in AI credits (offering it is free)
   // Automatic Polymarket trading (polymarket/auto.js), for users who authorized RektBull's Session Key:
   polymarket_auto: false,       // place automated entries from researched forecasts
   auto_edge_pct: 10,            // a stricter edge than proposals: the automation fee comes on top

@@ -1,8 +1,9 @@
 /**
- * AI proposals: a forecast offered to the users who asked for them, charged to
- * their Safety Pro AI credits (the 30-day allowance first, then a top-up).
+ * AI proposals: a forecast offered to the users who asked for them. Offering
+ * is free; acting on one ("Review the order") costs `proposal_usd` of Safety
+ * Pro AI credits (the 30-day allowance first, then a top-up), charged once.
  * Nothing is traded here: approving a proposal opens the order for the user to
- * check and sign themselves.
+ * check and sign themselves, carrying RektBull's AI builder code.
  */
 const crypto = require('crypto');
 const db = require('../config/db');
@@ -41,27 +42,19 @@ async function subscribers(venue) {
 }
 
 /**
- * Offers a forecast to one account, charging `priceUsd` to its AI credits.
- * Returns the proposal, or null when the account has no Safety Pro pass, no
- * credits left, or has this forecast already.
+ * Offers a forecast to one account, free; `priceUsd` is what acting on it
+ * will cost. Returns the proposal, or null when the account has no Safety Pro
+ * pass, no AI credits to act on it with, or has this forecast already.
  */
 async function offer(accountId, { forecast, side, assetId = null, priceLimit = null, priceUsd }) {
-  const pass = await passes.covering(accountId, 'token_report');
-  if (!pass?.ai_allowance) return null;
-  let paidFrom = null;
-  if (await aiAllowance.hasRoom(accountId, pass)) paidFrom = 'allowance';
-  else if (await aiTopups.hasRoom(accountId)) paidFrom = 'topup';
-  if (!paidFrom) return null;
+  if (!(await canPay(accountId))) return null;
   const id = crypto.randomUUID();
   const { rows: [p] } = await db.query(
     `INSERT INTO ai_proposals (id, account_id, forecast_id, venue, market, side, asset_id, price_limit, price_usd, paid_from)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (account_id, forecast_id) DO NOTHING RETURNING *`,
-    [id, accountId, forecast.id, forecast.venue, forecast.market, side, assetId, priceLimit, priceUsd, paidFrom],
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL) ON CONFLICT (account_id, forecast_id) DO NOTHING RETURNING *`,
+    [id, accountId, forecast.id, forecast.venue, forecast.market, side, assetId, priceLimit, priceUsd],
   );
   if (!p) return null;
-  // Charged once it's offered (the work is delivered); a proposal already had is never charged twice.
-  if (paidFrom === 'allowance') await aiAllowance.charge(accountId, pass, priceUsd);
-  else await aiTopups.use(accountId, priceUsd, `proposal:${id}`, `AI proposal: ${forecast.market}`);
   logger.info('AI proposal offered', { account: accountId, forecast: forecast.id, venue: forecast.venue });
   return p;
 }
@@ -101,11 +94,36 @@ async function list(accountId) {
   return rows.map(present);
 }
 
+/**
+ * Approving is acting on the proposal: its price is charged to AI credits,
+ * once (the allowance first, then a top-up). Dismissing is free. Without AI
+ * credits it can't be approved, and the user is pointed to a top-up.
+ */
 async function act(accountId, id, status) {
   if (!['approved', 'dismissed'].includes(status)) throw Object.assign(new Error('status must be approved or dismissed'), { status: 400 });
+  if (status === 'approved' && !(await canPay(accountId))) {
+    throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
+  }
   const { rows: [r] } = await db.query(`UPDATE ai_proposals SET status = $3, acted_at = now() WHERE id = $1 AND account_id = $2 AND status = 'offered' RETURNING *`, [id, accountId, status]);
   if (!r) throw Object.assign(new Error('Only an offered proposal can be approved or dismissed.'), { status: 409 });
+  if (status === 'approved' && Number(r.price_usd) > 0) {
+    const paidFrom = await chargeCredits(accountId, Number(r.price_usd), `proposal:${r.id}`, `AI proposal: ${r.market}`);
+    await db.query('UPDATE ai_proposals SET paid_from = $2 WHERE id = $1', [r.id, paidFrom]);
+    r.paid_from = paidFrom;
+  }
   return present(r);
 }
 
-module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, list, act, present, canPay, chargeCredits };
+/** The approved proposal an order is being prepared from: the account's own, for its outcome, a buy. */
+async function forOrder(accountId, id, input) {
+  const refuse = m => { throw Object.assign(new Error(m), { status: 422, isOrderRefused: true, code: 'bad_proposal' }); };
+  if (!/^[0-9a-f-]{36}$/i.test(String(id))) refuse('No such proposal.');
+  const { rows: [p] } = await db.query(`SELECT * FROM ai_proposals WHERE id = $1 AND account_id = $2 AND venue = 'polymarket'`, [id, accountId]);
+  if (!p) refuse('No such proposal.');
+  if (p.status !== 'approved') refuse('Approve the proposal first.');
+  if (String(input.asset_id) !== String(p.asset_id)) refuse('That isn\'t the outcome the proposal is for.');
+  if (String(input.side || '').toUpperCase() !== 'BUY') refuse('A proposal is a buy.');
+  return p;
+}
+
+module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, list, act, present, canPay, chargeCredits, forOrder };

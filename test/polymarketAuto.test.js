@@ -15,6 +15,7 @@ const DB = process.env.TEST_DATABASE_URL;
 Object.assign(process.env, {
   JWT_SECRET: 'test-secret', NEW_WALLET_CHECK_CHAINS: '', DATABASE_URL: DB || '',
   POLYMARKET_ENABLED: 'true', POLYMARKET_AUTO_ENABLED: 'true', POLYMARKET_SESSION_ADDRESS: sessionKey.address,
+  POLYMARKET_BUILDER_CODE: '0x' + 'aa'.repeat(32), POLYMARKET_AI_BUILDER_CODE: '0x' + 'bb'.repeat(32),
   POLYMARKET_BUILDER_API_KEY: 'k', POLYMARKET_BUILDER_API_SECRET: 'c2VjcmV0', POLYMARKET_BUILDER_API_PASSPHRASE: 'p',
 });
 const fx = name => JSON.parse(require('fs').readFileSync(path.join(__dirname, 'fixtures', 'polymarket', name), 'utf8'));
@@ -29,7 +30,8 @@ test('the disclosures name the duration, who keeps the limits, what it does, the
   assert.match(d.can_do, /doesn't let it withdraw/);
   assert.match(d.limits, /not onchain/);
   assert.match(d.what_it_does, /Only buys/); assert.match(d.what_it_does, /10 points/); assert.match(d.what_it_does, /at least \$25/); assert.match(d.what_it_does, /never sells/);
-  assert.match(d.fee, /1% of each automated buy that fills, at least \$0\.25/); assert.match(d.fee, /Nothing is charged for an order that doesn't fill/);
+  assert.match(d.fee, /AI builder fee of 1% of what fills/); assert.match(d.fee, /automation fee of 1% of what fills, at least \$0\.25/);
+  assert.match(d.fee, /Nothing is charged for an order that doesn't fill/);
   assert.match(d.most_you_can_lose, /Polymarket wallet/);
   assert.match(d.servers, /checks your country/);
 });
@@ -143,6 +145,7 @@ test('turning it on and off, and an automated entry', { skip: !DB && 'set TEST_D
     assert.equal(headers.POLY_ADDRESS, sessionKey.address);
     assert.equal(body.order.maker, WALLET); assert.equal(body.order.signer, WALLET);
     assert.equal(body.order.side, 'BUY'); assert.equal(body.order.signatureType, 3);
+    assert.equal(body.order.builder, '0x' + 'bb'.repeat(32), 'carries RektBull\'s AI builder code');
     assert.ok(Number(body.order.makerAmount) <= 50e6, 'no more than the $50 per-order limit');
     assert.ok(body.order.signature.endsWith('6492649264926492649264926492649264926492649264926492649264926492'), 'in the session envelope');
     assert.ok(body.order.signature.toLowerCase().includes(sessionKey.address.slice(2).toLowerCase()), 'naming RektBull\'s key');
