@@ -17,7 +17,8 @@
   default, the rates set on RektBull's builder profile) on fills only and pays
   it out. Polymarket winnings redeemed through RektBull carry a 10% share of
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
-  transfer in the same batch the user signs. RektBull Points (docs/POINTS.md),
+  transfer in the same batch the user signs. Automatic Polymarket entries cost 1% of what fills (at
+  least $0.25) in Safety Pro AI credits. RektBull Points (docs/POINTS.md),
   a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
   passes. No recurring pulls and no token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
@@ -42,6 +43,13 @@
   and that the most a user can lose is the margin in their Hyperliquid account. Every automatic order
   is immediate-or-cancel within `HL_AUTO_PRICE_BAND_BPS` of the mark, isolated margin, deep markets
   only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed.
+  **The second exception, approved by the owner: Polymarket Session Keys** (docs/POLYMARKET.md). The
+  user's own key authorizes RektBull's Session Key (KMS key) on their Deposit Wallet; Polymarket fixes
+  the term at 180 days and enforces that it can trade and never withdraw. The user's stop date,
+  per-order and 24-hour limits and region are enforced by `src/polymarket/auto.js`, **not onchain**, and
+  the page must say so, and the term, and that the most a user can lose is their Polymarket wallet. It
+  only buys, from researched AI forecasts, fill-and-kill at no worse than the forecast's limit; stopping
+  is never blocked. Its fee is charged to AI credits only on a fill.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
   free uses on failure, settle x402 only after the run succeeds. In-kind fees

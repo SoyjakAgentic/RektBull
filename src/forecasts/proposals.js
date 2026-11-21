@@ -66,6 +66,26 @@ async function offer(accountId, { forecast, side, assetId = null, priceLimit = n
   return p;
 }
 
+/** Has this account a Safety Pro pass with AI credits left (the allowance, or a top-up)? */
+async function canPay(accountId) {
+  const pass = await passes.covering(accountId, 'token_report');
+  if (!pass?.ai_allowance) return false;
+  return (await aiAllowance.hasRoom(accountId, pass)) || (await aiTopups.hasRoom(accountId));
+}
+
+/**
+ * Charges `usd` of AI credits for work already delivered (the automation fee
+ * on a fill): the allowance first, then a top-up. Returns where it was paid
+ * from, or null when neither had room (logged; the fill isn't undone).
+ */
+async function chargeCredits(accountId, usd, ref, note) {
+  const pass = await passes.covering(accountId, 'token_report');
+  if (pass?.ai_allowance && await aiAllowance.hasRoom(accountId, pass)) { await aiAllowance.charge(accountId, pass, usd); return 'allowance'; }
+  if (await aiTopups.hasRoom(accountId)) { await aiTopups.use(accountId, usd, ref, note); return 'topup'; }
+  logger.warn('AI credits ran out before a fee was charged', { account: accountId, usd, ref });
+  return null;
+}
+
 const present = r => ({
   id: r.id, venue: r.venue, market: r.market, side: r.side, asset_id: r.asset_id, price_limit: r.price_limit === null ? null : Number(r.price_limit),
   price_usd: Number(r.price_usd), paid_from: r.paid_from, status: r.status, created_at: r.created_at,
@@ -88,4 +108,4 @@ async function act(accountId, id, status) {
   return present(r);
 }
 
-module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, list, act, present };
+module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, list, act, present, canPay, chargeCredits };

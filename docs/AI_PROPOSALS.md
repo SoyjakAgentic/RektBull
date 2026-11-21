@@ -2,7 +2,8 @@
 
 The owner chose option (b) on 21 November 2026: the AI proposes trades, and the
 user approves and signs each one. Proposals are paid from Safety Pro AI
-credits. The AI never trades on its own. Everything here starts **off**
+credits. Separately, users can turn on automatic entries through a Polymarket
+Session Key (below, and docs/POLYMARKET.md). Everything here starts **off**
 (admin panel, "AI forecasts and proposals").
 
 ## How it works (Polymarket, `src/forecasts/polymarket.js`)
@@ -54,6 +55,19 @@ is under the admin panel's daily AI budget.
 market, the outcome, a limit order at the proposal's price. The user sets the
 size, checks it, and **signs it themselves**. Nothing is traded by the AI.
 
+## Automatic entries (Polymarket Session Keys)
+
+For users who authorized RektBull's Session Key (docs/POLYMARKET.md,
+"Automatic trading"), a researched forecast can also become an automatic buy.
+The AI gives the probability and its sources; the rules in code decide:
+
+- **Edge and confidence:** `auto_edge_pct` points (10 by default) at medium or
+  high confidence.
+- **Price:** no worse than the AI's probability minus the edge.
+- **Size:** the user's limits, at least $25.
+- **Exits:** buys only; no automatic selling.
+- **Fee:** 1% of what fills, at least $0.25, from AI credits, only on a fill.
+
 ## Before switching proposals on
 
 1. Switch on "Run Polymarket forecasts" only. Forecasts are made and scored,
@@ -61,6 +75,7 @@ size, checks it, and **signs it themselves**. Nothing is traded by the AI.
 2. Wait until enough researched forecasts have resolved, and check that the
    AI's Brier score beats the market's.
 3. Then switch on "Offer Polymarket proposals".
+4. Automatic entries last, once proposals have a record too.
 
 Cost at the defaults (docs estimate, measured in the AI usage report):
 
@@ -71,7 +86,9 @@ Cost at the defaults (docs estimate, measured in the AI usage report):
 ## Settings (admin panel; logged)
 
 `polymarket`, `polymarket_proposals`, `markets`, `refresh_hours`,
-`research_per_day`, `web_searches`, `edge_pct`, `proposal_usd`. The models are
+`research_per_day`, `web_searches`, `edge_pct`, `proposal_usd`, and for
+automatic entries `polymarket_auto`, `auto_edge_pct`, `auto_fee_pct`,
+`auto_fee_min_usd`, `auto_min_order_usd`. The models are
 `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL` (environment), called only from
 `src/ai/claude.js`.
 
@@ -79,4 +96,4 @@ Cost at the defaults (docs estimate, measured in the AI usage report):
 
 - Hyperliquid proposals, built the same way: approving feeds the page's order
   or the automatic agent.
-- Polymarket automatic trading through Session Keys, with full disclosure.
+- Automatic selling (exits) for Polymarket, with its own design.

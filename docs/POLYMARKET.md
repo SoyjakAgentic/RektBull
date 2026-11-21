@@ -102,26 +102,72 @@ They're set per venue in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)).
 - **What they never stop:** selling, redeeming, withdrawing, or sending what
   was already prepared.
 
-## Automatic trading: not built, waiting on a decision
+## Automatic trading (Session Keys)
 
-Polymarket has **Session Keys** (trading/session-keys).
+The owner approved this on 21 November 2026, as a second exception next to
+Hyperliquid (CLAUDE.md), with every limit disclosed before the user signs.
+Code: `src/polymarket/auto.js`, routes `/v1/polymarket/auto`, the page's
+"Automatic AI trading" card. It starts **off** twice over: `POLYMARKET_AUTO_ENABLED`
+on the server, and "Place automated Polymarket entries" in the admin panel.
 
-- **What they allow.** A user's Deposit Wallet can authorize another key to
-  place orders. It can never withdraw. Revoking it cancels its open orders.
-- **What they don't allow.** The term is fixed at 180 days, and Polymarket
-  documents no onchain per-order or per-day limits. Like Hyperliquid's agents,
-  the user's limits would be enforced by RektBull, not onchain.
-- **The difference from Hyperliquid.** The orders would be sent from
-  RektBull's servers. Polymarket checks the sending IP, so orders from
-  RektBull's servers could get around Polymarket's own block for users in
-  blocked or close-only countries. Polymarket also says third-party apps that
-  trade for users aren't eligible for its co-location programme.
+**The permission** (docs.polymarket.com/trading/session-keys):
 
-Before building it, the owner decides whether to offer it, and if so, how to
-stop it from getting around Polymarket's own geoblock. For example, it could
-be refused for users whose country Polymarket blocks. Fable's groundwork for
-the Session Key batches is in `src/polymarket/wallets.js` (`session_authorize`,
-`session_revoke`), unreachable from any route.
+- The user's own key signs one Deposit Wallet batch,
+  `authorizeSessionSigner(RektBull's key, validUntil)`, sent through
+  Polymarket's relayer (`POST /v1/session-signers/authorizations`, scope `CLOB`).
+- **Duration:** Polymarket fixes the term at **180 days**; it can't be
+  shorter. RektBull stops at the user's own earlier date (1 to 179 days), and
+  the user can end the key at any time.
+- **What Polymarket enforces:** the key can place orders for the wallet; it
+  can't withdraw. Revoking it (`revokeSessionSigner`, signed by the user's own
+  key) cancels the orders it placed.
+- **What Polymarket doesn't enforce:** per-order and 24-hour limits, the stop
+  date and the markets. **RektBull's servers keep them, not onchain.** The page
+  says so, and that the most a user can lose is what's in their Polymarket
+  wallet.
+- **RektBull's key:** `KMS_POLYMARKET_SESSION_KEY_VERSION` (Cloud KMS),
+  public address `POLYMARKET_SESSION_ADDRESS`. It derives its own CLOB API
+  credentials (L1 ClobAuth), held in memory only. No user key or user
+  credential reaches the server.
+
+**What it places**, from the AI's researched forecasts (docs/AI_PROPOSALS.md):
+
+- **Only buys.** It never sells; positions are held to resolution or sold by
+  the user on the page.
+- **When:** medium or high confidence, and the AI's probability beats the price
+  by `auto_edge_pct` points (10 by default, stricter than proposals' 8).
+- **How:** a fill-and-kill order at no worse than the forecast's price limit
+  (the AI's probability minus the edge) and within 3% of the best ask. If the
+  price has moved past the limit, nothing is sent.
+- **Size:** the user's per-order limit, cut to what's left of their 24-hour
+  limit; never under `auto_min_order_usd` ($25). One entry per forecast per user.
+- **Before each order:** the key is active, before the user's stop date and an
+  hour inside Polymarket's term, the user has AI credits for the fee, and the
+  user's last-seen country isn't on Polymarket's region list.
+
+**Region blocks.** These orders are sent from RektBull's servers, so
+Polymarket's own IP check sees RektBull, not the user. RektBull therefore
+checks the user's country (from `GEO_COUNTRY_HEADER` and
+`GEO_SUBDIVISION_HEADER`) when they turn it on, records it each time they
+open the page, and places nothing while that country is on the Polymarket list,
+or unknown while the list is set. Stopping is never blocked.
+
+**The fee:** `auto_fee_pct` (1%) of what fills, at least `auto_fee_min_usd`
+($0.25), from Safety Pro AI credits (the 30-day allowance, then a top-up),
+charged only when an entry fills. Nothing is charged for an order that doesn't
+fill. The builder fee and the profit share on redemptions apply as usual.
+
+**Turning it off** marks the key revoked at once, so RektBull places nothing
+more, then gives the user the revocation to sign so Polymarket ends the key too.
+The worker ends keys past their stop date every 15 minutes (`polymarket_auto`).
+
+**To check on the first real trade:**
+
+- The relayer accepts the authorization as documented (`validUntil` exactly
+  now + 4,315 hours, per the docs' example).
+- An order signed by RektBull's key with the Deposit Wallet as maker and signer,
+  wrapped (ERC-7739) and in the session envelope, is accepted.
+- `makingAmount` in the answer to a matched FAK buy is the pUSD paid.
 
 ## What to check on the first real trade
 
@@ -138,6 +184,8 @@ the Session Key batches is in `src/polymarket/wallets.js` (`session_authorize`,
 | `POLYMARKET_BUILDER_TAKER_FEE_BPS`, `POLYMARKET_BUILDER_MAKER_FEE_BPS` | The profile's rates, shown to users (1 = 0.01%) |
 | `POLYMARKET_FEE_WALLET` | Public address for the profit share on redemptions (unset: none) |
 | `POLYMARKET_BUILDER_API_KEY`, `…_SECRET`, `…_PASSPHRASE` | RektBull's Builder API key for the relayer (Secret Manager) |
+| `POLYMARKET_AUTO_ENABLED` | Automatic trading through Session Keys (also switched on in the admin panel) |
+| `POLYMARKET_SESSION_ADDRESS`, `KMS_POLYMARKET_SESSION_KEY_VERSION` | RektBull's Session Key: its public address, and its KMS key |
 
 ## Tests
 

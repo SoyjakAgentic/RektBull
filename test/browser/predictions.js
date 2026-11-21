@@ -151,6 +151,34 @@ const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtur
     const { rows: [pr] } = await db.query('SELECT status FROM ai_proposals');
     assert.equal(pr.status, 'approved');
     console.log('✔ an AI proposal, reviewed into an order for the user to sign');
+
+    // Automatic trading: every disclosure shown before signing; the user's own key authorizes RektBull's Session Key; stopping is one button.
+    const sessionKey = ethers.Wallet.createRandom();
+    Object.assign(env, { polymarketAutoEnabled: true, polymarketSessionAddress: sessionKey.address.toLowerCase() });
+    routes.unshift(['/transactions/params', () => ({ nonce: '7' })], ['/session-signers/authorizations', () => ({ transactionID: 'rel-auth' })],
+      ['/session-signers/revocations', () => ({ transactionID: 'rel-revoke' })], ['/account/transactions/', () => ({ state: 'STATE_CONFIRMED' })]);
+    await page.reload();
+    await page.locator('#auto-disclosures', { hasText: 'fixed term of 180 days' }).waitFor();
+    await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
+    const told = await page.textContent('#auto-disclosures');
+    for (const want of [/not onchain/, /Only buys/, /at least \$25/, /1% of each automated buy that fills, at least \$0\.25/, /Polymarket wallet/, /checks your country/]) assert.match(told, want);
+    await page.click('#auto-start');
+    await page.locator('#auto-msg', { hasText: 'tick the box' }).waitFor();
+    assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM polymarket_sessions')).rows[0].n, 0, 'nothing prepared before the user accepts');
+    await page.fill('#auto-max-order', '40'); await page.fill('#auto-max-day', '120'); await page.fill('#auto-days', '14');
+    await page.check('#auto-accept');
+    await page.click('#auto-start');
+    await page.locator('#auto-session', { hasText: 'On.' }).waitFor({ timeout: 20000 });
+    assert.match(await page.textContent('#auto-session'), /At most \$40 an order and \$120 in 24 hours, kept by RektBull's servers, not onchain/);
+    const { rows: [b] } = await db.query(`SELECT * FROM polymarket_batches WHERE kind = 'session_authorize'`);
+    assert.equal(b.status, 'confirmed');
+    assert.equal(b.detail.session_signer, sessionKey.address.toLowerCase());
+    assert.equal(ethers.AbiCoder.defaultAbiCoder().decode(['address', 'uint256'], '0x' + b.calls[0].data.slice(10))[0], sessionKey.address, 'authorizes RektBull\'s key, nothing else');
+    await page.click('#auto-stop');
+    await page.locator('#auto-session', { hasText: 'revoked' }).waitFor({ timeout: 20000 });
+    const { rows: [rv] } = await db.query(`SELECT status FROM polymarket_batches WHERE kind = 'session_revoke'`);
+    assert.equal(rv.status, 'confirmed');
+    console.log('✔ automatic trading: disclosed, authorized by the user\'s key, stopped with one button');
     assert.deepEqual(errors, []);
     console.log('ok: the Predictions page');
   } finally {

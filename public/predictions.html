@@ -97,6 +97,26 @@
       <p id="ai-msg" class="msg"></p>
     </section>
 
+    <section class="card" id="auto-card">
+      <h2>Automatic AI trading <span class="tag">Safety Pro</span></h2>
+      <p id="auto-about" class="small"></p>
+      <div id="auto-session" class="small"></div>
+      <div id="auto-setup" hidden>
+        <h3>Before you turn it on</h3>
+        <dl id="auto-disclosures" class="small disclosures"></dl>
+        <div class="row small">
+          <label class="inline">At most $<input type="number" id="auto-max-order" min="25" step="1" value="25" size="6"> an order</label>
+          <label class="inline">At most $<input type="number" id="auto-max-day" min="25" step="1" value="100" size="6"> in 24 hours</label>
+          <label class="inline">Stop after <input type="number" id="auto-days" min="1" max="179" step="1" value="30" size="4"> days</label>
+        </div>
+        <label class="inline small"><input type="checkbox" id="auto-accept"> I have read the above, including that these limits are kept by RektBull's servers and not onchain, and that the key lasts 180 days on Polymarket unless I end it.</label>
+        <div class="row"><button id="auto-start" class="primary">Sign the authorization</button></div>
+      </div>
+      <div class="row"><button id="auto-stop" class="danger" hidden>Stop and end the key</button></div>
+      <div class="tablewrap" id="auto-orders-wrap" hidden><table class="rank"><thead><tr><th>When</th><th>Market</th><th>Buy</th><th class="num">Asked</th><th class="num">Filled</th><th class="num">Fee</th><th>Status</th></tr></thead><tbody id="auto-orders"></tbody></table></div>
+      <p id="auto-msg" class="msg"></p>
+    </section>
+
     <section class="card" id="track-card">
       <h2>The AI's track record</h2>
       <p id="track-how" class="small muted"></p>
@@ -115,5 +135,6 @@
   <script src="/common.js"></script>
   <script src="/predictions.js"></script>
   <script src="/predictions-ai.js"></script>
+  <script src="/predictions-auto.js"></script>
 </body>
 </html>

@@ -128,7 +128,11 @@ const env = {
   polymarketBuilderApiKey: process.env.POLYMARKET_BUILDER_API_KEY || '',
   polymarketBuilderApiSecret: process.env.POLYMARKET_BUILDER_API_SECRET || '',
   polymarketBuilderApiPassphrase: process.env.POLYMARKET_BUILDER_API_PASSPHRASE || '',
-  // Automatic Polymarket trading (Polymarket Session Keys): NOT built yet; waits on the owner's decision (docs/POLYMARKET.md).
+  // Automatic Polymarket trading (src/polymarket/auto.js): RektBull's Session Key, KMS in production (trade service only);
+  // POLYMARKET_SESSION_ADDRESS is its PUBLIC address users authorize. DEV_POLYMARKET_SESSION_KEY: tests only, never production.
+  polymarketSessionAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.POLYMARKET_SESSION_ADDRESS || '') ? process.env.POLYMARKET_SESSION_ADDRESS.toLowerCase() : '',
+  kmsPolymarketSessionKeyVersion: process.env.KMS_POLYMARKET_SESSION_KEY_VERSION || '',
+  devPolymarketSessionKey: process.env.DEV_POLYMARKET_SESSION_KEY || '',
   polymarketAutoEnabled: process.env.POLYMARKET_AUTO_ENABLED === 'true',
 
   // Payments: x402 (pay per call in USDC on Base)

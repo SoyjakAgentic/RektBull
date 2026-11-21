@@ -166,16 +166,22 @@
   async function walletTransaction(kind, extra = {}, msgId = 'wallet-msg') {
     const t = await api('POST', '/v1/polymarket/wallet/transactions', { kind, ...extra });
     if (t.wallet_type === 'eoa') { await onPolygon(); await RB.sendCalls(t, m => say(msgId, m)); return; }
+    return sendPrepared(t, msgId);
+  }
+
+  /** Signs a prepared Deposit Wallet batch and has Polymarket's relayer send it; resolves 'confirmed', or 'sent' if not confirmed yet. */
+  async function sendPrepared(t, msgId) {
     say(msgId, `Your wallet will show one signature for: ${t.steps.map(s => s.what).join(' ')}`);
     const signature = await signTyped(t.typed_data);
     await api('POST', `/v1/polymarket/wallet/transactions/${t.id}/submit`, { signature });
     for (let i = 0; i < 45; i++) {
       await RB.sleep(2000);
       const s = await api('GET', `/v1/polymarket/wallet/transactions/${t.id}`);
-      if (s.status === 'confirmed') return say(msgId, 'Done.', 'ok');
+      if (s.status === 'confirmed') { say(msgId, 'Done.', 'ok'); return 'confirmed'; }
       if (s.status === 'failed') throw new Error(`Polymarket's relayer says it failed: ${s.error || 'no reason given'}`);
     }
     say(msgId, 'Sent; not confirmed yet. Refresh in a minute.');
+    return 'sent';
   }
 
   async function fund() {
@@ -296,7 +302,7 @@
   $('w-approve').addEventListener('click', () => walletTransaction('approvals').then(loadWallet).catch(err => say('wallet-msg', err.message, 'bad')));
   $('w-creds').addEventListener('click', () => credentials(true).then(() => say('wallet-msg', 'Connected to Polymarket\'s order book. The credentials are kept in this tab only.', 'ok')).catch(err => say('wallet-msg', err.message, 'bad')));
   $('w-fund').addEventListener('click', fund);
-  Object.assign(pm, { signTyped, openMarket, showForm, prepare });
+  Object.assign(pm, { signTyped, openMarket, showForm, prepare, sendPrepared });
   RB.state.pm = pm;
   init();
 })();

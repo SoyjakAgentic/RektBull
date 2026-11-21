@@ -97,5 +97,25 @@ router.get('/v1/polymarket/orders', requireAuth, async (req, res) => res.json({ 
 router.post('/v1/polymarket/orders/:id/result', requireAuth, async (req, res) => res.json(await desk.result(req.account, req.params.id, req.body || {})));
 router.post('/v1/polymarket/orders/:id/cancelled', requireAuth, async (req, res) => res.json(await desk.cancelled(req.account, req.params.id)));
 
+// ── Automatic trading through RektBull's Session Key (polymarket/auto.js) ──
+const auto = require('../polymarket/auto');
+const where = req => { const l = regions.locate(req); return l.region || l.country; }; // CA-ON when the region is known, else CA
+const autoRead = fn => read(async (req, res) => {
+  try { await fn(req, res); } catch (err) {
+    if (err instanceof auto.AutoRefused) return res.status(err.status).json({ error: err.code, message: err.message });
+    throw err;
+  }
+});
+/** The disclosures, the user's key (if any), its limits, and the automated orders. Records where the user is now. */
+router.get('/v1/polymarket/auto', requireEvmWallet, autoRead(async (req, res) => res.json(await auto.overview(req.account, where(req)))));
+/** Turning it on: checks the region now, then prepares the authorization for the user's own key to sign and submit. */
+router.post('/v1/polymarket/auto/start', requireEvmWallet, autoRead(async (req, res) => {
+  const r = regions.blockedFor(req, 'polymarket');
+  if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
+  res.status(201).json(await auto.start(req.account, req.body || {}, { country: where(req) }));
+}));
+/** Turning it off: never blocked. RektBull stops at once; the returned revocation ends the key on Polymarket too. */
+router.post('/v1/polymarket/auto/stop', requireEvmWallet, autoRead(async (req, res) => res.json(await auto.stop(req.account))));
+
 module.exports = router;
 module.exports.read = read;

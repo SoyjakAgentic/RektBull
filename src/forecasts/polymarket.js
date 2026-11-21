@@ -175,7 +175,7 @@ async function tick({ force = false } = {}) {
   let budget = Math.max(0, s.research_per_day - doneToday);
   // The flagged ones, biggest disagreement with the price first, each researched at most once a day.
   const flagged = screened.filter(f => f.research).sort((a, b) => Math.abs(b.ai_prob - b.market_prob) - Math.abs(a.ai_prob - a.market_prob));
-  let researched = 0; let offered = 0;
+  let researched = 0; let offered = 0; let automated = 0;
   for (const f of flagged) {
     if (budget <= 0) break;
     const { rows: recent } = await db.query(`SELECT 1 FROM ai_forecasts WHERE venue = 'polymarket' AND stage = 'research' AND market = $1 AND created_at > now() - interval '24 hours'`, [f.market]);
@@ -185,9 +185,14 @@ async function tick({ force = false } = {}) {
     if (!r) continue;
     researched++;
     if (s.polymarket_proposals) offered += await propose(r, f.candidate, s);
+    if (s.polymarket_auto) {
+      // Automated entries use the stricter edge (polymarket/auto.js); only for users who authorized RektBull's Session Key.
+      const plan = proposalFor(r, f.candidate, { ...s, edge_pct: s.auto_edge_pct });
+      if (plan) automated += await require('../polymarket/auto').fromForecast(r, plan).catch(err => { logger.error('automated Polymarket entries failed', { error: err.message }); return 0; });
+    }
   }
-  logger.info('Polymarket forecasts', { resolved, screened: screened.length, researched, offered });
-  return { resolved, screened: screened.length, researched, offered };
+  logger.info('Polymarket forecasts', { resolved, screened: screened.length, researched, offered, automated });
+  return { resolved, screened: screened.length, researched, offered, automated };
 }
 
 /** The public track record: how the AI's forecasts scored against the market's own prices, once resolved. */
