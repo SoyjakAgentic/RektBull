@@ -276,6 +276,22 @@ outcome of the market held, so all of them count.
 - Redeeming on polymarket.com is free, and so is selling before resolution.
   The share applies only to redemptions RektBull prepares.
 
+## Safety Pro AI top-ups
+
+Safety Pro includes $2 of AI usage every 30 days (`payments/aiAllowance.js`),
+counted at what each AI run actually costs RektBull. When it runs out before
+it resets, a user can top it up from the Safety page (`payments/aiTopups.js`,
+`POST /v1/ai/topups`):
+
+- **Sizes:** $5, $20 or $50, dollar for dollar: a $5 top-up adds $5 of AI
+  usage, counted the same way as the allowance.
+- **Paid with:** credits (USDT/USDC or the crypto checkout) or RektBull Points
+  at the point's value.
+- **When it's used:** only once the 30-day allowance is used up, and only with
+  an active Safety Pro pass. What's left never expires.
+- **Failed and cached runs:** a failed run is never counted, and a cached
+  answer costs nothing.
+
 ## NOWPayments (a second checkout)
 
 RektBull's own top-ups (USDT/USDC to a deposit address) cost nothing, but a

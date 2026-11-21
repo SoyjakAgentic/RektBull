@@ -83,6 +83,9 @@ async function status(accountId) {
     allowance_usd: allowance,
     used_usd: Math.round(used * 10000) / 10000,
     covers: SAFETY_PRO.ai_allowance.uses,
+    // AI top-ups: used once this period's allowance is gone (payments/aiTopups.js).
+    topup_usd: Math.round(await require('./aiTopups').balance(accountId) * 100) / 100,
+    topup_sizes_usd: require('./aiTopups').SIZES_USD,
   };
 }
 

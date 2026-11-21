@@ -155,6 +155,18 @@ router.post('/v1/points/passes/:product', requireAuth, async (req, res) => {
   }
 });
 
+/* ── Safety Pro AI top-ups (payments/aiTopups.js): AI usage on top of the 30-day allowance ── */
+router.post('/v1/ai/topups', requireAuth, async (req, res) => {
+  const aiTopups = require('../payments/aiTopups');
+  try {
+    res.status(201).json(await aiTopups.buy(req.account.id, req.body?.amount_usd, req.body?.pay_with));
+  } catch (err) {
+    if (err instanceof aiTopups.TopUpRefused) return res.status(err.status).json({ error: err.code, message: err.message });
+    if (err instanceof require('../rewards/points').NotEnoughPoints) return res.status(402).json({ error: err.code, message: err.message });
+    throw err;
+  }
+});
+
 router.post('/v1/passes/:product', requireAuth, async (req, res) => {
   try {
     res.status(201).json(await passes.buy(req.account.id, req.params.product, `manual:${req.account.id}:${Date.now()}`));
