@@ -112,4 +112,36 @@ async function write({ system, prompt, maxTokens = 4000 }) {
   return { text, model: response.model, usage: response.usage };
 }
 
-module.exports = { write, available, usageReport, estimateUsd, recordUsage, costOf, refuseIfOverBudget, ping, PRICES };
+/**
+ * One analysis request for the AI forecasts (src/forecasts/): `model` is one
+ * of the forecast settings (FORECAST_SCREEN_MODEL, FORECAST_MODEL), and
+ * `webSearches` > 0 lets the model search the web (web_search_20260209) that
+ * many times. Returns the text, the model, what it cost, and every URL the
+ * searches actually returned, so a forecast can keep only sources that exist.
+ */
+async function analyze({ model, system, prompt, maxTokens = 8000, webSearches = 0, effort = 'medium' }) {
+  await refuseIfOverBudget();
+  const response = await getClient().beta.messages.create({
+    model,
+    max_tokens: maxTokens,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort },
+    system,
+    messages: [{ role: 'user', content: prompt }],
+    ...(webSearches > 0 ? { tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: webSearches }] } : {}),
+  });
+  await recordUsage(response.model, response.usage);
+  const searches = Number(response.usage?.server_tool_use?.web_search_requests || 0);
+  const usd = (costOf(response.model, response.usage) || 0) + searches * 0.01; // $10 per 1,000 searches
+  require('../payments/aiAllowance').add(usd);
+  if (response.stop_reason === 'refusal') throw Object.assign(new Error('The analysis was declined'), { status: 502 });
+  const urls = [];
+  for (const b of response.content) {
+    if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const r of b.content) if (r?.url) urls.push(r.url);
+  }
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  return { text, model: response.model, usd, searches, urls };
+}
+
+module.exports = { write, analyze, available, usageReport, estimateUsd, recordUsage, costOf, refuseIfOverBudget, ping, PRICES };

@@ -296,7 +296,7 @@
   $('w-approve').addEventListener('click', () => walletTransaction('approvals').then(loadWallet).catch(err => say('wallet-msg', err.message, 'bad')));
   $('w-creds').addEventListener('click', () => credentials(true).then(() => say('wallet-msg', 'Connected to Polymarket\'s order book. The credentials are kept in this tab only.', 'ok')).catch(err => say('wallet-msg', err.message, 'bad')));
   $('w-fund').addEventListener('click', fund);
-  Object.assign(pm, { signTyped });
+  Object.assign(pm, { signTyped, openMarket, showForm, prepare });
   RB.state.pm = pm;
   init();
 })();

@@ -129,6 +129,28 @@ const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtur
 
     const { rows } = await db.query('SELECT prepared::text AS p FROM polymarket_orders');
     assert.ok(!rows[0].p.includes(creds.secret) && !rows[0].p.includes(creds.apiKey), 'the server never stored the credentials');
+
+    // An AI proposal: shown with its reasoning and sources; reviewing it fills in a limit order the user then signs.
+    const { rows: [acct] } = await db.query('SELECT id FROM accounts WHERE wallet = $1', [wallet.address.toLowerCase()]);
+    await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) VALUES ($1, 'pro_30d', now(), now() + interval '30 days')`, [acct.id]);
+    await require('../../src/forecasts/proposals').saveSettings(acct.id, { polymarket: true });
+    const outcome0 = JSON.parse(m.outcomes)[0];
+    const asset0 = JSON.parse(m.clobTokenIds)[0];
+    const { rows: [f] } = await db.query(`INSERT INTO ai_forecasts (venue, stage, market, question, outcome, asset_id, ai_prob, market_prob, confidence, reasoning, sources, model, cost_usd)
+      VALUES ('polymarket', 'research', $1, $2, $3, $4, 0.6, 0.02, 'medium', 'The evidence points higher than the price.', '["https://news.example/a"]', 'claude-sonnet-5-5', 0.12) RETURNING *`, [m.slug, m.question, outcome0, asset0]);
+    await require('../../src/forecasts/proposals').offer(acct.id, { forecast: f, side: outcome0, assetId: asset0, priceLimit: 0.03, priceUsd: 0.05 });
+    await page.reload();
+    await page.locator('#ai-list', { hasText: 'The evidence points higher' }).waitFor();
+    assert.match(await page.textContent('#ai-list'), /news\.example/);
+    assert.match(await page.textContent('#ai-credits'), /AI credits/);
+    await page.getByRole('button', { name: 'Review the order' }).click();
+    await page.locator('#order-msg', { hasText: 'Filled in from the AI proposal' }).waitFor();
+    assert.equal(await page.inputValue('#o-type'), 'GTC');
+    assert.equal(await page.inputValue('#o-price'), '0.03');
+    assert.equal(await page.inputValue('#o-outcome'), asset0);
+    const { rows: [pr] } = await db.query('SELECT status FROM ai_proposals');
+    assert.equal(pr.status, 'approved');
+    console.log('✔ an AI proposal, reviewed into an order for the user to sign');
     assert.deepEqual(errors, []);
     console.log('ok: the Predictions page');
   } finally {

@@ -148,6 +148,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
 - [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
+- [docs/AI_PROPOSALS.md](docs/AI_PROPOSALS.md): AI forecasts, the public track record, and proposals paid from Safety Pro AI credits
 - [docs/POINTS.md](docs/POINTS.md): RektBull Points, a rebate of trading fees spendable on subscriptions
 - [docs/POLYMARKET.md](docs/POLYMARKET.md): prediction markets on Polymarket, from the user's own wallet
 - [docs/HYPERLIQUID.md](docs/HYPERLIQUID.md): perps on Hyperliquid, manual and automatic, and what's enforced where

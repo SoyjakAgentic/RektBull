@@ -85,6 +85,25 @@
       <div class="tablewrap"><table class="rank"><thead><tr><th>When</th><th>Order</th><th>Status</th><th></th></tr></thead><tbody id="orders"></tbody></table></div>
     </section>
 
+    <section class="card" id="ai-card">
+      <h2>AI proposals <span class="tag">Safety Pro</span></h2>
+      <p id="ai-about" class="small"></p>
+      <div id="ai-settings" class="row small" hidden>
+        <label class="inline"><input type="checkbox" id="ai-on"> Send me Polymarket proposals</label>
+        <label class="inline">At most <input type="number" id="ai-max" min="1" max="50" step="1" value="5" size="3"> a day</label>
+        <span id="ai-credits" class="muted"></span>
+      </div>
+      <div id="ai-list" class="stack"></div>
+      <p id="ai-msg" class="msg"></p>
+    </section>
+
+    <section class="card" id="track-card">
+      <h2>The AI's track record</h2>
+      <p id="track-how" class="small muted"></p>
+      <div id="track" class="tiles"></div>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Market</th><th class="num">AI</th><th class="num">Market</th><th>Happened</th></tr></thead><tbody id="track-recent"></tbody></table></div>
+    </section>
+
     <section class="card">
       <h2>RektBull's fee</h2>
       <p id="fee-how" class="small"></p>
@@ -95,5 +114,6 @@
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/predictions.js"></script>
+  <script src="/predictions-ai.js"></script>
 </body>
 </html>

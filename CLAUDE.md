@@ -52,7 +52,8 @@
   Add new providers the same way, with a fallback where one exists.
 - **Every check names its source**, and a check that couldn't run says why.
   Never let an AI report fill gaps with guesses.
-- **The Claude model is a setting** (`REPORT_MODEL`), called only from `src/ai/claude.js`.
+- **The Claude model is a setting** (`REPORT_MODEL`; the AI forecasts' `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL`),
+  called only from `src/ai/claude.js`. AI proposals are suggestions the user approves and signs (docs/AI_PROPOSALS.md).
 - Plain CommonJS on Node 22 (Hardhat 3 in `contracts/` needs 22.13+), no build step. Run `npm test` (and with
   `TEST_DATABASE_URL` for the end-to-end test) before pushing. The Solana program in `solana/` is Rust
   (Anchor 0.32): `cargo build-sbf --arch v0` then `cargo test -p rektbull-orders` there before pushing it.

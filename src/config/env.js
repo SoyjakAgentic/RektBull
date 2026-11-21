@@ -45,6 +45,9 @@ const env = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   reportModel: process.env.REPORT_MODEL || 'claude-opus-5-5',
   reportEffort: process.env.REPORT_EFFORT || 'medium',
+  // AI forecasts (src/forecasts/): a cheap model screens every market, a stronger one researches the few it flags.
+  forecastScreenModel: process.env.FORECAST_SCREEN_MODEL || 'claude-haiku-5-5',
+  forecastModel: process.env.FORECAST_MODEL || 'claude-sonnet-5-5',
 
   // Data providers (all have free plans; see docs/FREE_TIER.md)
   etherscanApiKey: process.env.ETHERSCAN_API_KEY || '',

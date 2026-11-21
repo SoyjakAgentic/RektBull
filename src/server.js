@@ -39,6 +39,7 @@ async function main() {
     // NOWPayments: payments under way, read back every 5 minutes so a lost notification is caught up.
     job('nowpayments', 5 * 60 * 1000, () => require('./payments/nowpayments').reconcile());
     job('polymarket_fills', 10 * 60 * 1000, () => require('./polymarket/fills').tick()); // RektBull Points for Polymarket fills
+    job('forecasts', 30 * 60 * 1000, () => require('./forecasts/polymarket').tick()); // AI forecasts (off until switched on in the admin panel)
     // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
     job('governance_alerts', 60 * 60 * 1000, () => require('./services/governance').alertTick());
     // Research: last week's digest, made once on Monday from 06:00 UTC (checked hourly); the newsletter after it.
