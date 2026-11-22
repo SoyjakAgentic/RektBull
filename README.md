@@ -36,6 +36,7 @@ payments.
 | `POST/GET /v1/trading/auto/intents` | Automatic trades (Base Sepolia until the audit): simulated, then sent by RektBull's session key through the user's permission |
 | `GET /perps`, `GET /v1/hyperliquid/markets`, `…/account`, `…/approvals` | Hyperliquid perps: markets for everyone; the signed-in wallet's own margin, positions, orders and approvals (docs/HYPERLIQUID.md) |
 | `POST /v1/hyperliquid/exchange` | Passes on an order, cancel, leverage change or approval signed in the browser; never a transfer or withdrawal |
+| `GET /points`, `GET /v1/points`, `POST /v1/points/passes/:product` | RektBull Points: a rebate of trading fees (25%, $0.10 a point, at most 1 billion), spent on subscriptions (docs/POINTS.md) |
 | `GET /predictions`, `GET /v1/polymarket/events`, `…/markets/:slug`, `…/books/:assetId`, `…/positions` | Polymarket: markets, order books, resolution notes and positions (docs/POLYMARKET.md) |
 | `GET /v1/polymarket/wallet`, `POST …/wallet/deploy`, `…/wallet/transactions`, `POST /v1/polymarket/orders` | The user's Polymarket wallet set-up and orders, prepared for their wallet to sign; signed orders go from the browser to Polymarket |
 | `GET /v1/hyperliquid/auto`, `POST …/auto/grant`, `…/auto/revoke`, `POST/DELETE …/auto/intents` | Automatic perps trading through RektBull's agent, within the user's limits (enforced by RektBull, not onchain) |
@@ -147,6 +148,7 @@ docs/                  scope, payments, free tier, deploy, migration from Soyjak
 - [docs/PAYMENTS.md](docs/PAYMENTS.md): how each payment rail works, and the keys it needs
 - [docs/FREE_TIER.md](docs/FREE_TIER.md): which free data plans each service runs on
 - [docs/SESSION_KEYS.md](docs/SESSION_KEYS.md): automatic trading without custody (design)
+- [docs/POINTS.md](docs/POINTS.md): RektBull Points, a rebate of trading fees spendable on subscriptions
 - [docs/POLYMARKET.md](docs/POLYMARKET.md): prediction markets on Polymarket, from the user's own wallet
 - [docs/HYPERLIQUID.md](docs/HYPERLIQUID.md): perps on Hyperliquid, manual and automatic, and what's enforced where
 - [docs/TRADE_DESK_STATUS.md](docs/TRADE_DESK_STATUS.md): where the trade desk was paused, and how to pick it back up

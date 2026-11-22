@@ -347,6 +347,10 @@ async function execute(row) {
       [intent.id, refusedAll ? 'failed' : 'done', JSON.stringify(results), Math.round(filledUsd * 100) / 100, refusedAll ? results.map(x => x.error).join(' ') : null],
     );
     logger.info('automatic perps order sent', { intent: intent.id, filled_usd: filledUsd });
+    const b = relay.builder();
+    if (b && filledUsd > 0 && intent.side !== 'close') {
+      await require('../rewards/points').safeCredit({ accountId: intent.account_id, source: 'perps_auto', ref: intent.id, feeUsd: filledUsd * b.f / 100000 });
+    }
   } catch (err) {
     await fail(intent, err instanceof AutoRefused || err.isHyperliquid ? err.message : `Not sent: ${err.message}`);
   }
