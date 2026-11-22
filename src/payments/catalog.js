@@ -15,7 +15,7 @@ const settings = require('../admin/settings');
 const DEFAULT_FREE_POINTS = { per_month: 30, new_wallet: 10, per_ip_per_day: 20 };
 const DEFAULT_AI_ALLOWANCE_CENTS = 200;
 const LIMITS = {
-  price_cents: { run: [1, 100000], pass: [100, 100000] }, // $0.01 to $1,000 a run; $1 to $1,000 a pass
+  price_cents: { run: [0, 100000], pass: [100, 100000] }, // free (signed in, capped a day: payments/gate.js) to $1,000 a run; $1 to $1,000 a pass
   points: [1, 100],
   fee_bps: [0, 1000], // a claim fee of at most 10%
   free_points: [0, 1000],
@@ -59,7 +59,8 @@ const PRODUCTS = {
     kind: 'run',
     title: 'Token due diligence report',
     description: 'The full scan plus liquidity, volume and age, explained in plain English.',
-    price_cents: 300,
+    // Free (the owner, 22 November 2026: competitors' scanners are free), and paused for now (admin/services.js).
+    price_cents: 0,
     points: null,
     x402: true,
   },
@@ -254,7 +255,7 @@ function fill(text) {
     if (single === 'ai_allowance') return short(SAFETY_PRO.ai_allowance.cents_per_30_days);
     if (!PRODUCTS[id]) return m;
     const p = product(id);
-    if (kind === 'price') return short(p.price_cents);
+    if (kind === 'price') return p.price_cents === 0 ? 'free' : short(p.price_cents);
     if (kind === 'usd') return String(p.price_cents / 100);
     if (kind === 'points') return p.points ? String(p.points) : m;
     if (kind === 'fee') return p.fee_bps === undefined ? m : `${p.fee_bps / 100}%`;
@@ -265,6 +266,7 @@ function fill(text) {
 /** The ways a product can be paid for, in the order they're tried. */
 function rails(p) {
   if (p.kind === 'fee') return ['claim_transfer'];
+  if (p.kind === 'run' && p.price_cents === 0) return ['free']; // signed in, within the day's caps
   const out = [];
   if (p.kind === 'run') out.push('pass', 'points', 'credits');
   else out.push('credits');
@@ -281,6 +283,7 @@ function publicCatalog() {
       id, kind: p.kind, title: p.title, description: p.description,
       price_cents: p.price_cents, price_usd: usd(p.price_cents),
       pay_with: rails(p),
+      ...(require('../admin/services').pausedNow(id) ? { paused: true } : {}),
       ...(p.points ? { points: p.points } : {}),
       ...(p.kind === 'fee' ? { fee_bps: p.fee_bps, pro_fee_bps: p.pro_fee_bps } : {}),
       ...(SAFETY_PRO.ai_allowance.uses.includes(id) ? { in_pro_ai_allowance: true } : {}),

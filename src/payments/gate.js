@@ -24,6 +24,12 @@ const x402 = require('./x402');
 const aiAllowance = require('./aiAllowance');
 const aiTopups = require('./aiTopups');
 
+/**
+ * Free runs (an admin set the price to $0): signed-in accounts only, at most this many a day each and per
+ * IP address, so a free run's AI and data cost can't run away.
+ */
+const FREE_RUNS = { per_account_per_day: 10, per_ip_per_day: 20 };
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Uses one of the day's allowance for subject; false when it's used up. */
@@ -60,6 +66,7 @@ function paymentRequired(p, req, extra = {}) {
 
 /** Finds a way to pay; returns a charge { method, commit(), rollback() } or null. */
 async function acquire(p, req, runId) {
+  if (p.price_cents === 0) return null; // free runs are handled in paidRoute, before this
   const header = req.get('x-payment');
   if (header) {
     if (!p.x402 || !x402.enabled()) throw Object.assign(new Error('This product does not take x402 payments'), { status: 400 });
@@ -122,6 +129,11 @@ function paidRoute(productId, { validate, run, record = input => input }) {
   product(productId); // an unknown product fails when the route is made, not on its first request
   return async (req, res) => {
     const p = product(productId); // read on each request: an admin may have changed the price
+    // Paused in the admin panel (admin/services.js): refused first, before any charge.
+    try { await require('../admin/services').refuseIfPaused(productId); } catch (err) {
+      if (err.code === 'service_paused') return res.status(503).json({ error: 'service_paused', service: productId, message: err.message });
+      throw err;
+    }
     const input = validate(req);
     if (input.error) return res.status(400).json({ error: 'bad_request', message: input.error });
     if (AGENT_OF[productId]) {
@@ -133,8 +145,21 @@ function paidRoute(productId, { validate, run, record = input => input }) {
 
     const runId = crypto.randomUUID();
     let charge;
+    if (p.price_cents === 0) {
+      // Free: signed in, within the day's caps. Nothing to pay, so nothing to give back but the day's count.
+      if (!req.account) return res.status(401).json({ error: 'sign_in_required', message: `${p.title} is free: sign in with your wallet to run it.` });
+      const subject = `account:${req.account.id}`; const ip = ipSubject(req.ip); const k = `${p.id}:free`;
+      if (!(await takeAllowance(subject, k, FREE_RUNS.per_account_per_day))) {
+        return res.status(429).json({ error: 'free_limit', message: `${p.title} is free up to ${FREE_RUNS.per_account_per_day} a day per account. Try again tomorrow.` });
+      }
+      if (!(await takeAllowance(ip, k, FREE_RUNS.per_ip_per_day))) {
+        await giveBackAllowance(subject, k);
+        return res.status(429).json({ error: 'free_limit', message: `${p.title} is free up to ${FREE_RUNS.per_ip_per_day} a day from one connection. Try again tomorrow.` });
+      }
+      charge = { method: 'free', commit: async () => {}, rollback: async () => { await giveBackAllowance(subject, k); await giveBackAllowance(ip, k); } };
+    }
     try {
-      charge = await acquire(p, req, runId);
+      if (!charge) charge = await acquire(p, req, runId);
     } catch (err) {
       if (err.isPaymentInvalid) return res.status(402).json(paymentRequired(p, req, { payment_error: err.message }));
       throw err;
@@ -172,4 +197,4 @@ function paidRoute(productId, { validate, run, record = input => input }) {
   };
 }
 
-module.exports = { paidRoute, acquire, paymentRequired, takeAllowance };
+module.exports = { paidRoute, acquire, paymentRequired, takeAllowance, FREE_RUNS };

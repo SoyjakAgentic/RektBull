@@ -70,7 +70,9 @@ const ENDPOINTS = [
 function priceOf(id) {
   const p = product(id);
   return {
-    product: id, price_usd: usd(p.price_cents), points: p.points || null, x402: !!p.x402,
+    product: id, price_usd: usd(p.price_cents), points: p.points || null, x402: !!p.x402 && p.price_cents > 0,
+    ...(p.price_cents === 0 ? { free: 'Free: sign in with your wallet; up to 10 a day per account.' } : {}),
+    ...(require('../admin/services').pausedNow(id) ? { paused: true } : {}),
     x402_note: p.x402 && p.price_cents > X402_DEFAULT_CLIENT_CAP_CENTS ? 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.' : null,
   };
 }

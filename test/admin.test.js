@@ -56,7 +56,7 @@ test('admin panel: prices, agents and emergency stops', { skip: !DB && 'set TEST
 
   /* ── prices: checked, logged, and everywhere at once ── */
   assert.equal((await call('PUT', '/v1/admin/prices/contract_audit', { price_cents: 4900 })).status, 400, 'a reason is required');
-  assert.match((await call('PUT', '/v1/admin/prices/contract_audit', { price_cents: 0, reason: 'oops' })).body.message, /from \$0\.01 to \$1,000/);
+  assert.match((await call('PUT', '/v1/admin/prices/contract_audit', { price_cents: -1, reason: 'oops' })).body.message, /from \$0 to \$1,000/);
   assert.match((await call('PUT', '/v1/admin/prices/contract_audit', { points: 3, reason: 'try' })).body.message, /only price_cents/);
   assert.match((await call('PUT', '/v1/admin/prices/yield_move', { fee_bps: 5, reason: 'try' })).body.message, /audited Yield Router/);
   assert.match((await call('PUT', '/v1/admin/prices/airdrop_claim', { fee_bps: 400, pro_fee_bps: 500, reason: 'try' })).body.message, /Safety Pro fee can't be more/);

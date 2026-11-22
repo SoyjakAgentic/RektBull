@@ -37,6 +37,18 @@
       }, s.on ? 'Resume' : 'Stop now'))));
   }
 
+  function services(list) {
+    const groups = [...new Set(list.map(s => s.group))];
+    $('services').replaceChildren(...groups.flatMap(g => [el('h3', {}, g), ...list.filter(s => s.group === g).map(s => el('div', { class: 'row' },
+      el('p', {}, el('strong', {}, s.name), ' ', el('span', { class: `tag${s.paused ? ' bad' : ''}` }, s.paused ? 'PAUSED' : 'on'),
+        s.default_paused ? el('span', { class: 'small muted' }, ' (paused by default)') : '', el('br'),
+        el('span', { class: 'small muted' }, `Pausing stops: ${s.stops}${s.open ? ` Still open: ${s.open}` : ''}`)),
+      el('button', {
+        class: s.paused ? 'btn' : 'btn danger', type: 'button',
+        onclick: () => { if (s.paused || window.confirm(`Pause ${s.name}?`)) change('services-msg', `${s.paused ? 'Resume' : 'Pause'}: ${s.name}`, 'PUT', `/v1/admin/services/${s.id}`, { paused: !s.paused }); },
+      }, s.paused ? 'Resume' : 'Pause')))]));
+  }
+
   function forecasts(f) {
     const s = f.settings;
     const box = (k, label) => el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': k, checked: !!s[k] }), ` ${label}`);
@@ -274,7 +286,7 @@
       const o = await api('GET', '/v1/admin/overview');
       $('panel').hidden = false;
       say('gate-msg', '');
-      stops(o.stops); prices(o.prices); agents(o.agents); log(o.log);
+      stops(o.stops); services(o.services); prices(o.prices); agents(o.agents); log(o.log);
       regions(await api('GET', '/v1/admin/regions'));
       rewards(await api('GET', '/v1/admin/rewards'));
       forecasts(await api('GET', '/v1/admin/forecasts'));

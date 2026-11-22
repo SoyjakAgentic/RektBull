@@ -305,6 +305,8 @@
   /** " · 1 point or $0.25", " · $3.00 (in Safety Pro's AI allowance)" */
   function priceLabel(p) {
     if (!p) return '';
+    if (p.paused) return ' · paused for now';
+    if (p.price_cents === 0) return ' · free (signed in)';
     return ` · ${p.points ? `${p.points} point${p.points === 1 ? '' : 's'} or ` : ''}${p.price_usd}${p.in_pro_ai_allowance ? ' (in Safety Pro\'s AI allowance)' : ''}`;
   }
 

@@ -65,13 +65,19 @@ router.get('/v1/polymarket/positions', read(async (req, res) => {
  * (Polymarket also blocks by the IP that sends the order, which is the user's own browser:
  * the page asks https://polymarket.com/api/geoblock before it offers to trade.)
  */
-function regionGate(req, res, next) {
-  // Getting out is never blocked: selling, redeeming winnings, withdrawing, and sending what was already prepared.
+/** Getting out is never blocked: selling, redeeming winnings, withdrawing, and sending what was already prepared. */
+function isExit(req) {
   const kind = String(req.body?.kind || '');
-  if (req.path.endsWith('/submit') || (req.path.endsWith('/transactions') && kind !== 'approvals') || (req.path === '/v1/polymarket/orders' && String(req.body?.side || '').toUpperCase() === 'SELL')) return next();
+  return req.path.endsWith('/submit') || (req.path.endsWith('/transactions') && kind !== 'approvals') || (req.path === '/v1/polymarket/orders' && String(req.body?.side || '').toUpperCase() === 'SELL');
+}
+const pausedGate = require('../admin/services').gate('predictions', isExit);
+
+function regionGate(req, res, next) {
+  if (isExit(req)) return next();
   const r = regions.blockedFor(req, 'polymarket');
   if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
-  next();
+  // Paused in the admin panel: the same ways out stay open.
+  pausedGate(req, res, next);
 }
 
 router.get('/v1/polymarket/config', (_req, res) => res.json(desk.config()));
@@ -109,7 +115,7 @@ const autoRead = fn => read(async (req, res) => {
 /** The disclosures, the user's key (if any), its limits, and the automated orders. Records where the user is now. */
 router.get('/v1/polymarket/auto', requireEvmWallet, autoRead(async (req, res) => res.json(await auto.overview(req.account, where(req)))));
 /** Turning it on: checks the region now, then prepares the authorization for the user's own key to sign and submit. */
-router.post('/v1/polymarket/auto/start', requireEvmWallet, autoRead(async (req, res) => {
+router.post('/v1/polymarket/auto/start', requireEvmWallet, pausedGate, autoRead(async (req, res) => {
   const r = regions.blockedFor(req, 'polymarket');
   if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
   res.status(201).json(await auto.start(req.account, req.body || {}, { country: where(req) }));

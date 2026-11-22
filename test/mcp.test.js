@@ -123,7 +123,10 @@ test('the reference: every documented endpoint is a real route; paid ones priced
 
   const ref = await (await fetch(base + '/v1/developers')).json();
   assert.equal(ref.mcp.url, 'https://rektbull.test/mcp');
-  assert.equal(ref.endpoints.find(e => e.path === '/v1/tokens/report').price.x402_note, 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.');
+  assert.equal(ref.endpoints.find(e => e.path === '/v1/contracts/audit').price.x402_note, 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.');
+  const rep = ref.endpoints.find(e => e.path === '/v1/tokens/report').price;
+  assert.deepEqual([rep.price_usd, rep.x402, rep.paused], ['$0.00', false, true], 'the report is free, with no x402, and paused for now');
+  assert.match(rep.free, /sign in/);
   assert.deepEqual(ref.endpoints.find(e => e.path === '/v1/checkup').free_per_day, { account: 10, anonymous: 3 });
 
   const doc = await (await fetch(base + '/v1/openapi.json')).json();

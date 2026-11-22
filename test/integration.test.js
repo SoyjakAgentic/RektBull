@@ -69,6 +69,10 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   app.post('/test/quick-fails', paidRoute('token_quick_check', { validate: () => ({ ok: true }), run: async () => { throw new Error('provider down'); } }));
   // A report's AI cost reaches the gate the way src/ai/claude.js reports it: $0.50 when written, nothing when cached.
   const aiAllowance = require('../src/payments/aiAllowance');
+  // The report is free and paused by default (the owner, 22 November 2026); these tests price it at $3 and switch it
+  // on, to test the paid path an admin can put back.
+  await require('../src/admin/settings').set('price:token_report', { price_cents: 300 }, { wallet: '0xadmin', action: 'price', reason: 'test the paid path' });
+  await require('../src/admin/services').set('token_report', false, { wallet: '0xadmin', reason: 'test the paid path' });
   app.post('/test/report', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => { aiAllowance.add(0.5); return { done: true }; } }));
   app.post('/test/report-cached', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => ({ done: true, cached: true }) }));
   app.post('/test/report-fails', paidRoute('token_report', { validate: () => ({ ok: true }), run: async () => { aiAllowance.add(0.5); throw new Error('Claude refused'); } }));

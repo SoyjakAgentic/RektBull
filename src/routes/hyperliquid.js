@@ -108,7 +108,10 @@ router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, re
       if (a.type === 'approveAgent' && (a.agentAddress.toLowerCase() === env.hlAgentAddress || a.agentName.startsWith(auto.AGENT_NAME))) {
         throw new relay.RelayRefused('RektBull\'s automatic-trading agent is approved from the Automatic trading section, with your limits.', 422, 'use_auto_grant');
       }
-      if (regionMatters(checked)) regions.refuseIfBlocked(req, 'hyperliquid');
+      if (regionMatters(checked)) {
+        regions.refuseIfBlocked(req, 'hyperliquid');
+        return require('../admin/services').refuseIfPaused('perps'); // paused: nothing new opens; closing still works
+      }
     },
   });
   // RektBull Points: a rebate of the builder fee on what filled (Hyperliquid's own answer, not the page's).
@@ -124,13 +127,13 @@ router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, re
 
 router.get('/v1/hyperliquid/auto', requireEvmWallet, refusal(async (req, res) => res.json(await auto.overview(req.account))));
 
-router.post('/v1/hyperliquid/auto/grant', requireEvmWallet, refusal(async (req, res) => {
+router.post('/v1/hyperliquid/auto/grant', requireEvmWallet, require('../admin/services').gate('perps'), refusal(async (req, res) => {
   res.status(201).json(await auto.grant(req.account, req.body, { before: () => regions.refuseIfBlocked(req, 'hyperliquid') }));
 }));
 
 router.post('/v1/hyperliquid/auto/revoke', requireEvmWallet, refusal(async (req, res) => res.json(await auto.revoke(req.account, req.body || {}))));
 
-router.post('/v1/hyperliquid/auto/intents', requireEvmWallet, refusal(async (req, res) => {
+router.post('/v1/hyperliquid/auto/intents', requireEvmWallet, require('../admin/services').gate('perps', req => req.body?.side === 'close'), refusal(async (req, res) => {
   if (req.body?.side !== 'close') regions.refuseIfBlocked(req, 'hyperliquid');
   res.status(201).json(await auto.queue(req.account, req.body || {}));
 }));
