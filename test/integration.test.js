@@ -187,8 +187,22 @@ test('RektBull end to end', { skip: !DB && 'set TEST_DATABASE_URL to run' }, asy
   for (let i = 0; i < 3; i++) assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass');
   assert.equal((await call('GET', '/v1/me')).body.ai_allowance.left_pct, 0);
   assert.equal((await call('POST', '/test/report')).status, 402, 'used up: a report needs credits ($3, and there are 75 cents)');
+
+  // An AI top-up: bought with credits, used once the 30-day allowance is gone, at each run's real AI cost.
+  const short = await call('POST', '/v1/ai/topups', { amount_usd: 5, pay_with: 'credits' });
+  assert.equal(short.status, 402); assert.equal(short.body.error, 'insufficient_credits');
+  assert.equal((await call('POST', '/v1/ai/topups', { amount_usd: 7, pay_with: 'credits' })).status, 400, 'only the listed sizes');
+  await require('../src/payments/credits').add(accountId, 500, 'test', 'test:topup-credits');
+  const bought = await call('POST', '/v1/ai/topups', { amount_usd: 5, pay_with: 'credits' });
+  assert.equal(bought.status, 201); assert.equal(bought.body.balance_usd, 5);
+  assert.equal((await call('GET', '/v1/credits')).body.balance_cents, 75, '$5 of credits paid for it');
+  assert.equal((await call('POST', '/test/report')).body.run.paid_with, 'pass', 'the top-up pays once the allowance is gone');
+  ai = (await call('GET', '/v1/me')).body.ai_allowance;
+  assert.equal(ai.topup_usd, 4.5, 'at the run\'s real AI cost: $0.50');
+  assert.deepEqual(ai.topup_sizes_usd, [5, 20, 50]);
+  assert.equal((await call('POST', '/v1/ai/topups', { amount_usd: 5, pay_with: 'points' })).status, 402, 'no RektBull Points yet');
   const { rows: costs } = await db.query(`SELECT ai_cost_usd::float AS c FROM runs WHERE product = 'token_report' AND status = 'succeeded' AND ai_cost_usd IS NOT NULL`);
-  assert.deepEqual(costs.map(r => r.c), [0.5, 0.5, 0.5, 0.5], 'each run\'s AI cost is kept');
+  assert.deepEqual(costs.map(r => r.c), [0.5, 0.5, 0.5, 0.5, 0.5], 'each run\'s AI cost is kept');
   assert.equal((await call('GET', '/v1/me')).body.passes[0].title, 'Safety Pro, 30 days');
 
   // ── A reorged deposit is never credited ──

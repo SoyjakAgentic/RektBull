@@ -13,11 +13,14 @@
   a recurring pull: nothing is taken unless an order the user or their agent
   placed fills. A Polymarket builder code works the same way
   (docs/POLYMARKET.md): `POLYMARKET_BUILDER_CODE` is signed into every order the
-  user's wallet signs, and Polymarket charges the builder fee (0.01% by
+  user's wallet signs, and Polymarket charges the builder fee (0.1% by
   default, the rates set on RektBull's builder profile) on fills only and pays
   it out. Polymarket winnings redeemed through RektBull carry a 10% share of
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
-  transfer in the same batch the user signs. RektBull Points (docs/POINTS.md),
+  transfer in the same batch the user signs. Orders from the AI (an approved proposal or an automatic
+  entry) carry a second builder code instead once it's set, `POLYMARKET_AI_BUILDER_CODE` (1% taker, 0.5%
+  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on an AI proposal costs $0.25 of Safety Pro AI
+  credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. RektBull Points (docs/POINTS.md),
   a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
   passes. No recurring pulls and no token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
@@ -42,6 +45,13 @@
   and that the most a user can lose is the margin in their Hyperliquid account. Every automatic order
   is immediate-or-cancel within `HL_AUTO_PRICE_BAND_BPS` of the mark, isolated margin, deep markets
   only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed.
+  **The second exception, approved by the owner: Polymarket Session Keys** (docs/POLYMARKET.md). The
+  user's own key authorizes RektBull's Session Key (KMS key) on their Deposit Wallet; Polymarket fixes
+  the term at 180 days and enforces that it can trade and never withdraw. The user's stop date,
+  per-order and 24-hour limits and region are enforced by `src/polymarket/auto.js`, **not onchain**, and
+  the page must say so, and the term, and that the most a user can lose is their Polymarket wallet. It
+  only buys, from researched AI forecasts, fill-and-kill at no worse than the forecast's limit; stopping
+  is never blocked. Its fee is charged to AI credits only on a fill.
 - **Charge only for work delivered.** Every paid run goes through
   `src/payments/gate.js`: validate input before charging, refund credits and
   free uses on failure, settle x402 only after the run succeeds. In-kind fees
@@ -52,7 +62,8 @@
   Add new providers the same way, with a fallback where one exists.
 - **Every check names its source**, and a check that couldn't run says why.
   Never let an AI report fill gaps with guesses.
-- **The Claude model is a setting** (`REPORT_MODEL`), called only from `src/ai/claude.js`.
+- **The Claude model is a setting** (`REPORT_MODEL`; the AI forecasts' `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL`),
+  called only from `src/ai/claude.js`. AI proposals are suggestions the user approves and signs (docs/AI_PROPOSALS.md).
 - Plain CommonJS on Node 22 (Hardhat 3 in `contracts/` needs 22.13+), no build step. Run `npm test` (and with
   `TEST_DATABASE_URL` for the end-to-end test) before pushing. The Solana program in `solana/` is Rust
   (Anchor 0.32): `cargo build-sbf --arch v0` then `cargo test -p rektbull-orders` there before pushing it.

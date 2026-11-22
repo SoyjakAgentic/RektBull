@@ -45,6 +45,9 @@ const env = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   reportModel: process.env.REPORT_MODEL || 'claude-opus-5-5',
   reportEffort: process.env.REPORT_EFFORT || 'medium',
+  // AI forecasts (src/forecasts/): a cheap model screens every market, a stronger one researches the few it flags.
+  forecastScreenModel: process.env.FORECAST_SCREEN_MODEL || 'claude-haiku-5-5',
+  forecastModel: process.env.FORECAST_MODEL || 'claude-sonnet-5-5',
 
   // Data providers (all have free plans; see docs/FREE_TIER.md)
   etherscanApiKey: process.env.ETHERSCAN_API_KEY || '',
@@ -117,15 +120,24 @@ const env = {
   polymarketBuilderCode: /^0x[0-9a-fA-F]{64}$/.test(process.env.POLYMARKET_BUILDER_CODE || '') ? process.env.POLYMARKET_BUILDER_CODE.toLowerCase() : '',
   // The fee rates set on that builder profile, in basis points (1 = 0.01%). Polymarket charges what the PROFILE says
   // (taker at most 100, maker at most 50, whole basis points); these must say the same, since users are shown them.
-  polymarketTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS, 1))),
-  polymarketMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS, 1))),
+  polymarketTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS, 10))),
+  polymarketMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS, 10))),
+  // RektBull's AI builder code: a second builder profile, signed only into orders from an AI proposal or an automatic
+  // entry (polymarket/builders.js), at that profile's rates (by default Polymarket's highest: 1% taker, 0.5% maker).
+  polymarketAiBuilderCode: /^0x[0-9a-fA-F]{64}$/.test(process.env.POLYMARKET_AI_BUILDER_CODE || '') ? process.env.POLYMARKET_AI_BUILDER_CODE.toLowerCase() : '',
+  polymarketAiTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_AI_BUILDER_TAKER_FEE_BPS, 100))),
+  polymarketAiMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_AI_BUILDER_MAKER_FEE_BPS, 50))),
   // Where the profit share on redemptions goes (catalog: polymarket_profit): a PUBLIC address only. Unset: no profit share.
   polymarketFeeWallet: /^0x[0-9a-fA-F]{40}$/.test(process.env.POLYMARKET_FEE_WALLET || '') ? process.env.POLYMARKET_FEE_WALLET : '',
   // RektBull's own Builder API key, for Polymarket's gasless relayer (wallet set-up, redemptions). RektBull's secret, never a user's.
   polymarketBuilderApiKey: process.env.POLYMARKET_BUILDER_API_KEY || '',
   polymarketBuilderApiSecret: process.env.POLYMARKET_BUILDER_API_SECRET || '',
   polymarketBuilderApiPassphrase: process.env.POLYMARKET_BUILDER_API_PASSPHRASE || '',
-  // Automatic Polymarket trading (Polymarket Session Keys): NOT built yet; waits on the owner's decision (docs/POLYMARKET.md).
+  // Automatic Polymarket trading (src/polymarket/auto.js): RektBull's Session Key, KMS in production (trade service only);
+  // POLYMARKET_SESSION_ADDRESS is its PUBLIC address users authorize. DEV_POLYMARKET_SESSION_KEY: tests only, never production.
+  polymarketSessionAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.POLYMARKET_SESSION_ADDRESS || '') ? process.env.POLYMARKET_SESSION_ADDRESS.toLowerCase() : '',
+  kmsPolymarketSessionKeyVersion: process.env.KMS_POLYMARKET_SESSION_KEY_VERSION || '',
+  devPolymarketSessionKey: process.env.DEV_POLYMARKET_SESSION_KEY || '',
   polymarketAutoEnabled: process.env.POLYMARKET_AUTO_ENABLED === 'true',
 
   // Payments: x402 (pay per call in USDC on Base)

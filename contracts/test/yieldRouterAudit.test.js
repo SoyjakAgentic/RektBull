@@ -197,9 +197,11 @@ describe('Yield Router: the second AI audit\'s findings (Base mainnet fork, depl
       throw new Error('no venue accepts this deposit on the fork now');
     };
     const feeOf = async fn => { const f = await usdcToken.balanceOf(feeWallet); await fn(); return await usdcToken.balanceOf(feeWallet) - f; };
-    // L1: a 0.001 USDC deposit (its fee: 1 unit) used to make a 50,000 USDC deposit a day later fee-free for the whole
-    // period. Now new money always pays.
-    assert.equal(await feeOf(async () => (await router.connect(user).deposit(await best(usdc(0.001)), usdc(0.001))).wait()), 1n);
+    // L1: a dust deposit (0.01 USDC, its fee: 10 units) used to make a 50,000 USDC deposit a day later fee-free for the
+    // whole period. Now new money always pays. (Not 0.001 USDC: Aave rounds a deposit's aTokens down by up to 2
+    // units, more than the router's 0.1% allowance on 999 units, so Aave refuses a deposit that small with
+    // PositionShort whenever it is the best venue. Harmless: for any real amount the allowance is far bigger.)
+    assert.equal(await feeOf(async () => (await router.connect(user).deposit(await best(usdc(0.01)), usdc(0.01))).wait()), 10n);
     await advance(DAY + 1);
     let held = await best(usdc(50000));
     assert.equal(await feeOf(async () => (await router.connect(user).deposit(held, usdc(50000))).wait()), usdc(50), 'new money pays its 0.1%');

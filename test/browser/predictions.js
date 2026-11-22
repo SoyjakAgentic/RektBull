@@ -20,6 +20,7 @@ const { ethers } = require('ethers');
 const DB = process.env.TEST_DATABASE_URL;
 if (!DB) { console.error('set TEST_DATABASE_URL'); process.exit(1); }
 const BUILDER = '0x' + 'bb'.repeat(32);
+const AI_BUILDER = '0x' + 'ac'.repeat(32);
 Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '' });
 const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'polymarket', name), 'utf8'));
 
@@ -29,6 +30,7 @@ const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtur
   await require('../../src/config/migrate').migrate();
   const env = require('../../src/config/env');
   Object.assign(env, { polymarketEnabled: true, polymarketBuilderCode: BUILDER, polymarketTakerFeeBps: 1, polymarketMakerFeeBps: 1,
+    polymarketAiBuilderCode: AI_BUILDER, polymarketAiTakerFeeBps: 100, polymarketAiMakerFeeBps: 50,
     polymarketBuilderApiKey: 'key-id', polymarketBuilderApiSecret: crypto.randomBytes(32).toString('base64'), polymarketBuilderApiPassphrase: 'pass' });
 
   // The browser's requests carry no country, so Polymarket's own region list would refuse them: clear it here.
@@ -129,6 +131,68 @@ const fx = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtur
 
     const { rows } = await db.query('SELECT prepared::text AS p FROM polymarket_orders');
     assert.ok(!rows[0].p.includes(creds.secret) && !rows[0].p.includes(creds.apiKey), 'the server never stored the credentials');
+
+    // An AI proposal: shown with its reasoning and sources; reviewing it fills in a limit order the user then signs.
+    const { rows: [acct] } = await db.query('SELECT id FROM accounts WHERE wallet = $1', [wallet.address.toLowerCase()]);
+    await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) VALUES ($1, 'pro_30d', now(), now() + interval '30 days')`, [acct.id]);
+    await require('../../src/forecasts/proposals').saveSettings(acct.id, { polymarket: true });
+    const outcome0 = JSON.parse(m.outcomes)[0];
+    const asset0 = JSON.parse(m.clobTokenIds)[0];
+    const { rows: [f] } = await db.query(`INSERT INTO ai_forecasts (venue, stage, market, question, outcome, asset_id, ai_prob, market_prob, confidence, reasoning, sources, model, cost_usd)
+      VALUES ('polymarket', 'research', $1, $2, $3, $4, 0.6, 0.02, 'medium', 'The evidence points higher than the price.', '["https://news.example/a"]', 'claude-sonnet-5-5', 0.12) RETURNING *`, [m.slug, m.question, outcome0, asset0]);
+    await require('../../src/forecasts/proposals').offer(acct.id, { forecast: f, side: outcome0, assetId: asset0, priceLimit: 0.03, priceUsd: 0.25 });
+    await page.reload();
+    await page.locator('#ai-list', { hasText: 'The evidence points higher' }).waitFor();
+    assert.match(await page.textContent('#ai-list'), /news\.example/);
+    assert.match(await page.textContent('#ai-credits'), /AI credits/);
+    assert.equal((await require('../../src/payments/aiAllowance').status(acct.id)).used_usd, 0, 'seeing a proposal is free');
+    await page.getByRole('button', { name: 'Review the order ($0.25)' }).click();
+    await page.locator('#order-msg', { hasText: 'Filled in from the AI proposal' }).waitFor();
+    assert.equal(await page.inputValue('#o-type'), 'GTC');
+    assert.equal(await page.inputValue('#o-price'), '0.03');
+    assert.equal(await page.inputValue('#o-outcome'), asset0);
+    const { rows: [pr] } = await db.query('SELECT id, status, paid_from FROM ai_proposals');
+    assert.deepEqual([pr.status, pr.paid_from], ['approved', 'allowance']);
+    assert.equal((await require('../../src/payments/aiAllowance').status(acct.id)).used_usd, 0.25, 'acting on it: $0.25 of AI credits');
+    // The order from it carries RektBull's AI builder code, at its rates, and names the proposal.
+    await page.fill('#o-size', '10');
+    await page.click('#o-prepare');
+    await page.locator('#o-plan', { hasText: 'Fees:' }).waitFor();
+    assert.match(await page.textContent('#o-plan'), /1% of what fills when the order takes liquidity, 0\.5% when it rests/);
+    const { rows: [ao] } = await db.query(`SELECT builder, source, rule_id FROM polymarket_orders WHERE source = 'rule'`);
+    assert.deepEqual([ao.builder, ao.rule_id], [AI_BUILDER, pr.id]);
+    await page.fill('#o-price', '0.05');
+    await page.click('#o-prepare');
+    await page.locator('#order-msg', { hasText: 'more than the proposal\'s limit' }).waitFor();
+    console.log('✔ an AI proposal, reviewed into an order for the user to sign');
+
+    // Automatic trading: every disclosure shown before signing; the user's own key authorizes RektBull's Session Key; stopping is one button.
+    const sessionKey = ethers.Wallet.createRandom();
+    Object.assign(env, { polymarketAutoEnabled: true, polymarketSessionAddress: sessionKey.address.toLowerCase() });
+    routes.unshift(['/transactions/params', () => ({ nonce: '7' })], ['/session-signers/authorizations', () => ({ transactionID: 'rel-auth' })],
+      ['/session-signers/revocations', () => ({ transactionID: 'rel-revoke' })], ['/account/transactions/', () => ({ state: 'STATE_CONFIRMED' })]);
+    await page.reload();
+    await page.locator('#auto-disclosures', { hasText: 'fixed term of 180 days' }).waitFor();
+    await page.getByRole('button', { name: 'Connect Test Wallet' }).click();
+    const told = await page.textContent('#auto-disclosures');
+    for (const want of [/not onchain/, /Only buys/, /at least \$25/, /AI builder fee of 1% of what fills/, /automation fee of 1% of what fills, at least \$0\.25/, /Polymarket wallet/, /checks your country/]) assert.match(told, want);
+    await page.click('#auto-start');
+    await page.locator('#auto-msg', { hasText: 'tick the box' }).waitFor();
+    assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM polymarket_sessions')).rows[0].n, 0, 'nothing prepared before the user accepts');
+    await page.fill('#auto-max-order', '40'); await page.fill('#auto-max-day', '120'); await page.fill('#auto-days', '14');
+    await page.check('#auto-accept');
+    await page.click('#auto-start');
+    await page.locator('#auto-session', { hasText: 'On.' }).waitFor({ timeout: 20000 });
+    assert.match(await page.textContent('#auto-session'), /At most \$40 an order and \$120 in 24 hours, kept by RektBull's servers, not onchain/);
+    const { rows: [b] } = await db.query(`SELECT * FROM polymarket_batches WHERE kind = 'session_authorize'`);
+    assert.equal(b.status, 'confirmed');
+    assert.equal(b.detail.session_signer, sessionKey.address.toLowerCase());
+    assert.equal(ethers.AbiCoder.defaultAbiCoder().decode(['address', 'uint256'], '0x' + b.calls[0].data.slice(10))[0], sessionKey.address, 'authorizes RektBull\'s key, nothing else');
+    await page.click('#auto-stop');
+    await page.locator('#auto-session', { hasText: 'revoked' }).waitFor({ timeout: 20000 });
+    const { rows: [rv] } = await db.query(`SELECT status FROM polymarket_batches WHERE kind = 'session_revoke'`);
+    assert.equal(rv.status, 'confirmed');
+    console.log('✔ automatic trading: disclosed, authorized by the user\'s key, stopped with one button');
     assert.deepEqual(errors, []);
     console.log('ok: the Predictions page');
   } finally {

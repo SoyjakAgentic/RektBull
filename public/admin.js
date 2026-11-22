@@ -37,6 +37,27 @@
       }, s.on ? 'Resume' : 'Stop now'))));
   }
 
+  function forecasts(f) {
+    const s = f.settings;
+    const box = (k, label) => el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': k, checked: !!s[k] }), ` ${label}`);
+    const num = (k, label, step = '1') => el('label', { class: 'inline' }, `${label} `, el('input', { type: 'number', step, 'data-k': k, value: s[k], size: '5' }));
+    const r = f.track_record.stages.find(x => x.stage === 'research');
+    const wrap = el('div', {},
+      el('p', { class: 'small' }, r ? `Track record: ${r.resolved} researched forecasts scored; AI Brier ${r.brier_ai} vs market ${r.brier_market}; AI beat the market ${r.ai_beat_market} times; AI cost $${r.ai_cost_usd}.` : 'No researched forecast has resolved yet.'),
+      box('polymarket', 'Run Polymarket forecasts'), ' ', box('polymarket_proposals', 'Offer Polymarket proposals'), el('br'),
+      num('markets', 'Markets screened'), ' ', num('refresh_hours', 'Every (hours)'), ' ', num('research_per_day', 'Researched a day'), ' ',
+      num('web_searches', 'Searches each'), ' ', num('edge_pct', 'Edge (points)'), ' ', num('proposal_usd', 'Price to act on a proposal ($)', '0.01'), el('br'),
+      el('p', { class: 'small' }, f.auto ? (f.auto.why_off ? `Automatic trading: ${f.auto.why_off}` : `Automatic trading: ${f.auto.active} users with an active key; ${f.auto.filled_24h} entries filled in 24 hours ($${f.auto.filled_usd_24h}), fees $${f.auto.fees_usd_24h}.`) : ''),
+      box('polymarket_auto', 'Place automated Polymarket entries (Session Keys)'), el('br'),
+      num('auto_edge_pct', 'Automated edge (points)'), ' ', num('auto_fee_pct', 'Fee on fills (%)', '0.1'), ' ', num('auto_fee_min_usd', 'Minimum fee ($)', '0.01'), ' ',
+      num('auto_min_order_usd', 'Smallest entry ($)'), el('br'));
+    const read = () => Object.fromEntries([...wrap.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.type === 'checkbox' ? i.checked : Number(i.value)]));
+    wrap.append(
+      el('button', { class: 'btn', type: 'button', onclick: () => change('forecasts-msg', 'AI forecasts: new settings', 'PUT', '/v1/admin/forecasts', read()) }, 'Save'),
+      el('button', { class: 'btn ghost', type: 'button', onclick: () => change('forecasts-msg', 'AI forecasts: run now (spends AI usage)', 'POST', '/v1/admin/forecasts/run', {}) }, 'Run now'));
+    $('forecasts').replaceChildren(wrap);
+  }
+
   function rewards(r) {
     const value = el('input', { type: 'number', step: '0.01', min: '0.001', value: r.point_usd, size: '6' });
     const rebate = el('input', { type: 'number', step: '1', min: '0', max: '100', value: r.rebate_bps / 100, size: '5' });
@@ -251,6 +272,7 @@
       stops(o.stops); prices(o.prices); agents(o.agents); log(o.log);
       regions(await api('GET', '/v1/admin/regions'));
       rewards(await api('GET', '/v1/admin/rewards'));
+      forecasts(await api('GET', '/v1/admin/forecasts'));
       showTab(tab);
     } catch (err) {
       $('panel').hidden = true;

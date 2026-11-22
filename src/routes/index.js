@@ -155,6 +155,46 @@ router.post('/v1/points/passes/:product', requireAuth, async (req, res) => {
   }
 });
 
+/* ── AI forecasts and proposals (forecasts/): a public track record; proposals for Safety Pro users who ask ── */
+const aiProposals = require('../forecasts/proposals');
+router.get('/v1/forecasts/track-record', async (req, res) => {
+  const venue = req.query.venue === 'hyperliquid' ? 'hyperliquid' : 'polymarket';
+  res.set('cache-control', 'public, max-age=300');
+  res.json(await require(`../forecasts/${venue}`).trackRecord(venue));
+});
+router.get('/v1/ai/proposals', requireAuth, async (req, res) => {
+  const s = require('../forecasts/settings').get();
+  res.json({
+    settings: await aiProposals.getSettings(req.account.id), proposals: await aiProposals.list(req.account.id),
+    ai_credits: await require('../payments/aiAllowance').status(req.account.id),
+    offered: { polymarket: !!s.polymarket_proposals, hyperliquid: !!s.hyperliquid_proposals }, price_usd: s.proposal_usd, edge_pct: s.edge_pct,
+    about: 'AI proposals are suggestions from a shared AI forecast, offered when its probability beats the market price by the edge shown. Seeing one is free; acting on one costs AI credits from Safety Pro (the 30-day allowance first, then a top-up). Nothing is traded until you check the order and sign it yourself. Not financial advice: check the public track record.',
+    ai_fee: require('../polymarket/desk').config().ai_fee,
+  });
+});
+router.put('/v1/ai/proposals/settings', requireAuth, async (req, res) => res.json(await aiProposals.saveSettings(req.account.id, req.body || {})));
+router.post('/v1/ai/proposals/:id/:action(approve|dismiss)', requireAuth, async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  try {
+    res.json(await aiProposals.act(req.account.id, req.params.id, req.params.action === 'approve' ? 'approved' : 'dismissed'));
+  } catch (err) {
+    if (err.status === 402 || err.status === 409 || err.status === 400) return res.status(err.status).json({ error: err.code || 'refused', message: err.message });
+    throw err;
+  }
+});
+
+/* ── Safety Pro AI top-ups (payments/aiTopups.js): AI usage on top of the 30-day allowance ── */
+router.post('/v1/ai/topups', requireAuth, async (req, res) => {
+  const aiTopups = require('../payments/aiTopups');
+  try {
+    res.status(201).json(await aiTopups.buy(req.account.id, req.body?.amount_usd, req.body?.pay_with));
+  } catch (err) {
+    if (err instanceof aiTopups.TopUpRefused) return res.status(err.status).json({ error: err.code, message: err.message });
+    if (err instanceof require('../rewards/points').NotEnoughPoints) return res.status(402).json({ error: err.code, message: err.message });
+    throw err;
+  }
+});
+
 router.post('/v1/passes/:product', requireAuth, async (req, res) => {
   try {
     res.status(201).json(await passes.buy(req.account.id, req.params.product, `manual:${req.account.id}:${Date.now()}`));

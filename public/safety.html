@@ -116,6 +116,14 @@
           <div class="meter-head"><span>AI allowance</span><strong id="ai-left"></strong></div>
           <div class="meter-bar" role="progressbar" aria-label="AI allowance used" aria-valuemin="0" aria-valuemax="100"><span id="ai-bar"></span></div>
           <p id="ai-note" class="small muted"></p>
+          <div id="ai-topup" class="small">
+            <p><strong>AI top-up:</strong> <span id="ai-topup-left"></span>. Used once the 30-day allowance runs out, dollar for dollar at what each AI run costs; it never expires.</p>
+            <div class="row">
+              <label class="inline">Pay with <select id="ai-topup-pay"><option value="credits">credits</option><option value="points">RektBull Points</option></select></label>
+              <span id="ai-topup-buttons"></span>
+            </div>
+            <p id="ai-topup-msg" class="msg"></p>
+          </div>
         </div>
         <p id="points-note" class="small muted"></p>
 

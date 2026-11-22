@@ -227,7 +227,16 @@
         $('ai-bar').style.width = `${ai.used_pct}%`;
         $('ai-bar').className = ai.left_pct <= 10 ? 'low' : '';
         $('ai-bar').parentElement.setAttribute('aria-valuenow', String(ai.used_pct));
-        $('ai-note').textContent = `${ai.left_pct ? 'For full token reports and proposal summaries.' : 'Used up: reports and summaries are paid like any run until it resets.'} Resets ${new Date(ai.resets_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`;
+        $('ai-note').textContent = `${ai.left_pct ? 'For full token reports, proposal summaries and AI trade proposals.' : ai.topup_usd > 0 ? 'Used up: your AI top-up is paying now.' : 'Used up: top up below, or reports are paid like any run until it resets.'} Resets ${new Date(ai.resets_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`;
+        $('ai-topup-left').textContent = `$${Number(ai.topup_usd || 0).toFixed(2)} left`;
+        $('ai-topup-buttons').replaceChildren(...(ai.topup_sizes_usd || []).map(usd => el('button', { class: 'btn', type: 'button', onclick: async e => {
+          e.target.disabled = true;
+          try {
+            const out = await api('POST', '/v1/ai/topups', { amount_usd: usd, pay_with: $('ai-topup-pay').value });
+            say('ai-topup-msg', `Added $${out.added_usd}. Top-up left: $${out.balance_usd.toFixed(2)}.`, 'ok');
+            await loadAccount();
+          } catch (err) { say('ai-topup-msg', err.message, 'bad'); } finally { e.target.disabled = false; }
+        } }, `Top up $${usd}`)));
       }
     } catch (err) { if (err.status !== 401) say('topup-msg', err.message, 'bad'); }
   }

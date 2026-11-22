@@ -22,6 +22,7 @@ const credits = require('./credits');
 const passes = require('./passes');
 const x402 = require('./x402');
 const aiAllowance = require('./aiAllowance');
+const aiTopups = require('./aiTopups');
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -76,6 +77,10 @@ async function acquire(p, req, runId) {
         // Counted at the run's real AI cost once it succeeds; nothing to give back if it fails.
         if (await aiAllowance.hasRoom(acct.id, pass)) {
           return { method: 'pass', commit: async () => {}, rollback: async () => {}, afterRun: usd => aiAllowance.charge(acct.id, pass, usd) };
+        }
+        // The 30-day allowance is used up: an AI top-up pays next, at the run's real AI cost too.
+        if (await aiTopups.hasRoom(acct.id)) {
+          return { method: 'pass', commit: async () => {}, rollback: async () => {}, afterRun: usd => aiTopups.use(acct.id, usd, `run:${runId}`, p.title) };
         }
       } else if (pass?.included_per_month) {
         if (await points.takeIncluded(acct.id, p.id, pass.included_per_month)) {

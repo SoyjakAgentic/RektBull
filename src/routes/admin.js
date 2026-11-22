@@ -140,6 +140,22 @@ router.put('/v1/admin/rewards', change, async (req, res) => {
   res.json({ ...rewardPoints.config(), supply: await rewardPoints.supply() });
 });
 
+/* ── AI forecasts: switches and numbers (forecasts/settings.js), and a run on demand (it spends AI usage) ── */
+
+const fsettings = require('../forecasts/settings');
+router.get('/v1/admin/forecasts', admin, async (_req, res) => { await settings.reload(); res.json({ settings: fsettings.get(), defaults: fsettings.DEFAULTS, track_record: await require('../forecasts/polymarket').trackRecord(), auto: await require('../polymarket/auto').adminSummary() }); });
+router.put('/v1/admin/forecasts', change, async (req, res) => {
+  const reason = reasonOf(req);
+  const value = req.body?.default ? null : { ...(settings.get('forecasts') || {}), ...fsettings.check(req.body || {}) };
+  await settings.set('forecasts', value, { wallet: who(req), action: value ? 'forecasts' : 'forecasts_default', reason });
+  res.json({ settings: fsettings.get() });
+});
+router.post('/v1/admin/forecasts/run', change, async (req, res) => {
+  const reason = reasonOf(req);
+  await settings.note({ wallet: who(req), action: 'forecasts_run', key: 'forecasts', reason });
+  res.json(await require('../forecasts/polymarket').tick({ force: true }));
+});
+
 /* ── the site banner ── */
 
 const banner = require('../admin/banner');

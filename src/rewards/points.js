@@ -41,6 +41,7 @@ const SOURCES = {
   polymarket_fill: 'Polymarket trading fee',
   polymarket_profit: 'Polymarket profit share',
   pass: 'Subscription bought with points',
+  ai_topup: 'Safety Pro AI top-up bought with points',
 };
 
 function config() {
@@ -108,6 +109,18 @@ class NotEnoughPoints extends Error {
   constructor(have, need) { super(`This costs ${need} RektBull Points; you have ${have}.`); this.status = 402; this.code = 'not_enough_points'; }
 }
 
+/** Spends points on something else RektBull sells (an AI top-up): throws NotEnoughPoints, or records the spend. */
+async function spend(accountId, points, { source, ref, note = null }) {
+  if (!SOURCES[source] || !(points > 0)) throw new Error('nothing to spend');
+  return db.tx(async c => {
+    await c.query('SELECT id FROM accounts WHERE id = $1 FOR UPDATE', [accountId]);
+    const have = await balance(accountId, c);
+    if (have < points) throw new NotEnoughPoints(have, points);
+    await c.query(`INSERT INTO reward_points (account_id, points, kind, source, ref, note) VALUES ($1, $2, 'spend', $3, $4, $5)`, [accountId, -points, source, String(ref), note]);
+    return round4(have - points);
+  });
+}
+
 /** Buys a pass (subscription) with points, in one transaction. */
 async function buyPass(accountId, productId) {
   const p = product(productId);
@@ -168,4 +181,4 @@ function checkSettings(input) {
   return out;
 }
 
-module.exports = { CAP, DEFAULTS, SOURCES, config, pointsFor, credit, safeCredit, balance, supply, passPrices, buyPass, overview, checkSettings, NotEnoughPoints };
+module.exports = { CAP, DEFAULTS, SOURCES, config, pointsFor, credit, safeCredit, balance, supply, passPrices, buyPass, spend, overview, checkSettings, NotEnoughPoints };
