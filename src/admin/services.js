@@ -1,14 +1,24 @@
 /**
  * Service switches, set in the admin panel: any service RektBull offers can be
- * paused, and switched back on, without a deploy. The owner asked for this on
- * 22 November 2026 ("from the admin panel, we should be able to suspend
- * services, not limited to this, but every service").
+ * paused, or paused and hidden, and switched back on, without a deploy. The
+ * owner asked for this on 22 November 2026 ("from the admin panel, we should be
+ * able to suspend services, not limited to this, but every service", and "hide
+ * the relevant page from the front end, when a service is paused").
+ *
+ * Each service is in one of three states:
+ *   on      working and shown (the default);
+ *   paused  new work is refused with a plain message; still shown, saying so;
+ *   hidden  paused, and taken off the front end: its menu links, tiles, cards
+ *           and buttons are hidden on every page (stripPage); a desk page of
+ *           its own drops out of the sitemap and llms.txt, is noindex, and says
+ *           it's paused. That page still opens by its link, so anyone holding a
+ *           position there can still get out.
  *
  * The rule everywhere: pausing stops new work. It never stops a user getting
  * out: selling, closing, cancelling, withdrawing, redeeming and revoking stay
  * open, as with region blocks. A paused paid run is refused before any charge.
- * Read from the database on each request (settings.read), so a switch takes
- * effect at once on every instance.
+ * Refusals read the database on each request (settings.read), so a switch takes
+ * effect at once on every instance; pages use the settings' minute-old copy.
  *
  * AI agents, the emergency stops and the AI forecasts and picks have their own
  * switches (agentStates.js, stops.js, forecasts/settings.js); they aren't
@@ -16,27 +26,30 @@
  */
 const settings = require('./settings');
 
+const STATES = ['on', 'paused', 'hidden'];
+
 const SERVICES = {
   // Paid runs (payments/gate.js): refused before any charge.
-  token_quick_check: { name: 'Token quick check', group: 'Checks', stops: 'New checks.' },
+  token_quick_check: { name: 'Token quick check', group: 'Checks', stops: 'New checks.', shown: 'its button on the Safety page' },
   token_report: {
-    name: 'Token due diligence report', group: 'Checks', stops: 'New reports.',
+    name: 'Token due diligence report', group: 'Checks', stops: 'New reports.', shown: 'its button on the Safety page',
     // The owner held it off on 22 November 2026: competitors' scanners are free, and a free report has an AI cost per token.
-    default_paused: true,
+    default_state: 'hidden',
   },
-  launch_check: { name: 'Launch check (bundles and insiders)', group: 'Checks', stops: 'New checks run on their own (the Trade desk still runs it before a buy).' },
-  presign_check: { name: 'Pre-sign check', group: 'Checks', stops: 'New checks from the page, the extension and the MetaMask Snap.' },
+  launch_check: { name: 'Launch check (bundles and insiders)', group: 'Checks', stops: 'New checks run on their own (the Trade desk still runs it before a buy).', shown: 'its button on the Safety page' },
+  presign_check: { name: 'Pre-sign check', group: 'Checks', stops: 'New checks from the page, the extension and the MetaMask Snap.', shown: 'its tile on the home page' },
   governance_summary: { name: 'Proposal summary', group: 'Checks', stops: 'New summaries.' },
-  approval_cleanup: { name: 'Approval cleanup', group: 'Checks', stops: 'New cleanups. Revokes the wallet already signed still go through.' },
+  approval_cleanup: { name: 'Approval cleanup', group: 'Checks', stops: 'New cleanups. Revokes the wallet already signed still go through.', shown: 'its card on the Safety page' },
   // Desks.
-  trade: { name: 'Trade desk (swaps, including Launches buys)', group: 'Trading', stops: 'Buys, and new automatic-trading permissions and intents.', open: 'Sells, cancels and revokes.' },
-  perps: { name: 'Perps (Hyperliquid)', group: 'Trading', stops: 'Opening or adding to positions, leverage and margin changes, and new agent approvals.', open: 'Closing, cancelling and revoking.' },
-  predictions: { name: 'Predictions (Polymarket)', group: 'Trading', stops: 'Buys, approvals, wallet set-up, funding and new automatic trading.', open: 'Selling, redeeming, withdrawing, stopping automatic trading, and sending what was already prepared.' },
-  yield: { name: 'Yield moves', group: 'Find money', stops: 'Deposits and moves, and new automatic permissions.', open: 'Withdrawals to the wallet and revokes.' },
-  claims: { name: 'Airdrop and unclaimed-funds finder', group: 'Find money', stops: 'New checks and claims.', open: 'Confirming a claim the wallet already sent.' },
+  trade: { name: 'Trade desk (swaps, including Launches buys)', group: 'Trading', stops: 'Buys, and new automatic-trading permissions and intents.', open: 'Sells, cancels and revokes.', page: '/trade', shown: 'the Trade menu link, its tiles and links' },
+  perps: { name: 'Perps (Hyperliquid)', group: 'Trading', stops: 'Opening or adding to positions, leverage and margin changes, and new agent approvals.', open: 'Closing, cancelling and revoking.', page: '/perps', shown: 'links to the Perps page' },
+  predictions: { name: 'Predictions (Polymarket)', group: 'Trading', stops: 'Buys, approvals, wallet set-up, funding and new automatic trading.', open: 'Selling, redeeming, withdrawing, stopping automatic trading, and sending what was already prepared.', page: '/predictions', shown: 'links to the Predictions page' },
+  yield: { name: 'Yield moves', group: 'Find money', stops: 'Deposits and moves, and new automatic permissions.', open: 'Withdrawals to the wallet and revokes.', shown: 'its card on the Find money page' },
+  claims: { name: 'Airdrop and unclaimed-funds finder', group: 'Find money', stops: 'New checks and claims.', open: 'Confirming a claim the wallet already sent.', shown: 'its cards on the Find money page' },
   governance_votes: { name: 'Governance votes', group: 'Save money', stops: 'Preparing and sending new votes.' },
   checkup: { name: 'Free wallet checkup', group: 'Home', stops: 'New checkups.' },
 };
+const PAGE_OF = Object.fromEntries(Object.entries(SERVICES).filter(([, s]) => s.page).map(([id, s]) => [s.page, id]));
 
 class ServicePaused extends Error {
   constructor(id) {
@@ -48,15 +61,17 @@ class ServicePaused extends Error {
 
 const key = id => `service:${id}`;
 const known = id => Object.prototype.hasOwnProperty.call(SERVICES, id);
-const pausedOf = (id, v) => (v && typeof v.paused === 'boolean' ? v.paused : !!SERVICES[id].default_paused);
+const defaultOf = id => SERVICES[id].default_state || 'on';
+const stateOf = (id, v) => (v && STATES.includes(v.state) ? v.state : defaultOf(id));
 
-/** Is it paused? Read from the database, never the minute-old copy. */
-async function isPaused(id) {
+/** The state, read from the database, never the minute-old copy. */
+async function state(id) {
   if (!known(id)) throw new Error(`unknown service ${id}`);
-  return pausedOf(id, await settings.read(key(id)));
+  return stateOf(id, await settings.read(key(id)));
 }
+const isPaused = async id => (await state(id)) !== 'on';
 
-/** Throws ServicePaused (503) when it is; for routes. Ids that aren't services pass. */
+/** Throws ServicePaused (503) when it's paused or hidden; for routes. Ids that aren't services pass. */
 async function refuseIfPaused(id) {
   if (known(id) && await isPaused(id)) throw new ServicePaused(id);
 }
@@ -75,25 +90,50 @@ function gate(id, exit = () => false) {
   };
 }
 
-/** Pauses or resumes one service, logged with the admin's reason. */
-async function set(id, paused, { wallet, reason }) {
+/** Sets one service's state, logged with the admin's reason. Takes { state } (or the older { paused }). */
+async function set(id, next, { wallet, reason }) {
   if (!known(id)) throw Object.assign(new Error('No such service.'), { status: 404 });
-  if (typeof paused !== 'boolean') throw Object.assign(new Error('paused must be true or false.'), { status: 400 });
+  if (typeof next === 'boolean') next = next ? 'paused' : 'on';
+  if (!STATES.includes(next)) throw Object.assign(new Error(`state must be one of: ${STATES.join(', ')}.`), { status: 400 });
   // Stored only when it differs from the service's default, so "back to the default" is a null.
-  const value = paused === !!SERVICES[id].default_paused ? null : { paused };
-  await settings.set(key(id), value, { wallet, action: paused ? 'service_paused' : 'service_resumed', reason });
-  return { id, paused };
+  const value = next === defaultOf(id) ? null : { state: next };
+  await settings.set(key(id), value, { wallet, action: `service_${next}`, reason });
+  return { id, state: next, paused: next !== 'on' };
 }
 
-/** Paused, from the settings' minute-old copy: for pages and the catalog, never for refusing (that reads the database). */
-function pausedNow(id) {
-  return known(id) && pausedOf(id, settings.get(key(id)));
+/* ── pages (the settings' minute-old copy: never used for refusing) ── */
+
+const stateNow = id => (known(id) ? stateOf(id, settings.get(key(id))) : 'on');
+const pausedNow = id => stateNow(id) !== 'on';
+const hiddenNow = id => stateNow(id) === 'hidden';
+/** A desk page whose service is hidden: out of the sitemap and llms.txt, and noindex. */
+const pageHidden = route => !!PAGE_OF[route] && hiddenNow(PAGE_OF[route]);
+
+/**
+ * Hides a hidden service's marked parts of a page: <!--svc:id-->…<!--/svc:id--> (blocks: cards, tiles) and
+ * <!--svc-inline:id-->…<!--/svc-inline:id--> (links, buttons, inside a line). They stay in the page, hidden,
+ * so the page's scripts still find them. On a hidden service's own desk page: noindex, and a notice.
+ */
+function stripPage(html, path = null) {
+  let out = html;
+  if (out.includes('<!--svc')) {
+    out = out
+      .replace(/<!--svc:([a-z_]+)-->([\s\S]*?)<!--\/svc:\1-->/g, (_, id, inner) => (hiddenNow(id) ? `<div hidden data-service-hidden="${id}">${inner}</div>` : inner))
+      .replace(/<!--svc-inline:([a-z_]+)-->([\s\S]*?)<!--\/svc-inline:\1-->/g, (_, id, inner) => (hiddenNow(id) ? `<span hidden data-service-hidden="${id}">${inner}</span>` : inner));
+  }
+  if (path && pageHidden(path)) {
+    const s = SERVICES[PAGE_OF[path]];
+    out = out.replace(/<link rel="canonical"[^>]*>/, '<meta name="robots" content="noindex">')
+      .replace('<!--#banner-->', `<p class="notice wrap" role="note" data-service-notice="${PAGE_OF[path]}">${s.name.replace(/ \(.*\)$/, '')} is paused for now.${s.open ? ` Still open here: ${s.open}` : ''}</p><!--#banner-->`);
+  }
+  return out;
 }
 
 async function list() {
-  return Promise.all(Object.entries(SERVICES).map(async ([id, s]) => ({
-    id, name: s.name, group: s.group, stops: s.stops, open: s.open || null, default_paused: !!s.default_paused, paused: await isPaused(id),
-  })));
+  return Promise.all(Object.entries(SERVICES).map(async ([id, s]) => {
+    const st = await state(id);
+    return { id, name: s.name, group: s.group, stops: s.stops, open: s.open || null, shown: s.shown || null, page: s.page || null, default_state: defaultOf(id), state: st, paused: st !== 'on', hidden: st === 'hidden' };
+  }));
 }
 
-module.exports = { SERVICES, ServicePaused, isPaused, refuseIfPaused, gate, set, list, pausedNow };
+module.exports = { STATES, SERVICES, PAGE_OF, ServicePaused, state, isPaused, refuseIfPaused, gate, set, list, stateNow, pausedNow, hiddenNow, pageHidden, stripPage };

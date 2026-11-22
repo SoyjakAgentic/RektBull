@@ -26,7 +26,7 @@ function createApp() {
     const send = res.send;
     res.send = function (body) {
       const type = String(res.get('content-type') || '');
-      if (typeof body === 'string' && /html/.test(type)) body = stripPage(body).replace('<!--#banner-->', require('./admin/banner').html());
+      if (typeof body === 'string' && /html/.test(type)) body = stripPage(require('./admin/services').stripPage(body, req.path)).replace('<!--#banner-->', require('./admin/banner').html());
       if (typeof body === 'string' && body.includes('{{') && /html|text\/plain/.test(type)) body = fill(body);
       return send.call(this, body);
     };

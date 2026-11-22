@@ -78,7 +78,7 @@ router.put('/v1/admin/agents/:id', change, async (req, res) => {
 
 router.put('/v1/admin/services/:id', change, async (req, res) => {
   const reason = reasonOf(req);
-  res.json(await services.set(req.params.id, req.body?.paused, { wallet: who(req), reason }));
+  res.json(await services.set(req.params.id, req.body?.state ?? req.body?.paused, { wallet: who(req), reason }));
 });
 
 /* ── emergency stops ── */

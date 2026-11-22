@@ -37,16 +37,20 @@
       }, s.on ? 'Resume' : 'Stop now'))));
   }
 
-  function services(list) {
+  function switches(list) {
+    const LABEL = { on: 'on', paused: 'PAUSED', hidden: 'PAUSED AND HIDDEN' };
+    const ACTION = { on: 'Switch on', paused: 'Pause', hidden: 'Pause and hide' };
     const groups = [...new Set(list.map(s => s.group))];
-    $('services').replaceChildren(...groups.flatMap(g => [el('h3', {}, g), ...list.filter(s => s.group === g).map(s => el('div', { class: 'row' },
-      el('p', {}, el('strong', {}, s.name), ' ', el('span', { class: `tag${s.paused ? ' bad' : ''}` }, s.paused ? 'PAUSED' : 'on'),
-        s.default_paused ? el('span', { class: 'small muted' }, ' (paused by default)') : '', el('br'),
-        el('span', { class: 'small muted' }, `Pausing stops: ${s.stops}${s.open ? ` Still open: ${s.open}` : ''}`)),
-      el('button', {
-        class: s.paused ? 'btn' : 'btn danger', type: 'button',
-        onclick: () => { if (s.paused || window.confirm(`Pause ${s.name}?`)) change('services-msg', `${s.paused ? 'Resume' : 'Pause'}: ${s.name}`, 'PUT', `/v1/admin/services/${s.id}`, { paused: !s.paused }); },
-      }, s.paused ? 'Resume' : 'Pause')))]));
+    $('switches').replaceChildren(...groups.flatMap(g => [el('h3', {}, g), ...list.filter(s => s.group === g).map(s => el('div', { class: 'row' },
+      el('p', {}, el('strong', {}, s.name), ' ', el('span', { class: `tag${s.state !== 'on' ? ' bad' : ''}` }, LABEL[s.state]),
+        s.default_state !== 'on' ? el('span', { class: 'small muted' }, ` (${s.default_state} by default)`) : '', el('br'),
+        el('span', { class: 'small muted' }, `Pausing stops: ${s.stops}${s.open ? ` Still open: ${s.open}` : ''}`),
+        s.shown || s.page ? el('span', { class: 'small muted' }, ` Hiding takes off ${s.shown || 'its links'}${s.page ? `; ${s.page} leaves the sitemap and search, and still opens by its link so anyone can get out` : ''}.`) : ''),
+      // "Pause and hide" only where something on the site can be hidden.
+      el('div', {}, ...['on', 'paused', 'hidden'].filter(st => st !== s.state && (st !== 'hidden' || s.shown || s.page)).map(st => el('button', {
+        class: st === 'on' ? 'btn' : 'btn danger', type: 'button',
+        onclick: () => { if (st === 'on' || window.confirm(`${ACTION[st]}: ${s.name}?`)) change('switches-msg', `${ACTION[st]}: ${s.name}`, 'PUT', `/v1/admin/services/${s.id}`, { state: st }); },
+      }, ACTION[st])))))]));
   }
 
   function forecasts(f) {
@@ -286,7 +290,7 @@
       const o = await api('GET', '/v1/admin/overview');
       $('panel').hidden = false;
       say('gate-msg', '');
-      stops(o.stops); services(o.services); prices(o.prices); agents(o.agents); log(o.log);
+      stops(o.stops); switches(o.services); prices(o.prices); agents(o.agents); log(o.log);
       regions(await api('GET', '/v1/admin/regions'));
       rewards(await api('GET', '/v1/admin/rewards'));
       forecasts(await api('GET', '/v1/admin/forecasts'));

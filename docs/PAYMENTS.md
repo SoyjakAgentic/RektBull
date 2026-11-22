@@ -36,12 +36,12 @@ charged.
 | Token quick check | 1 | $0.25 | Included (fair use 200 a day) |
 | Approval cleanup | 5 | $1 | Included (fair use 20 a day) |
 | Proposal summary (AI, governance) | 1 | $0.10 | Included (fair use 50 a day) |
-| Token report (AI) | — | **Free** (signed in, 10 a day); paused for now | — |
+| Token report (AI) | — | **Free** (signed in, 10 a day); paused and hidden for now | — |
 
 **Free runs.** An admin can set any run's price to $0. The owner made the token
 report free on 22 November 2026, because competitors' scanners (GoPlus,
-RugCheck, Token Sniffer) are free, and held it off for now (admin panel,
-Services).
+RugCheck, Token Sniffer) are free, and held it off for now: paused and hidden
+(admin panel, Services).
 
 - **Who:** signed-in accounts only, so the AI and data cost can't run away.
 - **How many:** at most 10 a day per account and 20 a day per IP address

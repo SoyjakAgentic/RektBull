@@ -284,6 +284,7 @@ function publicCatalog() {
       price_cents: p.price_cents, price_usd: usd(p.price_cents),
       pay_with: rails(p),
       ...(require('../admin/services').pausedNow(id) ? { paused: true } : {}),
+      ...(require('../admin/services').hiddenNow(id) ? { hidden: true } : {}),
       ...(p.points ? { points: p.points } : {}),
       ...(p.kind === 'fee' ? { fee_bps: p.fee_bps, pro_fee_bps: p.pro_fee_bps } : {}),
       ...(SAFETY_PRO.ai_allowance.uses.includes(id) ? { in_pro_ai_allowance: true } : {}),

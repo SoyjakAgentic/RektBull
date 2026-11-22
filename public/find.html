@@ -19,7 +19,7 @@
   </section>
   <main class="tool">
     <p class="notice" role="note"><strong>Not financial advice.</strong> Finding money you can claim and showing where your stablecoins and ETH could earn more are facts about what is onchain today, not recommendations. Rates change every block, every venue carries smart-contract risk, and you decide and sign each move yourself.</p>
-    <section class="card" id="find-card">
+    <!--svc:claims--><section class="card" id="find-card">
       <h2>Find airdrops and rewards you haven't claimed</h2>
       <p class="muted">Rewards from Merkl campaigns (Uniswap, Aave, Morpho, Euler and many more) on six chains, and airdrops RektBull has checked. Each one is verified onchain before it's shown: the proof, the distributor's root, and whether it's already claimed.</p>
       <div class="grid">
@@ -30,16 +30,16 @@
       <div class="row"><button id="f-check" class="primary">Check for free</button></div>
       <p id="f-msg" class="msg"></p>
       <div id="f-result" hidden></div>
-    </section>
+    </section><!--/svc:claims-->
 
-    <section class="card" id="claim-card" hidden>
+    <!--svc:claims--><section class="card" id="claim-card" hidden>
       <h2>Your claim</h2>
       <div id="c-summary"></div>
       <div class="row"><button id="c-send" class="primary">Claim with my wallet</button><button id="c-cancel">Cancel</button></div>
       <p id="c-msg" class="msg"></p>
-    </section>
+    </section><!--/svc:claims-->
 
-    <section class="card" id="yield-card">
+    <!--svc:yield--><section class="card" id="yield-card">
       <h2>Earn more on what you hold</h2>
       <p class="muted">Stablecoins and ETH on Ethereum, Base and Arbitrum, in Aave, Compound and Spark. RektBull reads each venue's rate from its own contracts and proposes only the moves that pass its rules at today's rates and gas: the destination must take deposits, be less than 95% borrowed, pay at least 1 point more, earn back its gas and fee within 30 days, and leave no protocol with more than 60% of your yield money.</p>
       <div class="grid">
@@ -58,7 +58,7 @@
       </div>
       <details class="small"><summary>Today's rates</summary><div id="y-rates" class="muted">Loading…</div></details>
       <p class="small muted">Not advice: rates change every block, and every venue carries smart-contract risk. You sign each move yourself; withdrawals to your wallet are always free. Each move RektBull prepares carries a 0.1% fee, shown before you sign.</p>
-    </section>
+    </section><!--/svc:yield-->
 
     <section class="card" id="fee-card">
       <h2>What it costs</h2>

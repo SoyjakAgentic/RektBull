@@ -256,7 +256,7 @@ const robots = base => [
 /** The listed pages, plus any extra entries (the published digests) with their dates. */
 function sitemap(base, extra = []) {
   const urls = [
-    ...Object.keys(PAGES).map(route => `  <url><loc>${esc(base + route)}</loc></url>`),
+    ...Object.keys(PAGES).filter(route => !require('../admin/services').pageHidden(route)).map(route => `  <url><loc>${esc(base + route)}</loc></url>`),
     ...extra.map(e => `  <url><loc>${esc(e.loc)}</loc>${e.lastmod ? `<lastmod>${esc(e.lastmod)}</lastmod>` : ''}</url>`),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
@@ -277,7 +277,7 @@ function llms(base, digests = []) {
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/points', '/launches'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/points', '/launches'].filter(route => !require('../admin/services').pageHidden(route)).map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),

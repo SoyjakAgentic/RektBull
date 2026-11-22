@@ -2,8 +2,10 @@
  * Service switches (admin/services.js) and free runs (payments/gate.js), on a
  * real Postgres: every service can be paused from the admin panel, logged with
  * a reason; a paused paid run is refused before any charge; a paused desk stops
- * new work while every way out stays open; the token report is free and paused
- * by default; a free run needs a sign-in and has daily caps, given back when it
+ * new work while every way out stays open; a hidden one is also taken off the
+ * menus, pages, sitemap and llms.txt, its desk page still opening by its link
+ * (noindex, with a notice); the token report is free, paused and hidden by
+ * default; a free run needs a sign-in and has daily caps, given back when it
  * fails. Runs only when TEST_DATABASE_URL is set.
  */
 const test = require('node:test');
@@ -56,17 +58,17 @@ test('service switches and free runs', { skip: !DB && 'set TEST_DATABASE_URL to 
   const asAdmin = (method, p, body) => call(method, p, body, issueToken(admin));
   const paused = r => r.status === 503 && r.body?.error === 'service_paused';
 
-  await t.test('the admin panel lists every service; the token report is paused by default; changes need a reason and are logged', async () => {
+  await t.test('the admin panel lists every service; the token report is paused and hidden by default; changes need a reason and are logged', async () => {
     const ov = await asAdmin('GET', '/v1/admin/overview');
     const byId = Object.fromEntries(ov.body.services.map(s => [s.id, s]));
-    assert.equal(byId.token_report.paused, true);
-    assert.equal(byId.token_report.default_paused, true);
+    assert.deepEqual([byId.token_report.state, byId.token_report.paused, byId.token_report.hidden, byId.token_report.default_state], ['hidden', true, true, 'hidden']);
     for (const id of ['token_quick_check', 'launch_check', 'presign_check', 'governance_summary', 'approval_cleanup', 'trade', 'perps', 'predictions', 'yield', 'claims', 'governance_votes', 'checkup']) assert.equal(byId[id].paused, false, id);
     assert.match(byId.trade.open, /Sells, cancels and revokes/);
     assert.equal((await call('PUT', '/v1/admin/services/trade', { paused: true, reason: 'not an admin' })).status, 403);
     assert.equal((await asAdmin('PUT', '/v1/admin/services/trade', { paused: true })).status, 400, 'a reason is required');
     assert.equal((await asAdmin('PUT', '/v1/admin/services/nope', { paused: true, reason: 'no such' })).status, 404);
     assert.equal((await asAdmin('PUT', '/v1/admin/services/trade', { paused: 'yes', reason: 'bad value' })).status, 400);
+    assert.equal((await asAdmin('PUT', '/v1/admin/services/trade', { state: 'gone', reason: 'bad value' })).status, 400);
   });
 
   await t.test('a paused paid run is refused before any charge; the report is free once resumed', async () => {
@@ -97,11 +99,14 @@ test('service switches and free runs', { skip: !DB && 'set TEST_DATABASE_URL to 
   });
 
   await t.test('pausing is logged; back to the default stores nothing', async () => {
-    await asAdmin('PUT', '/v1/admin/services/token_report', { paused: true, reason: 'hold off again' });
+    await asAdmin('PUT', '/v1/admin/services/token_report', { state: 'paused', reason: 'shown, but paused' });
+    await asAdmin('PUT', '/v1/admin/services/token_report', { state: 'hidden', reason: 'hold off again' });
     const { rows } = await db.query(`SELECT action, reason, after FROM admin_log WHERE key = 'service:token_report' ORDER BY id`);
-    assert.deepEqual(rows.map(r => [r.action, r.reason]), [['service_resumed', 'try it free'], ['service_paused', 'hold off again']]);
-    assert.equal(rows[1].after, null, 'paused is its default: nothing stored');
-    assert.equal(require('../src/payments/catalog').publicCatalog().find(p => p.id === 'token_report').paused, true, 'the catalog says so, for the pages');
+    assert.deepEqual(rows.map(r => [r.action, r.reason]), [['service_on', 'try it free'], ['service_paused', 'shown, but paused'], ['service_hidden', 'hold off again']]);
+    assert.equal(rows[2].after, null, 'hidden is its default: nothing stored');
+    await settings.fresh();
+    const c = require('../src/payments/catalog').publicCatalog().find(p => p.id === 'token_report');
+    assert.deepEqual([c.paused, c.hidden], [true, true], 'the catalog says so, for the pages');
   });
 
   await t.test('desks: new work stops, every way out stays open', async () => {
@@ -138,8 +143,41 @@ test('service switches and free runs', { skip: !DB && 'set TEST_DATABASE_URL to 
     const r = await call('POST', '/v1/trading/preview', { chain: 'base', side: 'buy' });
     assert.match(r.body.message, /Trade desk .* is paused by RektBull for now\. Nothing was charged\. Still open: Sells, cancels and revokes\./);
     // Back on.
-    await asAdmin('PUT', '/v1/admin/services/trade', { paused: false, reason: 'done' });
+    await asAdmin('PUT', '/v1/admin/services/trade', { state: 'on', reason: 'done' });
     assert.ok(!paused(await call('POST', '/v1/trading/preview', { chain: 'nowhere', side: 'buy' })));
     assert.equal(await services.isPaused('trade'), false);
+  });
+
+  await t.test('hidden: off the menus, tiles, sitemap and llms.txt; the desk page still opens, noindex, with a notice', async () => {
+    const page = async p => (await fetch(base + p, { signal: AbortSignal.timeout(15000) })).text();
+    const shown = (html, id) => !new RegExp(`<(div|span) hidden data-service-hidden="${id}">`).test(html);
+    await settings.fresh();
+    // Paused but not hidden: still shown everywhere.
+    let home = await page('/');
+    assert.ok(shown(home, 'trade'), 'paused alone: the Trade tile and menu link stay');
+    assert.match(await page('/sitemap.xml'), /\/trade</);
+    // Hidden.
+    assert.equal((await asAdmin('PUT', '/v1/admin/services/trade', { state: 'hidden', reason: 'hide the desk' })).status, 200);
+    await settings.fresh();
+    home = await page('/');
+    assert.ok(!shown(home, 'trade'), 'the Trade tile and menu link are hidden');
+    assert.match(home, /<span hidden data-service-hidden="trade"><a href="\/trade">Trade<\/a><\/span>/, 'the menu link');
+    assert.doesNotMatch(await page('/sitemap.xml'), /\/trade</);
+    assert.doesNotMatch(await page('/llms.txt'), /\]\([^)]*\/trade\)/);
+    const desk = await page('/trade');
+    assert.match(desk, /<meta name="robots" content="noindex">/);
+    assert.doesNotMatch(desk, /<link rel="canonical"/);
+    assert.match(desk, /data-service-notice="trade">Trade desk is paused for now\. Still open here: Sells, cancels and revokes\./);
+    assert.ok(!shown(await page('/perps'), 'trade'), 'the Perps page\'s link back to Trade is hidden too');
+    // A hidden check: its button on the Safety page; the token report is hidden by default.
+    const safety = await page('/safety');
+    assert.match(safety, /<span hidden data-service-hidden="token_report"><button id="report"/);
+    assert.ok(shown(safety, 'token_quick_check'));
+    // Back on: everything back.
+    await asAdmin('PUT', '/v1/admin/services/trade', { state: 'on', reason: 'back' });
+    await settings.fresh();
+    assert.ok(shown(await page('/'), 'trade'));
+    assert.match(await page('/sitemap.xml'), /\/trade</);
+    assert.match(await page('/trade'), /<link rel="canonical"/);
   });
 });

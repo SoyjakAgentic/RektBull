@@ -50,8 +50,28 @@ Contract Audit) is in one of three states:
 
 ## Services
 
-Any service can be paused, and switched back on, without a deploy
-(`src/admin/services.js`). The owner asked for this on 22 November 2026.
+Any service can be paused, or paused and hidden, and switched back on, without
+a deploy (`src/admin/services.js`). The owner asked for both on 22 November
+2026.
+
+Each service is in one of three states:
+
+- **On:** working and shown.
+- **Paused:** new work is refused with a plain message. It's still shown, and
+  says so: a paused check's button on the Safety page is off and reads "paused
+  for now".
+- **Paused and hidden:** also taken off the site.
+  - **Removed:** its menu link, tiles, cards and buttons are hidden on every
+    page.
+  - **Desk pages** (Trade, Perps, Predictions) drop out of the sitemap and
+    `llms.txt` and are marked `noindex`. They still open by their link and say
+    they're paused, so anyone holding a position can still sell, close or
+    redeem there.
+  - **Only where there's something to hide:** the panel offers "Pause and
+    hide" only for services that have something on the site.
+  - **How:** pages mark what belongs to a service (`<!--svc:id-->…<!--/svc:id-->`
+    for cards and tiles, `<!--svc-inline:id-->…` for links and buttons). A
+    hidden one stays in the page, hidden, so the page's scripts still work.
 
 - **The rule:** pausing stops new work only. Selling, closing, cancelling,
   withdrawing, redeeming and revoking always stay open, as with region blocks.
@@ -78,8 +98,8 @@ Any service can be paused, and switched back on, without a deploy
 - **How a switch is kept:** it's read from the database on every request, so
   it takes effect at once on every instance. Each change needs a reason and is
   logged.
-- **Defaults:** the token report starts paused (`default_paused`). "Back to the
-  default" stores nothing.
+- **Defaults:** the token report starts paused and hidden (`default_state`).
+  "Back to the default" stores nothing.
 - **Elsewhere:** AI agents, the emergency stops and the AI forecasts and picks
   keep their own switches (above, below, and the AI forecasts card).
 
