@@ -12,6 +12,19 @@ CREATE TABLE meme_watchlist (
 );
 CREATE INDEX meme_watchlist_live ON meme_watchlist (chain) WHERE dropped_at IS NULL;
 
+-- Each run: when it started (the next one is due a refresh interval later, whether or not it picked anything)
+-- and what it found, for the admin panel.
+CREATE TABLE meme_runs (
+  id           UUID PRIMARY KEY,
+  started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at  TIMESTAMPTZ,
+  added        INTEGER,
+  passed       INTEGER,
+  picked       INTEGER,
+  offered      INTEGER
+);
+CREATE INDEX meme_runs_started ON meme_runs (started_at DESC);
+
 -- A signal is one coin the rules picked in one run, after
 -- the safety checks, with the facts behind it and the AI's short explanation of those facts. Every coin
 -- that passed the rules in that run is kept too (picked = false), so the public scorecard can compare

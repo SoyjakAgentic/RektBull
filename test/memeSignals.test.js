@@ -12,6 +12,7 @@ const DB = process.env.TEST_DATABASE_URL;
 Object.assign(process.env, { JWT_SECRET: 'test-secret', NEW_WALLET_CHECK_CHAINS: '', DATABASE_URL: DB || '' });
 
 const signals = require('../src/memes/signals');
+const fsettingsGet = () => require('../src/forecasts/settings').get();
 signals.PACE.ms = 0; // no pacing against stand-ins
 const S = { meme_min_liquidity_usd: 50000, meme_min_volume_usd: 100000, meme_min_buys: 200, meme_picks: 3, meme_proposal_usd: 0.25 };
 const NOW = Date.parse('2026-11-22T12:00:00Z');
@@ -172,6 +173,19 @@ test('a run, proposals, acting on one, and the scorecard', { skip: !DB && 'set T
     assert.equal(again.picked, 0);
     const { rows: [{ n: count }] } = await db.query('SELECT COUNT(*)::int AS n FROM meme_signals');
     assert.equal(count, 4);
+  });
+
+  await t.test('timing: due 5 minutes after the last run started, even when it picked nothing', async () => {
+    assert.equal(fsettingsGet().meme_refresh_minutes, 5);
+    assert.equal((await signals.tick()).ran, false, 'the last run was just now');
+    await db.query(`UPDATE meme_runs SET started_at = now() - interval '4 minutes 40 seconds'`);
+    const due = await signals.tick();
+    assert.equal(due.ran, true, 'within the 30 seconds\' slack of the worker\'s one-minute clock');
+    assert.equal(due.picked, 0, 'nothing new to pick');
+    assert.equal((await signals.tick()).ran, false, 'a run that picked nothing still counts: no run every minute');
+    const { rows } = await db.query('SELECT finished_at, added, passed, picked FROM meme_runs ORDER BY started_at DESC LIMIT 1');
+    assert.ok(rows[0].finished_at);
+    assert.equal(rows[0].picked, 0);
   });
 
   await t.test('the scorecard: priced again at 1 hour and 24 hours, picks against all the rest', async () => {

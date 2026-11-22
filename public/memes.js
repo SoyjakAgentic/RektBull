@@ -12,9 +12,9 @@
   const money = v => (v === null || v === undefined ? '–' : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v)}`);
   const price = v => (v >= 1 ? `$${v.toFixed(2)}` : `$${Number(v).toPrecision(3)}`);
 
-  function rules(r, t) {
+  function rules(r, t, every) {
     $('p-rules').replaceChildren(...[
-      'Every 30 minutes, young coins on Base, BNB Chain and Solana: gathered from GeckoTerminal\'s newest and trending pools and the launchpads\' just-graduated coins, with their figures from DexScreener.',
+      `Every ${every} minutes, young coins on Base, BNB Chain and Solana, gathered from GeckoTerminal\'s newest and trending pools and the launchpads\' just-graduated coins, with their figures from DexScreener.`,
       `At least ${money(t.min_liquidity_usd)} of liquidity, ${money(t.min_volume_usd)} traded in 24 hours, and ${t.min_buys} buys.`,
       `Between ${r.min_age_hours} hour and ${r.max_age_days} days old (no first-hour sniping).`,
       `More buys than sells (at least ${r.min_buy_ratio} to 1), but not the one-way buying of a coin that can't be sold (over ${r.max_buy_ratio} to 1).`,
@@ -46,7 +46,7 @@
     try {
       const out = await api('GET', '/v1/ai/proposals');
       const m = out.meme;
-      rules(m.rules, m.thresholds);
+      rules(m.rules, m.thresholds, m.refresh_minutes);
       const cost = m.price_usd > 0 ? `Acting on a pick costs $${m.price_usd} of AI credits; the trade itself has RektBull's usual 1% fee.` : 'Picks are free; the trade itself has RektBull\'s usual 1% fee.';
       $('p-about').textContent = `${m.about} ${cost}${out.offered.meme ? '' : ' Picks aren\'t switched on yet: RektBull is building the scorecard first.'}`;
       $('p-settings').hidden = false;

@@ -229,6 +229,7 @@ async function watched(s, now = Date.now()) {
 async function run(s = fsettings.get()) {
   const runId = crypto.randomUUID();
   const now = Date.now();
+  await db.query('INSERT INTO meme_runs (id) VALUES ($1)', [runId]);
   const added = await gather();
   const passed = [];
   for (const c of await watched(s, now)) {
@@ -273,6 +274,7 @@ async function run(s = fsettings.get()) {
       }
     }
   }
+  await db.query('UPDATE meme_runs SET finished_at = now(), added = $2, passed = $3, picked = $4, offered = $5 WHERE id = $1', [runId, added, passed.length, stored.length, offered]);
   logger.info('meme signals', { watched_added: added, passed: passed.length, picked: stored.length, offered });
   return { run_id: runId, added, passed: passed.length, picked: stored.length, offered, dropped: passed.filter(c => c.dropped).map(c => ({ token: c.token, why: c.dropped })) };
 }
@@ -339,8 +341,10 @@ async function tick({ force = false } = {}) {
   if (!env.databaseUrl) return { off: true };
   const scored = await score().catch(err => { logger.warn('meme score failed', { error: err.message }); return 0; });
   if (!s.memes) return { off: true, scored };
-  const { rows: [last] } = await db.query('SELECT max(created_at) AS at FROM meme_signals');
-  if (!force && last.at && Date.now() - new Date(last.at).getTime() < s.meme_refresh_minutes * 60000) return { scored, ran: false };
+  // Due a refresh interval after the last run started, whether or not it picked anything (30 seconds' slack
+  // for the worker's one-minute clock).
+  const { rows: [last] } = await db.query('SELECT max(started_at) AS at FROM meme_runs');
+  if (!force && last.at && Date.now() - new Date(last.at).getTime() < s.meme_refresh_minutes * 60000 - 30000) return { scored, ran: false };
   return { scored, ran: true, ...(await run(s)) };
 }
 

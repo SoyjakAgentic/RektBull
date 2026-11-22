@@ -14,7 +14,7 @@ meme coins go to zero. Code picks by stated rules; the AI only explains them.
 1. **Watch.** GeckoTerminal's trending lists are mostly coins months old. On
    22 November 2026 none of the 120 trending pools read on Base and BNB Chain
    was between 1 hour and 14 days old. So young coins are gathered over time
-   into a watchlist (`meme_watchlist`). Every 30 minutes (`meme_refresh_minutes`),
+   into a watchlist (`meme_watchlist`). Every 5 minutes (`meme_refresh_minutes`, the owner's choice: meme momentum moves fast),
    on Base, BNB Chain and Solana, it adds:
    - GeckoTerminal's newest pools (2 pages) and trending pools;
    - the launchpads' just-graduated coins from the live feed (Virtuals,
@@ -91,18 +91,24 @@ meme coins go to zero. Code picks by stated rules; the AI only explains them.
 
 ## Cost
 
-- **AI:** Haiku explains at most 3 picks a run, 48 runs a day, about 4,300 a
-  month. Each is about 800 tokens in and 200 out, about $0.0002. That's about
-  $1 a month in all, shared by every user, and under the admin panel's daily
-  AI budget.
+- **AI:** Haiku explains only new picks: at most 3 a run, and a coin is picked
+  at most once a day. Each is about 800 tokens in and 200 out, about $0.0002.
+  At the very most (3 picks in every one of 288 runs a day) that's about $5 a
+  month. In practice it's nearer $1, because few coins qualify. It's shared
+  by every user, and under the admin panel's daily AI budget.
 - **Per user: nothing.** A pick is made once; offering it to more users only
   adds database rows.
-- **Data:**
-  - GeckoTerminal: about 9 calls a run, about 430 a day.
-  - DexScreener: one call per 30 watched coins a run. The watchlist stays
+- **Data**, every 5 minutes:
+  - **GeckoTerminal:** about 9 calls a run, spaced 2.5 seconds apart. That's
+    about 2,600 a day, about 2 a minute. With the live feed's own reads, still
+    well under its free plan's 30 a minute.
+  - **DexScreener:** one call per 30 watched coins a run. The watchlist stays
     small because dead coins leave it.
-  - The live feed: one read per chain a run.
-  - The checks run only on the top few coins.
+  - **The live feed:** one read per chain a run.
+  - **The checks:** only on the top few coins, and cached.
+- **When it runs:** the worker looks every minute, and a run is due 5 minutes
+  after the last one started (`meme_runs`), whether or not it picked anything.
+  A run never overlaps the one before.
 
 ## Before switching proposals on
 
