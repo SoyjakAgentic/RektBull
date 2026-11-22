@@ -14,8 +14,8 @@
       <span class="eyebrow">Launches</span>
       <h1>New tokens, <em>checked before you trade them</em></h1>
       <p>The newest tokens on Base, Ethereum, Arbitrum and BNB Chain, with the warning signs their own trading shows and GoPlus's flags. Buying runs RektBull's full token check and, for a token under a week old, the bundle and insider check, and stops the trade on a critical finding. Your wallet signs every trade; RektBull's fee is 1%.</p>
-      <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice.</p>
-      <nav class="jump" aria-label="On this page"><a href="#live-card">Live</a><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#follow-card">Wallets you follow</a><a href="#watch-card">Meme Watch</a></nav>
+      <p class="notice" role="note">Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice, and that includes the AI picks: they are what stated rules found, with a public scorecard.</p>
+      <nav class="jump" aria-label="On this page"><a href="#live-card">Live</a><a href="#picks-card">AI picks</a><a href="#feed-card">New tokens</a><a href="#curve-card">On a bonding curve</a><a href="#token-card">A token</a><a href="#follow-card">Wallets you follow</a><a href="#watch-card">Meme Watch</a></nav>
     </div>
   </section>
 
@@ -36,6 +36,22 @@
         <div class="live-col"><h3>Just graduated</h3><ol class="live-list" id="v-grad"></ol></div>
       </div>
       <p id="v-src" class="source"></p>
+    </section>
+
+    <section class="card" id="picks-card">
+      <h2>AI picks <span class="tag">Safety Pro</span></h2>
+      <p id="p-about" class="small"></p>
+      <details class="small"><summary>The rules</summary><ul id="p-rules"></ul></details>
+      <div id="p-settings" class="row small" hidden>
+        <label class="inline"><input type="checkbox" id="p-on"> Send me meme coin picks</label>
+        <span id="p-credits" class="muted"></span>
+      </div>
+      <div id="p-list" class="stack"></div>
+      <p id="p-msg" class="msg"></p>
+      <h3>The scorecard</h3>
+      <p id="p-how" class="small muted"></p>
+      <div id="p-score" class="tiles"></div>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Pick</th><th>Picked</th><th class="num">1 hour later</th><th class="num">24 hours later</th></tr></thead><tbody id="p-recent"></tbody></table></div>
     </section>
 
     <section class="card" id="feed-card">
@@ -107,6 +123,7 @@
   <script src="/vendor/ethers.umd.min.js"></script>
   <script src="/common.js"></script>
   <script src="/launches.js"></script>
+  <script src="/memes.js"></script>
   <script src="/follow.js"></script>
 </body>
 </html>

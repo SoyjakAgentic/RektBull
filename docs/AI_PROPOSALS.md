@@ -99,6 +99,11 @@ automatic entries `polymarket_auto`, `auto_edge_pct`, `auto_fee_pct`,
 `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL` (environment), called only from
 `src/ai/claude.js`.
 
+## Meme coin proposals
+
+The same way, for meme coins: rules pick, the AI explains, the user decides
+and signs. See [MEME_PROPOSALS.md](MEME_PROPOSALS.md).
+
 ## Next
 
 - Hyperliquid proposals, built the same way: approving feeds the page's order
