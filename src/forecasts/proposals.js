@@ -130,7 +130,13 @@ async function list(accountId) {
 async function act(accountId, id, status) {
   if (!['approved', 'dismissed'].includes(status)) throw Object.assign(new Error('status must be approved or dismissed'), { status: 400 });
   if (status === 'approved') {
-    const { rows: [cur] } = await db.query('SELECT price_usd FROM ai_proposals WHERE id = $1 AND account_id = $2', [id, accountId]);
+    const { rows: [cur] } = await db.query(`SELECT p.price_usd, p.venue, p.status, s.created_at AS picked_at FROM ai_proposals p LEFT JOIN meme_signals s ON s.id = p.signal_id
+      WHERE p.id = $1 AND p.account_id = $2`, [id, accountId]);
+    // A meme pick past its expiry can't be acted on: the facts behind it are stale.
+    if (cur?.venue === 'meme' && cur.status === 'offered' && cur.picked_at && Date.now() - new Date(cur.picked_at).getTime() > require('./settings').get().meme_expiry_hours * 3600000) {
+      await db.query(`UPDATE ai_proposals SET status = 'expired', acted_at = now() WHERE id = $1`, [id]);
+      throw Object.assign(new Error('This pick has expired: it was picked too long ago for its facts to hold. Wait for a fresh one.'), { status: 409, code: 'expired' });
+    }
     if (cur && Number(cur.price_usd) > 0 && !(await canPay(accountId))) {
       throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
     }

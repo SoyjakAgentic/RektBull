@@ -71,6 +71,24 @@ meme coins go to zero. Code picks by stated rules; the AI only explains them.
   scored at 24 hours are listed; newer ones go only to the users they were
   offered to.
 
+## On the page: the price now, and expiry
+
+The owner asked for these on 22 November 2026, so users can see how a pick has
+done since it was made.
+
+- **Price now:** each pick shows its price now against its price when picked:
+  "Now $0.00156 (+30% since the pick)", read from DexScreener when the page
+  opens. It's one call per chain for all the user's picks, cached a minute.
+  When it can't be read, the pick says so; it never shows a stale number as
+  current.
+- **Expiry:** a pick not acted on expires `meme_expiry_hours` (6 by default)
+  after it was made, because the facts behind it are stale. It's shown as
+  expired, with no "Review the trade". Approving one that has just expired is
+  refused. The worker expires picks every minute, and the page does it too when
+  it loads.
+- **The Trade desk** still shows the live price, and runs every check again,
+  before the user signs.
+
 ## What a user pays
 
 - **Picks are free, for every signed-in user who asks for them.** The owner

@@ -188,6 +188,42 @@ test('a run, proposals, acting on one, and the scorecard', { skip: !DB && 'set T
     assert.equal(rows[0].picked, 0);
   });
 
+  await t.test('on the page: the price now against the price when picked, or why it couldn\'t be read', async () => {
+    const dex = require('../src/providers/dexscreener');
+    let calls = 0;
+    dex.prices = async (chain, tokens) => { calls++; return chain === 'base' ? { [A]: 0.0018 } : {}; }; // SOL: no pair now
+    const list = await signals.withPriceNow(await proposals.list(free.id));
+    const a = list.find(p => p.signal?.token === A);
+    assert.deepEqual([a.now.price_usd, a.now.change_pct, a.now.source], [0.0018, 50, 'DexScreener'], 'picked at $0.0012: +50%');
+    assert.ok(a.now.read_at);
+    assert.match(list.find(p => p.signal?.token === SOL).now.not_checked, /no pair/);
+    assert.equal(calls, 2, 'one call per chain');
+    await signals.withPriceNow(await proposals.list(free.id));
+    assert.equal(calls, 2, 'cached a minute');
+    dex.prices = async () => { throw new Error('timeout'); };
+    require('../src/lib/cache')._memory.clear();
+    await db.query("DELETE FROM cache WHERE key LIKE 'memes:now:%'"); // past the minute
+    const down = await signals.withPriceNow(await proposals.list(free.id));
+    assert.match(down.find(p => p.signal?.token === A).now.not_checked, /DexScreener couldn't be read: timeout/, 'never a stale number shown as current');
+  });
+
+  await t.test('expiry: a pick not acted on expires after 6 hours, and can\'t be acted on once it has', async () => {
+    assert.equal(fsettingsGet().meme_expiry_hours, 6);
+    await db.query(`UPDATE meme_signals SET created_at = now() - interval '7 hours' WHERE token = $1`, [SOL]);
+    const n = await signals.expire();
+    assert.equal(n, 2, 'both users\' offered SOL picks; approved ones stay approved');
+    const sol = (await proposals.list(free.id)).find(p => p.signal?.token === SOL);
+    assert.equal(sol.status, 'expired');
+    await assert.rejects(proposals.act(free.id, sol.id, 'approved'), /Only an offered proposal/);
+    // One the worker hasn't reached yet is refused when acted on, and marked expired.
+    await db.query(`UPDATE ai_proposals SET status = 'offered' WHERE id = $1`, [sol.id]);
+    await assert.rejects(proposals.act(free.id, sol.id, 'approved'), err => err.status === 409 && /expired/.test(err.message));
+    assert.equal((await proposals.list(free.id)).find(p => p.id === sol.id).status, 'expired');
+    const list = await signals.withPriceNow(await proposals.list(free.id));
+    assert.equal(list.find(p => p.id === sol.id).now, undefined, 'an expired pick isn\'t priced');
+    await db.query(`UPDATE meme_signals SET created_at = now() WHERE token = $1`, [SOL]);
+  });
+
   await t.test('the scorecard: priced again at 1 hour and 24 hours, picks against all the rest', async () => {
     await db.query(`UPDATE meme_signals SET created_at = now() - interval '25 hours'`);
     const dex = require('../src/providers/dexscreener');
