@@ -48,6 +48,7 @@ const env = {
   // AI forecasts (src/forecasts/): a cheap model screens every market, a stronger one researches the few it flags.
   forecastScreenModel: process.env.FORECAST_SCREEN_MODEL || 'claude-haiku-5-5',
   forecastModel: process.env.FORECAST_MODEL || 'claude-sonnet-5-5',
+  memeProposalModel: process.env.MEME_PROPOSAL_MODEL || 'claude-haiku-5-5', // explains a meme pick from its facts (memes/signals.js)
 
   // Data providers (all have free plans; see docs/FREE_TIER.md)
   etherscanApiKey: process.env.ETHERSCAN_API_KEY || '',

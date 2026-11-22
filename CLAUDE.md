@@ -19,8 +19,9 @@
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
   transfer in the same batch the user signs. Orders from the AI (an approved proposal or an automatic
   entry) carry a second builder code instead once it's set, `POLYMARKET_AI_BUILDER_CODE` (1% taker, 0.5%
-  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on an AI proposal costs $0.25 of Safety Pro AI
-  credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. RektBull Points (docs/POINTS.md),
+  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on a Polymarket AI proposal costs $0.25 of
+  Safety Pro AI credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. Meme coin picks
+  are free (docs/MEME_PROPOSALS.md): the trade's 1% fee pays for them. RektBull Points (docs/POINTS.md),
   a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
   passes. No recurring pulls and no token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the
@@ -62,8 +63,9 @@
   Add new providers the same way, with a fallback where one exists.
 - **Every check names its source**, and a check that couldn't run says why.
   Never let an AI report fill gaps with guesses.
-- **The Claude model is a setting** (`REPORT_MODEL`; the AI forecasts' `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL`),
-  called only from `src/ai/claude.js`. AI proposals are suggestions the user approves and signs (docs/AI_PROPOSALS.md).
+- **The Claude model is a setting** (`REPORT_MODEL`; the AI forecasts' `FORECAST_SCREEN_MODEL` and `FORECAST_MODEL`;
+  `MEME_PROPOSAL_MODEL`), called only from `src/ai/claude.js`. AI proposals are suggestions the user approves and signs
+  (docs/AI_PROPOSALS.md); meme picks are made by stated rules, and the AI only explains their facts (docs/MEME_PROPOSALS.md).
 - Plain CommonJS on Node 22 (Hardhat 3 in `contracts/` needs 22.13+), no build step. Run `npm test` (and with
   `TEST_DATABASE_URL` for the end-to-end test) before pushing. The Solana program in `solana/` is Rust
   (Anchor 0.32): `cargo build-sbf --arch v0` then `cargo test -p rektbull-orders` there before pushing it.

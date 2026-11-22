@@ -229,6 +229,14 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
   pools within seconds; a live read built the three columns in about 2
   seconds (22 new coins, 10 curves, 7 graduations in the day).
 
+## AI picks: built (meme coin proposals)
+
+Coins RektBull's rules pick from the busiest pools on Base, BNB Chain and
+Solana, after its safety checks, with Haiku's short explanation of the facts.
+There's a public scorecard at 1 hour and 24 hours. Picks are free; acting on
+one opens the Trade desk, and the trade has the usual 1% fee.
+[MEME_PROPOSALS.md](MEME_PROPOSALS.md).
+
 ## Phases to come
 
 5. **The Meme Router:** automatic meme trading. *Contract and break-it tests
@@ -246,4 +254,6 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
 - Holding a user's funds or keys, or signing for them outside a permission
   their wallet signed onchain.
 - First-block sniping: that needs keys held on a server.
-- Calling a token safe, or recommending one.
+- Calling a token safe, or recommending one. An AI pick is what stated rules
+  found, shown with the rules and a public scorecard, never as advice
+  (MEME_PROPOSALS.md).

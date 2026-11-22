@@ -52,4 +52,46 @@ async function market(chain, token) {
   }
 }
 
-module.exports = { market, links };
+/**
+ * Many tokens on one chain, 30 a call (DexScreener's tokens/v1 endpoint): each
+ * token's most liquid pair, as { [token]: { price_usd, liquidity_usd,
+ * volume_24h_usd, market_cap_usd, change_1h_pct, change_24h_pct, buys_24h,
+ * sells_24h, created_at, pair, symbol, name } }. Liquidity and volume are
+ * summed over all its pairs. A token with no pair is left out.
+ */
+async function pairs(chain, tokens) {
+  const slug = chain === 'solana' ? SOLANA.dexscreener : EVM[chain]?.dexscreener;
+  if (!slug) throw new Error(`DexScreener does not cover ${chain}`);
+  const out = {};
+  for (let i = 0; i < tokens.length; i += 30) {
+    const batch = tokens.slice(i, i + 30);
+    const list = await track('dexscreener', async () => (await axios.get(`https://api.dexscreener.com/tokens/v1/${slug}/${batch.join(',')}`, { timeout: 10000 })).data);
+    const by = {};
+    for (const p of Array.isArray(list) ? list : []) {
+      const addr = chain === 'solana' ? p.baseToken?.address : String(p.baseToken?.address || '').toLowerCase();
+      if (batch.includes(addr) && p.priceUsd) (by[addr] ||= []).push(p);
+    }
+    for (const [addr, ps] of Object.entries(by)) {
+      ps.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+      const top = ps[0];
+      const sum = f => ps.reduce((acc, p) => acc + (f(p) || 0), 0);
+      const created = ps.map(p => p.pairCreatedAt).filter(Boolean);
+      out[addr] = {
+        price_usd: Number(top.priceUsd), liquidity_usd: sum(p => p.liquidity?.usd), volume_24h_usd: sum(p => p.volume?.h24),
+        market_cap_usd: top.marketCap ?? top.fdv ?? null, change_1h_pct: top.priceChange?.h1 ?? null, change_24h_pct: top.priceChange?.h24 ?? null,
+        buys_24h: sum(p => p.txns?.h24?.buys), sells_24h: sum(p => p.txns?.h24?.sells),
+        created_at: created.length ? new Date(Math.min(...created)).toISOString() : null,
+        pair: top.pairAddress || null, symbol: top.baseToken?.symbol || null, name: top.baseToken?.name || null,
+      };
+    }
+  }
+  return out;
+}
+
+/** Prices for many tokens on one chain: { [token]: price of its most liquid pair }. */
+async function prices(chain, tokens) {
+  const got = await module.exports.pairs(chain, tokens);
+  return Object.fromEntries(Object.entries(got).map(([t, p]) => [t, p.price_usd]));
+}
+
+module.exports = { market, links, pairs, prices };

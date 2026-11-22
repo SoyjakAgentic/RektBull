@@ -12,32 +12,32 @@ const passes = require('../payments/passes');
 const aiAllowance = require('../payments/aiAllowance');
 const aiTopups = require('../payments/aiTopups');
 
-const VENUES = ['polymarket', 'hyperliquid'];
+const VENUES = ['polymarket', 'hyperliquid', 'meme']; // meme: meme coin proposals (memes/signals.js)
 
 async function getSettings(accountId) {
-  const { rows: [r] } = await db.query('SELECT polymarket, hyperliquid, max_per_day FROM ai_proposal_settings WHERE account_id = $1', [accountId]);
-  return r || { polymarket: false, hyperliquid: false, max_per_day: 5 };
+  const { rows: [r] } = await db.query('SELECT polymarket, hyperliquid, meme, max_per_day FROM ai_proposal_settings WHERE account_id = $1', [accountId]);
+  return r || { polymarket: false, hyperliquid: false, meme: false, max_per_day: 5 };
 }
 
 async function saveSettings(accountId, input) {
   const cur = await getSettings(accountId);
+  const flag = k => (input[k] === undefined ? cur[k] : !!input[k]);
   const next = {
-    polymarket: input.polymarket === undefined ? cur.polymarket : !!input.polymarket,
-    hyperliquid: input.hyperliquid === undefined ? cur.hyperliquid : !!input.hyperliquid,
+    polymarket: flag('polymarket'), hyperliquid: flag('hyperliquid'), meme: flag('meme'),
     max_per_day: input.max_per_day === undefined ? cur.max_per_day : Number(input.max_per_day),
   };
   if (!(Number.isInteger(next.max_per_day) && next.max_per_day >= 1 && next.max_per_day <= 50)) throw Object.assign(new Error('max_per_day must be 1 to 50.'), { status: 400 });
-  await db.query(`INSERT INTO ai_proposal_settings (account_id, polymarket, hyperliquid, max_per_day) VALUES ($1, $2, $3, $4)
-    ON CONFLICT (account_id) DO UPDATE SET polymarket = $2, hyperliquid = $3, max_per_day = $4, updated_at = now()`, [accountId, next.polymarket, next.hyperliquid, next.max_per_day]);
+  await db.query(`INSERT INTO ai_proposal_settings (account_id, polymarket, hyperliquid, meme, max_per_day) VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (account_id) DO UPDATE SET polymarket = $2, hyperliquid = $3, meme = $4, max_per_day = $5, updated_at = now()`, [accountId, next.polymarket, next.hyperliquid, next.meme, next.max_per_day]);
   return next;
 }
 
-/** The accounts that asked for this venue's proposals, with an active Safety Pro pass. */
+/** The accounts that asked for this venue's proposals, under their daily limit for that venue. */
 async function subscribers(venue) {
   if (!VENUES.includes(venue)) throw new Error(`unknown venue ${venue}`);
   const { rows } = await db.query(`SELECT s.account_id, s.max_per_day,
-      (SELECT COUNT(*) FROM ai_proposals p WHERE p.account_id = s.account_id AND p.created_at > now() - interval '24 hours')::int AS today
-    FROM ai_proposal_settings s WHERE s.${venue} = true`);
+      (SELECT COUNT(*) FROM ai_proposals p WHERE p.account_id = s.account_id AND p.venue = $1 AND p.created_at > now() - interval '24 hours')::int AS today
+    FROM ai_proposal_settings s WHERE s.${venue} = true`, [venue]);
   return rows.filter(r => r.today < r.max_per_day);
 }
 
@@ -57,6 +57,23 @@ async function offer(accountId, { forecast, side, assetId = null, priceLimit = n
   if (!p) return null;
   logger.info('AI proposal offered', { account: accountId, forecast: forecast.id, venue: forecast.venue });
   return p;
+}
+
+/**
+ * Offers a meme pick (memes/signals.js) to one account; `priceUsd` is what acting on it costs. Free by default
+ * (the owner's choice: the trade's 1% fee pays for it), so any signed-in account that asked gets it; with a price
+ * set in the admin panel, only accounts with AI credits to act on it.
+ */
+async function offerSignal(accountId, { signal, priceUsd }) {
+  if (Number(priceUsd) > 0 && !(await canPay(accountId))) return null;
+  const id = crypto.randomUUID();
+  const { rows: [p] } = await db.query(
+    `INSERT INTO ai_proposals (id, account_id, signal_id, venue, chain, market, side, asset_id, price_limit, price_usd, paid_from)
+     VALUES ($1, $2, $3, 'meme', $4, $5, 'buy', $6, NULL, $7, NULL) ON CONFLICT (account_id, signal_id) WHERE signal_id IS NOT NULL DO NOTHING RETURNING *`,
+    [id, accountId, signal.id, signal.chain, signal.symbol || signal.token, signal.token, priceUsd],
+  );
+  if (p) logger.info('meme proposal offered', { account: accountId, signal: signal.id });
+  return p || null;
 }
 
 /** Has this account a Safety Pro pass with AI credits left (the allowance, or a top-up)? */
@@ -82,15 +99,26 @@ async function chargeCredits(accountId, usd, ref, note) {
 const present = r => ({
   id: r.id, venue: r.venue, market: r.market, side: r.side, asset_id: r.asset_id, price_limit: r.price_limit === null ? null : Number(r.price_limit),
   price_usd: Number(r.price_usd), paid_from: r.paid_from, status: r.status, created_at: r.created_at,
-  forecast: r.question === undefined ? undefined : {
+  ...(r.venue === 'meme' && r.s_token ? {
+    chain: r.chain,
+    signal: {
+      token: r.s_token, symbol: r.s_symbol, name: r.s_name, price_usd: Number(r.s_price), facts: r.s_facts, checks: r.s_checks,
+      reason: r.s_reason, risks: r.s_risks, model: r.s_model, picked_at: r.s_at,
+      trade: `/trade?chain=${r.chain}&token=${encodeURIComponent(r.s_token)}&side=buy#trade-card`,
+    },
+  } : {}),
+  forecast: r.question === undefined || r.question === null ? undefined : {
     question: r.question, outcome: r.outcome, ai_prob: Number(r.ai_prob), market_prob: r.market_prob === null ? null : Number(r.market_prob),
     confidence: r.confidence, reasoning: r.reasoning, sources: r.sources, model: r.model, made_at: r.forecast_at,
   },
 });
 
 async function list(accountId) {
-  const { rows } = await db.query(`SELECT p.*, f.question, f.outcome, f.ai_prob, f.market_prob, f.confidence, f.reasoning, f.sources, f.model, f.created_at AS forecast_at
-    FROM ai_proposals p JOIN ai_forecasts f ON f.id = p.forecast_id WHERE p.account_id = $1 ORDER BY p.created_at DESC LIMIT 50`, [accountId]);
+  const { rows } = await db.query(`SELECT p.*, f.question, f.outcome, f.ai_prob, f.market_prob, f.confidence, f.reasoning, f.sources, f.model, f.created_at AS forecast_at,
+      s.token AS s_token, s.symbol AS s_symbol, s.name AS s_name, s.price_usd AS s_price, s.facts AS s_facts, s.checks AS s_checks,
+      s.reason AS s_reason, s.risks AS s_risks, s.model AS s_model, s.created_at AS s_at
+    FROM ai_proposals p LEFT JOIN ai_forecasts f ON f.id = p.forecast_id LEFT JOIN meme_signals s ON s.id = p.signal_id
+    WHERE p.account_id = $1 ORDER BY p.created_at DESC LIMIT 50`, [accountId]);
   return rows.map(present);
 }
 
@@ -101,8 +129,11 @@ async function list(accountId) {
  */
 async function act(accountId, id, status) {
   if (!['approved', 'dismissed'].includes(status)) throw Object.assign(new Error('status must be approved or dismissed'), { status: 400 });
-  if (status === 'approved' && !(await canPay(accountId))) {
-    throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
+  if (status === 'approved') {
+    const { rows: [cur] } = await db.query('SELECT price_usd FROM ai_proposals WHERE id = $1 AND account_id = $2', [id, accountId]);
+    if (cur && Number(cur.price_usd) > 0 && !(await canPay(accountId))) {
+      throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
+    }
   }
   const { rows: [r] } = await db.query(`UPDATE ai_proposals SET status = $3, acted_at = now() WHERE id = $1 AND account_id = $2 AND status = 'offered' RETURNING *`, [id, accountId, status]);
   if (!r) throw Object.assign(new Error('Only an offered proposal can be approved or dismissed.'), { status: 409 });
@@ -126,4 +157,4 @@ async function forOrder(accountId, id, input) {
   return p;
 }
 
-module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, list, act, present, canPay, chargeCredits, forOrder };
+module.exports = { VENUES, getSettings, saveSettings, subscribers, offer, offerSignal, list, act, present, canPay, chargeCredits, forOrder };
