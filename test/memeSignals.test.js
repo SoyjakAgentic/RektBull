@@ -1,7 +1,7 @@
 /**
  * Meme coin proposals (memes/signals.js): the rules, the safety checks (a failed
  * check or one that couldn't run drops a coin), the AI's explanation held to the
- * facts, proposals offered free and charged $0.25 when acted on, and the
+ * facts, picks free for every user who asks (a price, when the admin sets one, charged once), and the
  * scorecard at 1 hour and 24 hours. Every source and the model are stand-ins:
  * nothing is spent. The database parts need TEST_DATABASE_URL.
  */
@@ -106,6 +106,9 @@ test('a run, proposals, acting on one, and the scorecard', { skip: !DB && 'set T
   const { rows: [acct] } = await db.query(`INSERT INTO accounts (wallet) VALUES ('0x${'e5'.repeat(20)}') RETURNING *`);
   await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) VALUES ($1, 'pro_30d', now(), now() + interval '30 days')`, [acct.id]);
   await proposals.saveSettings(acct.id, { meme: true });
+  // A user with no pass and no AI credits: picks are free, so they get them too.
+  const { rows: [free] } = await db.query(`INSERT INTO accounts (wallet) VALUES ('0x${'f7'.repeat(20)}') RETURNING *`);
+  await proposals.saveSettings(free.id, { meme: true });
   const turnOn = v => settings.set('forecasts', v, { wallet: '0xadmin', action: 'forecasts', reason: 'test' });
 
   await t.test('off until switched on', async () => {
@@ -137,16 +140,27 @@ test('a run, proposals, acting on one, and the scorecard', { skip: !DB && 'set T
     assert.deepEqual(s.checks.map(c => c.check), ['mint'], 'Solana: the mint; over a week old, no bundle check');
   });
 
-  await t.test('offered free to the user who asked; acting costs $0.25 once and opens the Trade desk', async () => {
-    assert.equal(out.offered, 2);
-    const list = (await proposals.list(acct.id)).filter(p => p.venue === 'meme');
+  await t.test('free: offered to every user who asked, pass or not; acting opens the Trade desk and charges nothing', async () => {
+    assert.equal(out.offered, 4, 'two picks, two users');
+    const list = (await proposals.list(free.id)).filter(p => p.venue === 'meme');
     assert.equal(list.length, 2);
-    const allowance = require('../src/payments/aiAllowance');
-    assert.equal((await allowance.status(acct.id)).used_usd, 0, 'offering is free');
     const p = list.find(x => x.signal.token === A);
-    assert.equal(p.price_usd, 0.25);
+    assert.equal(p.price_usd, 0);
     assert.equal(p.signal.trade, `/trade?chain=base&token=${A}&side=buy#trade-card`);
     assert.equal(p.signal.facts.buys_24h, 900);
+    const done = await proposals.act(free.id, p.id, 'approved');
+    assert.equal(done.status, 'approved');
+    assert.equal(done.paid_from, null, 'nothing charged');
+    await assert.rejects(proposals.act(free.id, p.id, 'approved'), /Only an offered proposal/);
+  });
+
+  await t.test('with a price set by the admin: only accounts with AI credits get picks, charged once when they act', async () => {
+    const { rows: [sig] } = await db.query('SELECT * FROM meme_signals WHERE token = $1', [B]);
+    assert.equal(await proposals.offerSignal(free.id, { signal: sig, priceUsd: 0.25 }), null, 'no credits: not offered');
+    const p = await proposals.offerSignal(acct.id, { signal: sig, priceUsd: 0.25 });
+    assert.ok(p);
+    const allowance = require('../src/payments/aiAllowance');
+    assert.equal((await allowance.status(acct.id)).used_usd, 0, 'offering costs nothing');
     const done = await proposals.act(acct.id, p.id, 'approved');
     assert.equal(done.paid_from, 'allowance');
     assert.equal((await allowance.status(acct.id)).used_usd, 0.25);

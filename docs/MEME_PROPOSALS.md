@@ -73,11 +73,14 @@ meme coins go to zero. Code picks by stated rules; the AI only explains them.
 
 ## What a user pays
 
-- **Seeing a pick is free.**
-- **Acting on one costs $0.25 of AI credits, once** (`meme_proposal_usd`, the
-  owner's price, the same as a Polymarket proposal). "Review the trade" opens
-  the Trade desk on that coin. A proposal can't be acted on without credits;
-  the user is pointed to a top-up.
+- **Picks are free, for every signed-in user who asks for them.** The owner
+  decided this on 22 November 2026: meme and alt-coin trading is the main
+  earner, and the 1% trade fee pays for the picks. They cost about $1 to $5 a
+  month to run in all, whatever the number of users (see Cost).
+- **"Review the trade"** opens the Trade desk on that coin.
+- **A price can be set** in the admin panel (`meme_proposal_usd`). Acting on a
+  pick then costs that much in AI credits, once. Only accounts with credits
+  are offered picks, and a user without credits is pointed to a top-up.
 - **The trade:** the Trade desk runs its full checks again, and the bundle
   check for a young coin. The user sets the amount and signs. RektBull's usual
   1% trade fee applies, and Points rebate it as usual.
@@ -88,9 +91,12 @@ meme coins go to zero. Code picks by stated rules; the AI only explains them.
 
 ## Cost
 
-- **AI:** Haiku explains at most 3 picks a run, 48 runs a day, about 1,000
-  tokens each. That's well under $1 a day, shared by every user. Each call is
-  under the admin panel's daily AI budget.
+- **AI:** Haiku explains at most 3 picks a run, 48 runs a day, about 4,300 a
+  month. Each is about 800 tokens in and 200 out, about $0.0002. That's about
+  $1 a month in all, shared by every user, and under the admin panel's daily
+  AI budget.
+- **Per user: nothing.** A pick is made once; offering it to more users only
+  adds database rows.
 - **Data:**
   - GeckoTerminal: about 9 calls a run, about 430 a day.
   - DexScreener: one call per 30 watched coins a run. The watchlist stays

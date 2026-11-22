@@ -233,8 +233,8 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
 
 Coins RektBull's rules pick from the busiest pools on Base, BNB Chain and
 Solana, after its safety checks, with Haiku's short explanation of the facts.
-There's a public scorecard at 1 hour and 24 hours. Seeing a pick is free; acting
-on one costs $0.25 of AI credits and opens the Trade desk.
+There's a public scorecard at 1 hour and 24 hours. Picks are free; acting on
+one opens the Trade desk, and the trade has the usual 1% fee.
 [MEME_PROPOSALS.md](MEME_PROPOSALS.md).
 
 ## Phases to come

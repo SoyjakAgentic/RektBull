@@ -176,7 +176,7 @@ router.get('/v1/ai/proposals', requireAuth, async (req, res) => {
     meme: {
       price_usd: s.meme_proposal_usd, rules: require('../memes/signals').RULES,
       thresholds: { min_liquidity_usd: s.meme_min_liquidity_usd, min_volume_usd: s.meme_min_volume_usd, min_buys: s.meme_min_buys },
-      about: 'Meme coin proposals are young coins on Base, BNB Chain and Solana that RektBull\'s rules picked and that passed its safety checks, with a short AI explanation of the facts. Seeing one is free; acting on one costs AI credits and opens the Trade desk, whose checks run again before you sign. Most meme coins lose most of their value: a pick is not a recommendation, and no coin is called safe.',
+      about: 'AI picks are young coins on Base, BNB Chain and Solana that RektBull\'s rules picked and that passed its safety checks, with a short AI explanation of the facts. Acting on one opens the Trade desk, whose checks run again before you sign. Most meme coins lose most of their value: a pick is not a recommendation, and no coin is called safe.',
     },
     about: 'AI proposals are suggestions from a shared AI forecast, offered when its probability beats the market price by the edge shown. Seeing one is free; acting on one costs AI credits from Safety Pro (the 30-day allowance first, then a top-up). Nothing is traded until you check the order and sign it yourself. Not financial advice: check the public track record.',
     ai_fee: require('../polymarket/desk').config().ai_fee,

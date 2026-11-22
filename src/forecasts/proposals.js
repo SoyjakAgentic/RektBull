@@ -59,9 +59,13 @@ async function offer(accountId, { forecast, side, assetId = null, priceLimit = n
   return p;
 }
 
-/** Offers a meme pick (memes/signals.js) to one account, free; `priceUsd` is what acting on it will cost. */
+/**
+ * Offers a meme pick (memes/signals.js) to one account; `priceUsd` is what acting on it costs. Free by default
+ * (the owner's choice: the trade's 1% fee pays for it), so any signed-in account that asked gets it; with a price
+ * set in the admin panel, only accounts with AI credits to act on it.
+ */
 async function offerSignal(accountId, { signal, priceUsd }) {
-  if (!(await canPay(accountId))) return null;
+  if (Number(priceUsd) > 0 && !(await canPay(accountId))) return null;
   const id = crypto.randomUUID();
   const { rows: [p] } = await db.query(
     `INSERT INTO ai_proposals (id, account_id, signal_id, venue, chain, market, side, asset_id, price_limit, price_usd, paid_from)
@@ -125,8 +129,11 @@ async function list(accountId) {
  */
 async function act(accountId, id, status) {
   if (!['approved', 'dismissed'].includes(status)) throw Object.assign(new Error('status must be approved or dismissed'), { status: 400 });
-  if (status === 'approved' && !(await canPay(accountId))) {
-    throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
+  if (status === 'approved') {
+    const { rows: [cur] } = await db.query('SELECT price_usd FROM ai_proposals WHERE id = $1 AND account_id = $2', [id, accountId]);
+    if (cur && Number(cur.price_usd) > 0 && !(await canPay(accountId))) {
+      throw Object.assign(new Error('Acting on a proposal costs AI credits, and yours are used up: top up your AI credits on the Safety page.'), { status: 402, code: 'no_ai_credits' });
+    }
   }
   const { rows: [r] } = await db.query(`UPDATE ai_proposals SET status = $3, acted_at = now() WHERE id = $1 AND account_id = $2 AND status = 'offered' RETURNING *`, [id, accountId, status]);
   if (!r) throw Object.assign(new Error('Only an offered proposal can be approved or dismissed.'), { status: 409 });

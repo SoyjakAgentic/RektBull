@@ -19,8 +19,9 @@
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
   transfer in the same batch the user signs. Orders from the AI (an approved proposal or an automatic
   entry) carry a second builder code instead once it's set, `POLYMARKET_AI_BUILDER_CODE` (1% taker, 0.5%
-  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on an AI proposal costs $0.25 of Safety Pro AI
-  credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. RektBull Points (docs/POINTS.md),
+  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on a Polymarket AI proposal costs $0.25 of
+  Safety Pro AI credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. Meme coin picks
+  are free (docs/MEME_PROPOSALS.md): the trade's 1% fee pays for them. RektBull Points (docs/POINTS.md),
   a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
   passes. No recurring pulls and no token approvals asked of users for billing.
 - **Never hold user funds or user keys.** Agents may prepare transactions; the

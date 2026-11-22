@@ -1,7 +1,7 @@
 /**
  * The Launches page's AI picks card in a real Chromium: the public scorecard,
  * the rules, opting in, a pick with its reason, facts and checks, and acting on
- * it: $0.25 of AI credits, once, then the Trade desk on that coin. The session
+ * it: free, then the Trade desk on that coin. The session
  * is a signed-in token; the data is seeded. Needs a database:
  *
  *   TEST_DATABASE_URL=postgres://… node test/browser/memePicks.js [screenshot.png]
@@ -28,7 +28,6 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
 
   const token = '0x' + 'a1'.repeat(20);
   const { rows: [acct] } = await db.query(`INSERT INTO accounts (wallet) VALUES ('0x${'e5'.repeat(20)}') RETURNING *`);
-  await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) VALUES ($1, 'pro_30d', now(), now() + interval '30 days')`, [acct.id]);
   const facts = { price_usd: 0.0012, liquidity_usd: 120000, volume_24h_usd: 900000, buys_24h: 900, sells_24h: 500, change_1h_pct: 8, change_24h_pct: 40, age_hours: 30, buy_ratio: 1.8, source: 'DexScreener (24-hour figures, all its pairs)' };
   const checks = [{ check: 'goplus', flags: [], source: 'GoPlus token security' }, { check: 'bundle', verdict: 'no_bundle_found', source: 'Base RPC' }];
   const { rows: [sig] } = await db.query(`INSERT INTO meme_signals (run_id, chain, token, symbol, picked, score, price_usd, facts, checks, reason, risks, model)
@@ -38,7 +37,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   await db.query(`INSERT INTO meme_signals (run_id, chain, token, symbol, picked, score, price_usd, facts, price_1h, price_24h, scored_1h_at, scored_24h_at, created_at)
     VALUES (gen_random_uuid(), 'solana', 'OldMint11111111111111111111111111111111111', 'OLD', true, 5, 1, '{}', 1.1, 2, now(), now(), now() - interval '2 days')`);
   const proposals = require('../../src/forecasts/proposals');
-  await proposals.offerSignal(acct.id, { signal: sig, priceUsd: 0.25 });
+  await proposals.offerSignal(acct.id, { signal: sig, priceUsd: 0 }); // free: no pass, no credits needed
   const jwt = require('../../src/auth/siwe').issueToken(acct);
 
   const server = require('../../src/app').createApp().listen(0);
@@ -71,13 +70,13 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     await page.check('#p-on');
     await page.locator('#p-msg', { hasText: 'Saved.' }).waitFor();
     assert.equal((await proposals.getSettings(acct.id)).meme, true);
-    assert.equal((await require('../../src/payments/aiAllowance').status(acct.id)).used_usd, 0, 'seeing a pick is free');
-    await page.getByRole('button', { name: 'Review the trade ($0.25)' }).click();
+    assert.match(await page.textContent('#picks-card h2'), /Free/);
+    assert.match(await page.textContent('#p-about'), /Picks are free; the trade itself has RektBull's usual 1% fee/);
+    await page.getByRole('button', { name: 'Review the trade', exact: true }).click();
     await page.waitForURL(/\/trade\?chain=base&token=0x(a1){20}&side=buy#trade-card/);
-    assert.equal((await require('../../src/payments/aiAllowance').status(acct.id)).used_usd, 0.25, 'acting on it: $0.25 of AI credits');
     const { rows: [p] } = await db.query(`SELECT status, paid_from FROM ai_proposals WHERE venue = 'meme'`);
-    assert.deepEqual([p.status, p.paid_from], ['approved', 'allowance']);
-    console.log('✔ acting on a pick: $0.25 once, then the Trade desk on that coin');
+    assert.deepEqual([p.status, p.paid_from], ['approved', null], 'free: nothing charged');
+    console.log('✔ acting on a pick: free, then the Trade desk on that coin');
 
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(url + '/launches#picks-card');

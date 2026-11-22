@@ -42,16 +42,17 @@
   }
 
   async function load() {
-    if (!RB.signedIn()) { $('p-about').textContent = 'Sign in to get AI picks (part of Safety Pro). The scorecard below is public.'; return; }
+    if (!RB.signedIn()) { $('p-about').textContent = 'Sign in to get AI picks, free. The scorecard below is public.'; return; }
     try {
       const out = await api('GET', '/v1/ai/proposals');
       const m = out.meme;
       rules(m.rules, m.thresholds);
-      $('p-about').textContent = `${m.about} Acting on a pick costs $${m.price_usd} of AI credits; the trade itself has RektBull's usual 1% fee.${out.offered.meme ? '' : ' Picks aren\'t switched on yet: RektBull is building the scorecard first.'}`;
+      const cost = m.price_usd > 0 ? `Acting on a pick costs $${m.price_usd} of AI credits; the trade itself has RektBull's usual 1% fee.` : 'Picks are free; the trade itself has RektBull\'s usual 1% fee.';
+      $('p-about').textContent = `${m.about} ${cost}${out.offered.meme ? '' : ' Picks aren\'t switched on yet: RektBull is building the scorecard first.'}`;
       $('p-settings').hidden = false;
       $('p-on').checked = !!out.settings.meme;
       const c = out.ai_credits;
-      $('p-credits').textContent = c ? `AI credits: ${c.left_pct}% of this month's allowance left, $${Number(c.topup_usd).toFixed(2)} top-up.` : 'AI picks need Safety Pro.';
+      $('p-credits').textContent = m.price_usd > 0 ? (c ? `AI credits: ${c.left_pct}% of this month's allowance left, $${Number(c.topup_usd).toFixed(2)} top-up.` : 'Acting on a pick needs AI credits (Safety Pro).') : '';
       const picks = out.proposals.filter(p => p.venue === 'meme' && p.signal);
       $('p-list').replaceChildren(...(picks.length ? picks.map(p => {
         const s = p.signal; const f = s.facts || {};
@@ -64,7 +65,7 @@
             s.risks?.length ? el('ul', { class: 'small' }, ...s.risks.map(r => el('li', { class: 'warn' }, r))) : '',
             el('div', { class: 'small muted' }, 'Checks passed: ', (s.checks || []).map(ch => `${CHECKS[ch.check] || ch.check} (${ch.source})`).join('; ') || 'none recorded', s.model ? ` · explained by ${s.model}` : '')),
           p.status === 'offered' ? el('div', {},
-            el('button', { class: 'btn primary', type: 'button', onclick: () => act(p, 'approve') }, `Review the trade ($${p.price_usd})`),
+            el('button', { class: 'btn primary', type: 'button', onclick: () => act(p, 'approve') }, p.price_usd > 0 ? `Review the trade ($${p.price_usd})` : 'Review the trade'),
             el('button', { class: 'btn ghost', type: 'button', onclick: () => act(p, 'dismiss') }, 'Dismiss'))
             : p.status === 'approved' ? el('a', { class: 'btn', href: s.trade }, 'Open the trade') : '');
       }) : [el('p', { class: 'muted' }, 'No picks yet.')]));
