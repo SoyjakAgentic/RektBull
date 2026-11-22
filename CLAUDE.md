@@ -13,13 +13,13 @@
   a recurring pull: nothing is taken unless an order the user or their agent
   placed fills. A Polymarket builder code works the same way
   (docs/POLYMARKET.md): `POLYMARKET_BUILDER_CODE` is signed into every order the
-  user's wallet signs, and Polymarket charges the builder fee (0.01% by
+  user's wallet signs, and Polymarket charges the builder fee (0.1% by
   default, the rates set on RektBull's builder profile) on fills only and pays
   it out. Polymarket winnings redeemed through RektBull carry a 10% share of
   the profit (payout minus what the shares cost; nothing on a loss), a pUSD
   transfer in the same batch the user signs. Orders from the AI (an approved proposal or an automatic
-  entry) carry a second builder code instead, `POLYMARKET_AI_BUILDER_CODE` (1% taker, 0.5% maker by
-  default), charged by Polymarket on fills only. Acting on an AI proposal costs $0.25 of Safety Pro AI
+  entry) carry a second builder code instead once it's set, `POLYMARKET_AI_BUILDER_CODE` (1% taker, 0.5%
+  maker by default), charged by Polymarket on fills only; until then they carry the main code. Acting on an AI proposal costs $0.25 of Safety Pro AI
   credits; automatic entries also cost 1% of what fills (at least $0.25) in AI credits. RektBull Points (docs/POINTS.md),
   a rebate of trading fees capped at 1,000,000,000 points, can buy prepaid
   passes. No recurring pulls and no token approvals asked of users for billing.

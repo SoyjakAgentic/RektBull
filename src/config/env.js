@@ -120,8 +120,8 @@ const env = {
   polymarketBuilderCode: /^0x[0-9a-fA-F]{64}$/.test(process.env.POLYMARKET_BUILDER_CODE || '') ? process.env.POLYMARKET_BUILDER_CODE.toLowerCase() : '',
   // The fee rates set on that builder profile, in basis points (1 = 0.01%). Polymarket charges what the PROFILE says
   // (taker at most 100, maker at most 50, whole basis points); these must say the same, since users are shown them.
-  polymarketTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS, 1))),
-  polymarketMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS, 1))),
+  polymarketTakerFeeBps: Math.min(100, Math.max(0, int(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS, 10))),
+  polymarketMakerFeeBps: Math.min(50, Math.max(0, int(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS, 10))),
   // RektBull's AI builder code: a second builder profile, signed only into orders from an AI proposal or an automatic
   // entry (polymarket/builders.js), at that profile's rates (by default Polymarket's highest: 1% taker, 0.5% maker).
   polymarketAiBuilderCode: /^0x[0-9a-fA-F]{64}$/.test(process.env.POLYMARKET_AI_BUILDER_CODE || '') ? process.env.POLYMARKET_AI_BUILDER_CODE.toLowerCase() : '',

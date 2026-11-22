@@ -67,7 +67,7 @@ This is a Polymarket **builder fee**. RektBull's builder code
 - **When it's charged.** Polymarket charges the fee only when an order fills,
   and pays it daily to RektBull's builder profile. An order that doesn't fill,
   or is cancelled, costs nothing.
-- **The rate.** It's set on the builder profile, not in the order: 0.01% by
+- **The rate.** It's set on the builder profile, not in the order: 0.1% by
   default, taker and maker (`POLYMARKET_BUILDER_TAKER_FEE_BPS`,
   `POLYMARKET_BUILDER_MAKER_FEE_BPS`). These settings must match the profile;
   they're what the page shows. Polymarket's caps are 1% taker and 0.5% maker.
@@ -94,7 +94,11 @@ this is a **second builder profile** with its own code
   RektBull Points the same way (`polymarket/fills.js` reads both codes' feeds).
 - **A proposal's limit:** an order from a proposal can't pay more than the
   proposal's limit price; RektBull refuses to prepare it.
-- **Unset:** the AI's orders carry the main code at its rates.
+- **Unset:** the AI's orders carry the main code at its rates. This is the
+  owner's choice for now (22 November 2026): one profile at 0.1% for every
+  order, with the AI-credit fees on AI trades. One order carries one builder
+  code, so the AI code, once set, replaces the 0.1% on AI trades; it doesn't
+  add to it.
 - **Before switching it on:** Polymarket's docs neither allow nor forbid two
   profiles for one app, and Polymarket can revoke a builder's fees at its
   discretion. Confirm with Polymarket's builder support first.
@@ -208,7 +212,7 @@ The worker ends keys past their stop date every 15 minutes (`polymarket_auto`).
 | --- | --- |
 | `POLYMARKET_ENABLED` | Trading on `/predictions` |
 | `POLYMARKET_BUILDER_CODE` | RektBull's public builder code (bytes32), from polymarket.com > Settings > Builders |
-| `POLYMARKET_BUILDER_TAKER_FEE_BPS`, `POLYMARKET_BUILDER_MAKER_FEE_BPS` | The profile's rates, shown to users (1 = 0.01%) |
+| `POLYMARKET_BUILDER_TAKER_FEE_BPS`, `POLYMARKET_BUILDER_MAKER_FEE_BPS` | The profile's rates, shown to users (10 = 0.1%, the owner's choice on 22 November 2026) |
 | `POLYMARKET_FEE_WALLET` | Public address for the profit share on redemptions (unset: none) |
 | `POLYMARKET_BUILDER_API_KEY`, `…_SECRET`, `…_PASSPHRASE` | RektBull's Builder API key for the relayer (Secret Manager) |
 | `POLYMARKET_AI_BUILDER_CODE`, `POLYMARKET_AI_BUILDER_TAKER_FEE_BPS`, `…_MAKER_FEE_BPS` | The AI builder profile's code and rates (100 and 50 by default), for orders from the AI |

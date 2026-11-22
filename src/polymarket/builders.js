@@ -2,7 +2,7 @@
  * RektBull's Polymarket builder codes (docs/POLYMARKET.md, "RektBull's fee").
  *
  * - main: signed into every order a user prepares themselves, at the main
- *   profile's rates (0.01% by default).
+ *   profile's rates (0.1% by default).
  * - ai: signed into orders that come from the AI, an approved proposal or an
  *   automatic entry, at the AI profile's rates (1% when an order fills at
  *   once, 0.5% when it waits in the book, Polymarket's highest). Unset: the

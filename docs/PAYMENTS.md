@@ -15,7 +15,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **AI builder fee** (Polymarket) | Orders from an AI proposal or an automatic entry: 1% of what fills taking liquidity, 0.5% resting, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/builders.js` |
 | **AI proposal fee** | Acting on an AI proposal: $0.25 of Safety Pro AI credits, once (seeing it is free) | Yes (Safety Pro) | `forecasts/proposals.js` |
 | **Automation fee** (Polymarket) | Each automatic entry RektBull's Session Key places that fills: 1% of what filled, at least $0.25, from Safety Pro AI credits, on top of the AI builder fee | Yes (wallet sign-in; Safety Pro) | `polymarket/auto.js` |
-| **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.01% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
+| **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.1% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
 | **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
 
@@ -256,7 +256,7 @@ transaction", docs.axiom.trade/perpetuals/deposit, read 16 November 2026).
 Orders prepared on `/predictions` ([POLYMARKET.md](POLYMARKET.md)) carry
 RektBull's **builder code** (`POLYMARKET_BUILDER_CODE`) in the order the user's
 wallet signs. Polymarket charges the **builder fee** on fills only, at the rates
-set on RektBull's builder profile (0.01% taker and maker by default; Polymarket
+set on RektBull's builder profile (0.1% taker and maker by default; Polymarket
 caps them at 1% and 0.5%), and pays it out daily to the profile's wallet. An
 order that doesn't fill, or is cancelled, costs nothing. No approval is asked
 for billing, and RektBull never touches the user's money. Fills with the code
