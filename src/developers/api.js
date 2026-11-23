@@ -77,11 +77,14 @@ function priceOf(id) {
   };
 }
 
+/** The endpoints shown: a paid run whose service is hidden (admin/services.js) isn't listed. */
+const listed = () => ENDPOINTS.filter(e => !(e.product && require('../admin/services').hiddenNow(e.product)));
+
 /** The endpoints with their allowance or price filled in, for the page and the API. */
 function reference() {
   return {
     groups: GROUPS.map(([id, title, text]) => ({ id, title, text })),
-    endpoints: ENDPOINTS.map(e => ({
+    endpoints: listed().map(e => ({
       method: e.method, path: e.path, group: e.group, summary: e.summary, auth: !!e.auth,
       input: e.body ? { in: 'body', fields: e.body } : e.query ? { in: 'query', fields: e.query } : null,
       ...(e.limit ? { free_per_day: FREE_LIMITS[e.limit] } : {}),
@@ -95,7 +98,7 @@ const field = f => ({ type: 'string', description: f.text });
 /** An OpenAPI 3.1 document for the same endpoints. */
 function openapi(publicUrl) {
   const paths = {};
-  for (const e of ENDPOINTS) {
+  for (const e of listed()) {
     const op = {
       summary: e.summary,
       tags: [GROUPS.find(g => g[0] === e.group)[1]],

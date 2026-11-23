@@ -172,6 +172,12 @@ test('service switches and free runs', { skip: !DB && 'set TEST_DATABASE_URL to 
     // A hidden check: its button on the Safety page; the token report is hidden by default.
     const safety = await page('/safety');
     assert.match(safety, /<span hidden data-service-hidden="token_report"><button id="report"/);
+    // ...and every other mention of it: the API note, the Research tile, About, Agents, llms.txt.
+    assert.match(safety, /<span hidden data-service-hidden="token_report"> and <code>POST \/v1\/tokens\/report<\/code><\/span>/);
+    for (const p of ['/research', '/about', '/agents']) assert.match(await page(p), /data-service-hidden="token_report"/, p);
+    assert.doesNotMatch(await page('/research'), /<span class="price">\$0\.00/);
+    assert.doesNotMatch(await page('/llms.txt'), /full token report/);
+    assert.doesNotMatch(await page('/safety'), /"text":"[^"]*full report/, 'the Safety questions don\'t name it');
     assert.ok(shown(safety, 'token_quick_check'));
     // Back on: everything back.
     await asAdmin('PUT', '/v1/admin/services/trade', { state: 'on', reason: 'back' });
