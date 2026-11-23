@@ -84,9 +84,9 @@ test('wallet tracker: follow, read a chain, alert each follower once', { skip: !
   const { rows: [b] } = await db.query(`INSERT INTO accounts (wallet) VALUES ('0x${'cd'.repeat(20)}') RETURNING id`);
   const { rows: [c] } = await db.query(`INSERT INTO accounts (wallet) VALUES ('0x${'ef'.repeat(20)}') RETURNING id`);
 
-  // Following: addresses checked, Solana recognised but not yet followed, 5 free, 25 with Safety Pro.
+  // Following: addresses checked; Solana recognised, and refused while the Solana stream isn't set up; 5 free, 25 with Safety Pro.
   await assert.rejects(wt.follow(a.id, { address: 'nope' }), /isn't a wallet address/);
-  await assert.rejects(wt.follow(a.id, { address: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU' }), /Solana trading, which isn't here yet/);
+  await assert.rejects(wt.follow(a.id, { address: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU' }), /needs RektBull's Solana stream, which isn't switched on here yet/);
   let l = await wt.follow(a.id, { address: W.toUpperCase().replace('0X', '0x'), label: 'Smart money' });
   assert.deepEqual(l.wallets.map(w => [w.address, w.label]), [[W, 'Smart money']]);
   for (let i = 1; i < 5; i++) await wt.follow(a.id, { address: T(0x5000 + i) });
