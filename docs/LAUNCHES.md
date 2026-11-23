@@ -258,6 +258,28 @@ provider; switching is two settings.
     shared cache every 2 seconds (every 10 when quiet).
   - **Names:** coins that launched before the stream started get their names
     from DexScreener (30 a call, kept a day).
+- **One stream, one spare.** Chainstack's $49 plan allows 2 connections at once.
+  - **Limits:** one subscription takes up to 20 transaction filters, each with
+    up to 200 accounts. Its docs give no limit on events.
+  - **The plan** (the owner, 23 November 2026):
+    - **Connection 1, the stream:** one production stream from one worker. It
+      carries every use as a named filter: `pumpfun` now, and later the wallets
+      Meme Watch and a Solana Wallet Tracker follow. New uses add filters to
+      it; they never open another connection.
+    - **Connection 2, the spare:** headroom for the moment a deploy runs the
+      old and new workers together, for a reconnect's overlap, and for trying
+      a staging worker.
+  - **The lock:** only one worker streams. It holds a Postgres advisory lock
+    (727020) on a database connection of its own.
+    - **Standby:** any other worker waits and checks every 30 seconds. When the
+      holder stops, or its database connection drops (which frees the lock),
+      one standby takes over.
+    - **Lost connection:** a holder that loses its connection, seen through a
+      query every 15 seconds, stops streaming at once. So two workers never
+      stream together.
+    - **No restart after stopping:** the client's own restart, a minute after
+      it gives up, is cancelled if the stream was stopped meanwhile.
+    - **Health:** the admin panel's health view names the worker that streams.
 - **The fallback.** The feed uses the stream only while its state is under 30
   seconds old and the stream is receiving. Otherwise it polls exactly as
   before, and each column names the source it used.
