@@ -171,6 +171,69 @@ fix on the Perps page. It never trades.
   being over the allowance is retried in 5 minutes.
 - **To grow past it:** more server IPs, or a paid Hyperliquid info endpoint.
 
+## Entry proposals (phase 2: scored in public before anyone is offered them)
+
+Decided by the owner on 23 November 2026. Phase 1 protects positions users
+already hold. This phase proposes opening one, so it's held to a stricter
+test: stated rules, scored in public, offered only once the record justifies
+it. The code is `src/hyperliquid/entries.js`. No AI is used.
+
+**The rules** run on the 20 busiest deep markets (open interest and 24-hour
+volume of $5M or more each), once an hour, after the hourly candle closes:
+
+| Rule | When | Side |
+| --- | --- | --- |
+| `breakout` | The hour closed beyond the previous 24 hours' high or low, on 1.5 times their average volume or more | The way it broke |
+| `funding_fade` | Funding of 100% a year or more one way, and the last 4 hours moved against that crowd | Against the crowd |
+| `flush_reversal` | Open interest down 10% or more in about an hour (RektBull's snapshots), on a price move of 3% or more | Against the move |
+
+**Each signal is a full bracket:**
+- **Entry:** at the mark price.
+- **Stop-loss:** 2 typical hourly moves away, at least 0.5% and at most 5%.
+  That distance is 1R.
+- **Take-profit:** at 2R.
+- **Acting on it:** possible for 15 minutes, while the price stays within
+  0.5% of the entry. There's one open signal per market and rule at a time.
+
+**Scoring** (every 15 minutes, from 15-minute candles):
+- **What's recorded:** each signal is marked in R at 1, 4 and 24 hours. Its
+  final result is the take-profit, the stop, or the close at 24 hours.
+- **Which comes first:** scoring starts from the first candle that opens after
+  the entry. When one candle reaches both levels, the stop counts.
+- **Net of costs:**
+  - Hyperliquid's base taker fee (0.045%) and RektBull's proposal fee (0.05%),
+    both ways;
+  - funding at the rate when entered, times the hours held. This is an
+    estimate, and the page says so.
+- **Public:** the scorecard is at `GET /v1/hyperliquid/entries` and on the
+  Perps page's "Entry proposals" card, by rule, with the latest 20 signals.
+
+**The switches** (admin panel, AI forecasts; both off by default):
+- `hyperliquid`: run and score the rules. This is shadow mode: nobody is
+  offered anything.
+- `hyperliquid_proposals`: offer them, only to users who ask for Hyperliquid
+  proposals (the switch on the card).
+- **When to offer them:** only once the average R, net of costs, is positive
+  over many signals. At 2R it takes winning more than a third of the time,
+  before costs, just to break even.
+
+**Offered, a signal becomes a proposal sized for one account**
+(`POST /v1/hyperliquid/entries/:id/bracket`):
+- **Size:** 1% of the account value at risk at the stop, no more than the free
+  margin allows, and at least Hyperliquid's $10.
+- **Margin:** isolated, at a leverage that keeps liquidation about twice as far
+  as the stop, capped at 10x and at the market's maximum.
+- **Refused** when the price has left the band, or when the account already
+  holds that market.
+- **The orders:** an IOC entry, then a reduce-only stop-loss and take-profit
+  (`normalTpsl`), saved for 2 minutes.
+- **Signing:** the page sets the leverage, then sends the bracket, signed by
+  the trading key in the browser.
+- **The fee:** it carries the proposal fee (0.05%), which the relay accepts
+  only on exactly those orders. Anything bigger, smaller, or without its stop
+  is refused, and each proposal is used once.
+- **Opening a position** means region blocks and a paused Perps desk refuse it.
+
 ## The fee
 
 This is a Hyperliquid builder code: 0.01% of each fill by default, which is
@@ -227,4 +290,9 @@ the blocks refuse everyone.
   revoking.
 - `test/hlProtect.test.js`: the protection rules, the proposal fee only on a
   live proposal's reduce-only orders, the market alerts and Perps Guard.
+- `test/hlEntries.test.js`: the three entry rules and their brackets; scoring
+  (first to the stop or take-profit, both in one candle counting as the stop,
+  nothing before the entry, the 24-hour close, costs in R); shadow, then
+  offered; sizing for an account; and the proposal fee on exactly the
+  proposed orders, once.
 - `test/browser/perps.js`: the page in Chromium, manual and automatic.

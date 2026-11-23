@@ -9,8 +9,9 @@ const settings = require('../admin/settings');
 const DEFAULTS = {
   polymarket: false,            // run the Polymarket forecasts (logged and scored; nobody is offered anything)
   polymarket_proposals: false,  // offer proposals from them to users who opted in
-  hyperliquid: false,
-  hyperliquid_proposals: false,
+  // Hyperliquid entry proposals (hyperliquid/entries.js): stated rules, each a bracket, scored in R in public.
+  hyperliquid: false,           // run the rules and score the signals (shadow: nobody is offered anything)
+  hyperliquid_proposals: false, // offer them, sized for each account, to users who asked for Hyperliquid proposals
   markets: 200,                 // Polymarket: how many of the busiest markets the screen reads
   refresh_hours: 6,             // how often the screen runs
   research_per_day: 30,         // at most this many researched forecasts a day (web search is the costly part)

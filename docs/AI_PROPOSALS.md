@@ -106,6 +106,8 @@ and signs. See [MEME_PROPOSALS.md](MEME_PROPOSALS.md).
 
 ## Next
 
-- Hyperliquid proposals, built the same way: approving feeds the page's order
-  or the automatic agent.
+- Hyperliquid: protection proposals are built (phase 1), and entry proposals
+  are built and scored in shadow first (phase 2, docs/HYPERLIQUID.md). They're
+  made by stated rules, with no AI. Next: letting the automatic agent take
+  them, within the user's limits.
 - Automatic selling (exits) for Polymarket, with its own design.

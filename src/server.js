@@ -43,6 +43,7 @@ async function main() {
     job('memes', 60 * 1000, () => require('./memes/signals').tick()); // meme coin picks (every meme_refresh_minutes) and their scorecard (off until switched on)
     // pump.fun's events, streamed (Yellowstone gRPC), when YELLOWSTONE_GRPC_URL and its token are set; it reconnects by itself.
     require('./services/pumpStream').start().catch(err => logger.warn('pump.fun stream did not start', { error: err.message }));
+    job('hl_entries', 5 * 60 * 1000, () => require('./hyperliquid/entries').tick()); // entry rules once an hour, and their scoring (off until switched on)
     job('hl_markets', 5 * 60 * 1000, () => require('./hyperliquid/protect').snapshot()); // Hyperliquid's deep markets, for the open-interest alerts
     job('polymarket_auto', 15 * 60 * 1000, () => require('./polymarket/auto').tick()); // ends automated-trading keys past their stop date
     // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
