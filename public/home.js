@@ -14,7 +14,8 @@
   catalog.ready.then(() => {
     const p = catalog.products;
     if (p.token_quick_check) set('p-safety', `Quick check: ${pts(p.token_quick_check.points)} or ${p.token_quick_check.price_usd}`);
-    if (p.airdrop_claim) set('p-find', `Free to check; ${pct(p.airdrop_claim.fee_bps)} of what you claim (${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro)`);
+    const proLower = p.airdrop_claim && p.airdrop_claim.pro_fee_bps < p.airdrop_claim.fee_bps;
+    if (p.airdrop_claim) set('p-find', `Free to check; ${pct(p.airdrop_claim.fee_bps)} of what you claim${proLower ? ` (${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro)` : ''}`);
     if (p.governance_summary) set('p-gov', `Free to check and vote; a summary ${pts(p.governance_summary.points)} or ${p.governance_summary.price_usd}`);
     if (p.presign_check) set('p-presign', `${pts(p.presign_check.points)} or ${p.presign_check.price_usd} a check; in Safety Pro`);
     if (p.pro_30d) set('p-monitor', `In Safety Pro, from ${p.pro_30d.price_usd} for 30 days`);
@@ -23,11 +24,12 @@
     if (p.pro_30d && p.pro_365d) {
       const amount = $('pr-pro');
       amount.replaceChildren(p.pro_30d.price_usd.replace(/\.00$/, ''), ' ', el('small', {}, `for 30 days · ${p.pro_365d.price_usd.replace(/\.00$/, '')} a year`));
-      set('pr-reports', 'An AI allowance every 30 days for full token reports and proposal summaries (about 20 reports)');
+      set('pr-reports', 'An AI allowance every 30 days for AI runs, such as proposal summaries');
     }
     if (p.airdrop_claim) {
-      $('pr-claim').replaceChildren(pct(p.airdrop_claim.fee_bps), ' ', el('small', {}, `of a claim · ${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro`));
-      set('pr-pro-claim', `A ${pct(p.airdrop_claim.pro_fee_bps)} claim fee instead of ${pct(p.airdrop_claim.fee_bps)}`);
+      $('pr-claim').replaceChildren(pct(p.airdrop_claim.fee_bps), ' ', el('small', {}, proLower ? `of a claim · ${pct(p.airdrop_claim.pro_fee_bps)} with Safety Pro` : 'of a claim'));
+      if (proLower) set('pr-pro-claim', `A ${pct(p.airdrop_claim.pro_fee_bps)} claim fee instead of ${pct(p.airdrop_claim.fee_bps)}`);
+      else $('pr-pro-claim')?.remove();
     }
     if (p.yield_move) set('pr-yield', `${pct(p.yield_move.fee_bps)} of each yield move RektBull prepares; withdrawals are free`);
   });

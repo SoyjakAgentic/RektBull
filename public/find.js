@@ -15,7 +15,7 @@
 
   window.RB.catalog.ready.then(c => {
     const p = c.products.airdrop_claim;
-    if (p) $('fee-what').textContent = `Checking is free. When you claim through RektBull, ${p.fee_bps / 100}% of what you receive (${p.pro_fee_bps / 100}% with Safety Pro) goes to RektBull.`;
+    if (p) $('fee-what').textContent = `Checking is free. When you claim through RektBull, ${p.fee_bps / 100}% of what you receive${p.pro_fee_bps < p.fee_bps ? ` (${p.pro_fee_bps / 100}% with Safety Pro)` : ''} goes to RektBull.`;
   });
 
   const wallet = () => $('f-wallet').value.trim();

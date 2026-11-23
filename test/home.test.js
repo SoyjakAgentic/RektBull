@@ -110,7 +110,7 @@ test('identify: a chain that can\'t be read is named, never assumed empty', asyn
 /* The four desks' free checks, as stand-ins. */
 const stub = () => {
   require('../src/services/approvals').preview = async () => ({ summary: { open: 9, to_revoke: 2, by_severity: { critical: 1, high: 0, medium: 1, low: 7 }, value_at_risk_usd: 1234.5, not_priced: 1, chains_read: ['base'], chains_not_read: [{ chain: 'bsc', reason: 'no explorer answered' }] } });
-  require('../src/services/claims').check = async () => ({ summary: { claimable: 2, claimable_usd: 41.2, not_priced: 0, chains: ['base', 'arbitrum'] }, sources: [{ name: 'Merkl rewards' }, { name: 'Airdrops RektBull added' }], not_checked: [], fee: { standard_rate: '5%', pro_rate: '3%' } });
+  require('../src/services/claims').check = async () => ({ summary: { claimable: 2, claimable_usd: 41.2, not_priced: 0, chains: ['base', 'arbitrum'] }, sources: [{ name: 'Merkl rewards' }, { name: 'Airdrops RektBull added' }], not_checked: [], fee: { standard_rate: '5%', pro_rate: '5%' } });
   require('../src/yield/proposals').summary = async () => ({ positions: [], idle: [{ chain: 'base', asset: 'USDC', usd: 900 }, { chain: 'base', asset: 'ETH', gas: true, usd: 50 }], total_in_positions_usd: 0, not_read: [], proposals_count: 1, extra_per_year_usd: 38.7 });
   require('../src/services/governance').check = async () => { throw new Error('Snapshot hub didn\'t answer'); };
 };
@@ -127,7 +127,7 @@ test('checkup: every desk\'s free check at once, each with its source; one that 
   assert.match(by.approvals.action, /5 points or \$1/);
   assert.equal(by.claims.headline, '2 unclaimed rewards worth $41.20');
   assert.equal(by.claims.source, 'Merkl rewards and Airdrops RektBull added, each claim verified onchain');
-  assert.match(by.claims.action, /5% of what arrives, 3% with Safety Pro/);
+  assert.match(by.claims.action, /checking is free; 5% of what arrives\)/);
   assert.equal(by.yield.headline, 'Could earn about $38.70 more a year');
   assert.equal(by.yield.facts[1].value, '$900', 'gas money isn\'t idle money');
   assert.match(by.yield.action, /0\.1% per move/);

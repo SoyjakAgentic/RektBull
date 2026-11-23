@@ -104,7 +104,7 @@ const FAQ = {
     ['How do I get it by email?', 'Subscribe on this page: one email to confirm, then the digest each week it\'s published. Every email has a one-click unsubscribe that deletes your address.'],
   ],
   '/find': [
-    ['How are unclaimed rewards found?', 'RektBull checks Merkl rewards on six chains and airdrops it has verified, then confirms each claim onchain before showing it. Claims are prepared for your wallet to sign; the fee is {{fee:airdrop_claim}} of what\'s claimed ({{profee:airdrop_claim}} with Safety Pro), and claiming on the project\'s own site is always free.'],
+    ['How are unclaimed rewards found?', 'RektBull checks Merkl rewards on six chains and airdrops it has verified, then confirms each claim onchain before showing it. Claims are prepared for your wallet to sign; the fee is {{fee:airdrop_claim}} of what\'s claimed{{profee_note:airdrop_claim}}, and claiming on the project\'s own site is always free.'],
     ['Where could my stablecoins earn more?', 'RektBull reads supply rates directly from Aave, Compound and Spark on Ethereum, Base and Arbitrum. A move is proposed only when it passes the rules (enough gain after costs, a venue not under strain), and costs 0.1% of what\'s moved. Rates change with demand.'],
     ['Will a site that asks me to "check eligibility" with my wallet pay out?', 'Be careful: connecting a wallet to an unknown "eligibility checker" is a common way to get drained. RektBull only needs your address to check, never a signature.'],
   ],

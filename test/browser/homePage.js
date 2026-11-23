@@ -25,7 +25,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     return { chain, kind: 'none' };
   };
   require('../../src/services/approvals').preview = async () => ({ summary: { open: 9, to_revoke: 2, by_severity: { critical: 1, high: 0, medium: 1, low: 7 }, value_at_risk_usd: 1234.5, not_priced: 0, chains_read: ['base'], chains_not_read: [{ chain: 'bsc', reason: 'no explorer answered' }] } });
-  require('../../src/services/claims').check = async () => ({ summary: { claimable: 2, claimable_usd: 41.2, not_priced: 0, chains: ['base'] }, sources: [{ name: 'Merkl rewards' }], not_checked: [], fee: { standard_rate: '5%', pro_rate: '3%' } });
+  require('../../src/services/claims').check = async () => ({ summary: { claimable: 2, claimable_usd: 41.2, not_priced: 0, chains: ['base'] }, sources: [{ name: 'Merkl rewards' }], not_checked: [], fee: { standard_rate: '5%', pro_rate: '5%' } });
   require('../../src/yield/proposals').summary = async () => ({ positions: [], idle: [{ chain: 'base', asset: 'USDC', usd: 900 }], total_in_positions_usd: 0, not_read: [], proposals_count: 1, extra_per_year_usd: 38.7 });
   require('../../src/services/governance').check = async () => { throw new Error('Snapshot hub didn\'t answer'); };
   const server = require('../../src/app').createApp().listen(0);
@@ -42,11 +42,13 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     assert.equal(await page.getAttribute('.bar .logo', 'aria-current'), 'page', 'the shared header marks this page');
     assert.match(await page.textContent('footer.site'), /Privacy/);
     assert.ok(await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 40px "Bricolage Grotesque"'); }), 'the fonts are served from RektBull');
-    await page.locator('#p-find', { hasText: '5% of what you claim (3% with Safety Pro)' }).waitFor();
+    await page.locator('#p-find', { hasText: 'Free to check; 5% of what you claim' }).waitFor();
+    assert.doesNotMatch(await page.textContent('#p-find'), /Safety Pro/, 'one claim fee for everyone: no Safety Pro rate named');
     const pricing = await page.textContent('#plans');
     assert.match(pricing, /30 free points a month/);
     assert.match(pricing, /\$9 for 30 days · \$79 a year/);
-    assert.match(pricing, /5% of a claim · 3% with Safety Pro/);
+    assert.match(pricing, /5% of a claim/);
+    assert.doesNotMatch(pricing, /with Safety Pro|claim fee instead/);
     assert.match(pricing, /0\.1% of each yield move/);
     assert.match(pricing, /1% of each trade/);
     await page.locator('#p-trade', { hasText: '1% per trade' }).waitFor();

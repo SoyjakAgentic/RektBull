@@ -48,14 +48,15 @@ test('published trees: Uniswap and OpenZeppelin formats are read into entries wh
   assert.throws(() => claims.parseTree('uniswap', {}), /merkleRoot and claims/);
 });
 
-test('claim fee: 5%, 3% with Safety Pro, paid by a transfer the user signs (never through the gate)', () => {
+test('claim fee: 5% for everyone (an admin can lower the Safety Pro rate), paid by a transfer the user signs (never through the gate)', () => {
   const p = catalog.product('airdrop_claim');
-  assert.deepEqual([p.kind, p.fee_bps, p.pro_fee_bps], ['fee', 500, 300]);
+  assert.deepEqual([p.kind, p.fee_bps, p.pro_fee_bps], ['fee', 500, 500]);
   assert.deepEqual(catalog.rails(p), ['claim_transfer']);
   assert.ok(catalog.SAFETY_PRO.covers.includes('airdrop_claim'));
-  assert.match(catalog.product('pro_30d').description, /3% claim fee/);
+  assert.doesNotMatch(catalog.product('pro_30d').description, /claim fee/, 'Safety Pro no longer lowers it');
+  assert.equal(catalog.fill('{{fee:airdrop_claim}} of it{{profee_note:airdrop_claim}}.'), '5% of it.', 'no Safety Pro rate named while it is the same');
   const listed = catalog.publicCatalog().find(x => x.id === 'airdrop_claim');
-  assert.deepEqual([listed.fee_bps, listed.pro_fee_bps], [500, 300]);
+  assert.deepEqual([listed.fee_bps, listed.pro_fee_bps], [500, 500]);
 });
 
 test('requests: a wallet, the chain and the items; an airdrop needs https, a source and parseable functions', () => {

@@ -44,7 +44,7 @@ const SAFETY_PRO = {
   monitor: { wallets: 3, every_hours: 24 },
   follow: { wallets: 25 }, // the wallet tracker: 5 wallets free, 25 with Safety Pro (src/services/walletTracker.js)
 };
-const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for full token reports and proposal summaries (about 20 reports; an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), a 3% claim fee instead of 5% on airdrops and rewards you claim through RektBull, yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), DAO votes: alerts when a vote opens or is about to close for a wallet you watch, and the wallet tracker for up to 25 wallets instead of 5.';
+const PRO_TEXT = 'Unlimited token checks and approval cleanups (fair use), an AI allowance every 30 days for its AI runs, such as proposal summaries (an answer already written for someone else uses none of it; once it is used up, they are paid like any run until it resets), pre-sign checks in the RektBull extension, the risk monitor (up to 3 wallets checked every day for new risky approvals, flagged or upgraded spenders, and stablecoin depegs), yield proposals (where your stablecoins and ETH could earn more, with the moves prepared for your wallet to sign, and alerts when a venue you hold turns risky), DAO votes: alerts when a vote opens or is about to close for a wallet you watch, and the wallet tracker for up to 25 wallets instead of 5.';
 
 const PRODUCTS = {
   token_quick_check: {
@@ -92,8 +92,9 @@ const PRODUCTS = {
     kind: 'run',
     title: 'Proposal summary',
     description: 'A DAO proposal in plain English, from its own text: what would change, what money and powers it moves, what each choice does, and what the text doesn\'t say. Never a recommendation.',
-    price_cents: 10,
-    points: 1,
+    // $1 from 23 November 2026 (the owner): well above 4 times its AI cost.
+    price_cents: 100,
+    points: 5,
     x402: true,
   },
   approval_cleanup: {
@@ -114,7 +115,9 @@ const PRODUCTS = {
     description: 'Checking for unclaimed airdrops and rewards is free. Claim through RektBull and a share of what you receive is sent to RektBull in a separate transfer you sign with the claim. Free when the tokens can\'t be transferred yet, or the fee is worth less than its gas.',
     price_cents: 0,
     fee_bps: 500,
-    pro_fee_bps: 300,
+    // 5% for everyone from 23 November 2026 (the owner). An admin can still set a lower Safety Pro rate;
+    // the pages name it only while it's lower.
+    pro_fee_bps: 500,
     x402: false,
   },
   // Polymarket winnings redeemed through RektBull: a share of the PROFIT (what the
@@ -247,10 +250,11 @@ const short = cents => (cents % 100 === 0 ? `$${(cents / 100).toLocaleString('en
 /**
  * Puts today's prices into page text: {{price:id}} "$9", {{usd:id}} "9" (for
  * structured data), {{points:id}} "5", {{fee:id}} and {{profee:id}} "5%",
+ * {{profee_note:id}} " (3% with Safety Pro)", only while that rate is lower,
  * {{free_points}} "30", {{ai_allowance}} "$2". Anything else is left as it is.
  */
 function fill(text) {
-  return String(text).replace(/\{\{(price|usd|points|fee|profee):([a-z0-9_]+)\}\}|\{\{(free_points|ai_allowance)\}\}/g, (m, kind, id, single) => {
+  return String(text).replace(/\{\{(price|usd|points|fee|profee_note|profee):([a-z0-9_]+)\}\}|\{\{(free_points|ai_allowance)\}\}/g, (m, kind, id, single) => {
     if (single === 'free_points') return String(FREE_POINTS.per_month);
     if (single === 'ai_allowance') return short(SAFETY_PRO.ai_allowance.cents_per_30_days);
     if (!PRODUCTS[id]) return m;
@@ -259,6 +263,7 @@ function fill(text) {
     if (kind === 'usd') return String(p.price_cents / 100);
     if (kind === 'points') return p.points ? String(p.points) : m;
     if (kind === 'fee') return p.fee_bps === undefined ? m : `${p.fee_bps / 100}%`;
+    if (kind === 'profee_note') return p.pro_fee_bps === undefined ? m : p.pro_fee_bps < p.fee_bps ? ` (${p.pro_fee_bps / 100}% with Safety Pro)` : '';
     return p.pro_fee_bps === undefined ? m : `${p.pro_fee_bps / 100}%`;
   });
 }

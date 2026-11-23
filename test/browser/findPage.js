@@ -44,7 +44,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
       ],
       summary: { claimable: 2, claimable_usd: 1000, not_priced: 1, chains: ['base'] },
       sources: [{ id: 'merkl', name: 'Merkl rewards', read: true }, { id: 'programs', name: 'Airdrops RektBull added', read: true }],
-      not_checked: [], fee: { bps: 500, rate: '5%', safety_pro: false, standard_rate: '5%', pro_rate: '3%' },
+      not_checked: [], fee: { bps: 500, rate: '5%', safety_pro: false, standard_rate: '5%', pro_rate: '5%' },
       note: 'Checking is free.',
     };
   };
@@ -135,7 +135,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
   try {
     await page.goto(url + '/find');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.card')).borderTopWidth), '1px', 'the stylesheet loaded');
-    await page.locator('#fee-what', { hasText: '5% of what you receive (3% with Safety Pro)' }).waitFor();
+    await page.locator('#fee-what', { hasText: '5% of what you receive goes to RektBull' }).waitFor();
     await page.locator('#programs', { hasText: 'None yet' }).waitFor();
 
     // The free check, without signing in.

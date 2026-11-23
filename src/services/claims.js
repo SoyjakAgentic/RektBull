@@ -16,7 +16,7 @@
  *             whether it's already claimed, onchain.
  *
  * Checking is free. Claiming through RektBull costs a share of what arrives
- * (5%, 3% with Safety Pro), as a plain ERC-20 transfer to RektBull's fee
+ * (5%; an admin can set a lower Safety Pro rate), as a plain ERC-20 transfer to RektBull's fee
  * wallet that the user signs next to the claim: no approval, and the
  * wallet shows it. The share is of what the simulation shows arriving in
  * the wallet, not what the claim says. There's no fee when the token can't
@@ -71,7 +71,7 @@ class ClaimRefused extends Error {
 
 /* ── the fee ── */
 
-/** The fee rate for this account: 5%, or 3% with an active Safety Pro pass. */
+/** The fee rate for this account: 5%, or the Safety Pro rate with an active pass (also 5% unless an admin lowers it). */
 async function feeFor(accountId) {
   const p = product('airdrop_claim');
   const pro = accountId ? await passes.covering(accountId, 'airdrop_claim') : null;
@@ -289,7 +289,7 @@ async function check(wallet, { accountId } = {}) {
     sources: f.sources,
     not_checked: f.notChecked,
     fee: { bps: fee.bps, rate: pct(fee.bps), safety_pro: fee.pro, standard_rate: pct(fee.standard_bps), pro_rate: pct(fee.pro_bps) },
-    note: `Checking is free. Claim through RektBull and ${pct(fee.bps)} of what arrives goes to RektBull, in a transfer you sign with the claim${fee.pro ? ' (Safety Pro rate)' : `; ${pct(fee.pro_bps)} with Safety Pro`}. Claiming on the project's own site is always free. Nothing found means nothing in these sources, not nothing anywhere.`,
+    note: `Checking is free. Claim through RektBull and ${pct(fee.bps)} of what arrives goes to RektBull, in a transfer you sign with the claim${fee.pro_bps >= fee.standard_bps ? '' : fee.pro ? ' (Safety Pro rate)' : `; ${pct(fee.pro_bps)} with Safety Pro`}. Claiming on the project's own site is always free. Nothing found means nothing in these sources, not nothing anywhere.`,
   };
 }
 

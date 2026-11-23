@@ -203,7 +203,7 @@ const PARTS = [
           { label: 'Worth', value: money(s.claimable_usd) + (s.not_priced ? ` + ${s.not_priced} not priced` : '') },
           { label: 'On', value: s.chains.length ? s.chains.map(nameOf).join(', ') : '–' },
         ],
-        action: s.claimable ? `Claim from your wallet (checking is free; ${r.fee.standard_rate} of what arrives, ${r.fee.pro_rate} with Safety Pro)` : 'See what was checked',
+        action: s.claimable ? `Claim from your wallet (checking is free; ${r.fee.standard_rate} of what arrives${r.fee.pro_rate !== r.fee.standard_rate ? `, ${r.fee.pro_rate} with Safety Pro` : ''})` : 'See what was checked',
         not_checked: r.not_checked,
         source: `${r.sources.map(x => x.name).join(' and ')}, each claim verified onchain`,
       };
