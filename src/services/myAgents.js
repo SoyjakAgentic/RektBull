@@ -95,6 +95,12 @@ const AGENTS = [
     plan: 'free', every: [], default_every: 0, default_on: true, runs_here: false, wallets: 'none',
   },
   {
+    id: 'perps_guard', name: 'Perps Guard', was: 'Hyperliquid AI proposals (phase 1: protecting positions)', desk: { name: 'Perps', href: '/perps#protect-card' },
+    does: 'Checks your Hyperliquid positions every 5 minutes, by stated rules: a liquidation price closer than a typical day\'s move, no stop-loss that would close the position before liquidation, and funding costing 25% a year or more. Each risk comes with a fix ready on the Perps page (a stop-loss, or reducing by half) for the trading key in your browser to sign. It never trades for you.',
+    alerts: 'When a position becomes at risk, once per position and risk (again if it gets worse), with the facts and their sources.',
+    plan: 'free', every: [1 / 12], default_every: 1 / 12, default_on: false, runs_here: true, wallets: 'signed_in',
+  },
+  {
     id: 'trading_agent', name: 'Trading Agent', was: 'Meme Coin Trader', desk: { name: 'Trade', href: '/trade' },
     does: 'Buys and sells within the limits your wallet signed onchain (a session key), and exits at your stop-loss or take-profit. It can only send the result back to your wallet.',
     alerts: 'When it sells a position at your stop-loss or take-profit.',
@@ -260,6 +266,26 @@ async function raise(accountId, alerts) {
 const sellLink = (chain, token) => `/trade?chain=${chain}&token=${token}&side=sell&fraction=100#trade-card`;
 
 const RUNNERS = {
+  /**
+   * Perps Guard: the account's Hyperliquid positions, checked by the stated
+   * rules in hyperliquid/protect.js. Never trades: each alert links the fix on
+   * the Perps page, for the trading key in the user's browser to sign.
+   */
+  async perps_guard({ account }) {
+    if (!account.wallet) return { alerts: [], snapshot: {}, result: { text: 'Hyperliquid accounts belong to EVM wallets: link one to your account.' } };
+    const r = await require('../hyperliquid/protect').review(account.wallet);
+    const alerts = r.proposals.map(p => ({
+      kind: 'perps_guard', severity: p.severity, wallet: account.wallet,
+      dedupe: `perps:${p.coin}:${p.position}:${p.kind}:${p.severity}`,
+      title: p.title,
+      detail: { reasons: [{ text: p.why, source: 'RektBull\'s rules (docs/HYPERLIQUID.md)' }, ...p.facts.filter(f => !f.not_checked)], coin: p.coin, has_fix: !!p.action, fix: p.action?.label || null },
+    }));
+    const n = r.positions || 0;
+    return {
+      alerts, snapshot: {},
+      result: { text: r.positions === undefined ? 'Your positions couldn\'t be read' : `${n} position${n === 1 ? '' : 's'} checked, ${r.proposals.length} at risk`, not_checked: r.not_checked.slice(0, 10) },
+    };
+  },
   /**
    * Meme Watch: the tokens this account bought through RektBull (positions),
    * checked for the things that come before a token goes to zero. Never sells:
@@ -586,8 +612,9 @@ async function runOne(row) {
   const raised = await raise(account.id, out.alerts.map(x => ({ ...x, wallet: x.wallet || account.wallet || account.solana_wallet })));
   await db.query(
     `UPDATE agent_settings SET snapshot = $3, last_result = $4, last_run_at = now(), last_error = NULL,
-       next_run_at = now() + make_interval(hours => $5) WHERE account_id = $1 AND agent = $2`,
-    [row.account_id, row.agent, JSON.stringify(out.snapshot), JSON.stringify({ ...out.result, alerts: raised }), every],
+       next_run_at = now() + make_interval(mins => $5) WHERE account_id = $1 AND agent = $2`,
+    // In minutes, so a schedule under an hour (Perps Guard's 5 minutes) works too.
+    [row.account_id, row.agent, JSON.stringify(out.snapshot), JSON.stringify({ ...out.result, alerts: raised }), Math.max(1, Math.round(every * 60))],
   );
   return { alerts: raised, result: out.result };
 }

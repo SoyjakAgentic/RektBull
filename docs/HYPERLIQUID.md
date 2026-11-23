@@ -101,11 +101,70 @@ badly within Hyperliquid's rules: it could not withdraw or transfer. That's why
 the key stays in KMS behind the trade service's account, and why the most a
 user can lose is what they keep in that Hyperliquid account.
 
+## Protecting positions (proposals, phase 1)
+
+Decided by the owner on 23 November 2026. RektBull checks the positions a user
+already holds against stated rules, and says what's happening in the deep
+markets. It never predicts a price or proposes opening a position. Entry
+proposals, if ever, come later, after a shadow period with a public scorecard.
+The code is `src/hyperliquid/protect.js`.
+
+**Proposals for a position** (`GET /v1/hyperliquid/protect`, the "Protect your
+positions" card):
+
+| Rule | Proposed |
+| --- | --- |
+| The liquidation price is within 5%, or within a typical day's range (the last 24 hourly candles, high to low), whichever is wider. Critical within half of that. | Reduce by half: a reduce-only IOC at no worse than 1% from the mark |
+| No stop-loss on the book that would close the position before its liquidation price | A stop-loss for the whole position (reduce-only, at the market when it triggers), 3 typical hourly moves from the mark and never more than 60% of the way to the liquidation price. With no candles: 5%. |
+| Funding against the position at 25% a year or more | Facts only: what it costs a day, and since it opened |
+
+- **Every fix is reduce-only.** It can close, never open or add, so region
+  blocks and a paused Perps service never stop it.
+- **The user signs.** The trading key in the browser signs the proposal's
+  orders, as for any order on the page.
+- **A proposal is good for 10 minutes and is used once.** Then it's made again
+  from the prices then (`hl_proposals`).
+- **No AI.** Each proposal's words are written from its facts, and every fact
+  names its source. If the candles or open orders can't be read, the proposal
+  says so. With open orders unread, it doesn't propose a second stop-loss.
+
+**The proposal fee.** An order from a proposal carries RektBull's proposal fee,
+`HL_PROPOSAL_FEE_TENTHS_BPS` (50 = 0.05%), instead of the 0.01% on the user's
+own orders. Hyperliquid sets the builder fee per order, so this needs no
+second builder address.
+- **The approval:** the user's wallet approves the higher rate once, as a
+  most-per-fill rate. The relay relays a fee approval up to the higher of the
+  two rates and no more.
+- **Where it may be carried:** the relay accepts 0.05% only on a request that
+  names a live proposal of the signed-in account (`proposal_id`), and only when
+  every order in it is reduce-only, in that proposal's market. Anything else
+  at 0.05% is refused (`wrong_fee`).
+- **Opting out:** the page says the user can place the same order themselves
+  in the order form, at 0.01%.
+
+**Market alerts** (`GET /v1/hyperliquid/alerts`, open to everyone, the "Market
+alerts" card) cover the deep markets only (open interest and 24-hour volume of
+$5M or more each):
+- funding of 100% a year or more, either way (high at 200%);
+- the mark price 0.5% or more from the oracle price;
+- open interest up 10% or more in an hour while the price moved under 1%;
+- open interest down 10% or more in an hour.
+
+Open interest is compared with RektBull's own snapshots, taken every 5 minutes
+by the `hl_markets` job (`hl_market_snapshots`, kept 48 hours). The alerts are
+facts, not a call on direction.
+
+**Perps Guard** (the AI agents page, free, every 5 minutes, off until the user
+switches it on) runs the same review and alerts each risk once per position.
+It alerts again if the risk gets worse (high to critical). Each alert links the
+fix on the Perps page. It never trades.
+
 ## The fee
 
 This is a Hyperliquid builder code: 0.01% of each fill by default, which is
-what Axiom charges. It's taken by Hyperliquid on fills only, after the user
-approves it once. See [PAYMENTS.md](PAYMENTS.md#perps-fees-hyperliquid-builder-code).
+what Axiom charges. Orders from a RektBull proposal carry 0.05% instead (see
+above). It's taken by Hyperliquid on fills only, after the user approves it
+once. See [PAYMENTS.md](PAYMENTS.md#perps-fees-hyperliquid-builder-code).
 
 ## Region blocks
 
@@ -127,6 +186,7 @@ the blocks refuse everyone.
 | `HL_ENABLED` | Trading on the page (viewing works either way) |
 | `HL_NETWORK` | `mainnet` or `testnet` |
 | `HL_BUILDER_ADDRESS`, `HL_BUILDER_FEE_TENTHS_BPS` | The fee (PAYMENTS.md) |
+| `HL_PROPOSAL_FEE_TENTHS_BPS` | The fee on an order from a RektBull proposal (50 = 0.05%) |
 | `HL_AUTO_ENABLED` | Automatic trading |
 | `HL_AGENT_ADDRESS`, `KMS_HL_AGENT_KEY_VERSION` | RektBull's agent: public address, and its KMS key (trade service only) |
 | `HL_AUTO_MAX_LEVERAGE`, `HL_AUTO_PRICE_BAND_BPS` | Leverage cap (10), price band (50 = 0.5%) |
@@ -153,4 +213,6 @@ the blocks refuse everyone.
 - `test/hyperliquidAuto.test.js`: grants, limits, the price band, the fee
   check, isolated margin, closing, region blocks, the emergency stop and
   revoking.
+- `test/hlProtect.test.js`: the protection rules, the proposal fee only on a
+  live proposal's reduce-only orders, the market alerts and Perps Guard.
 - `test/browser/perps.js`: the page in Chromium, manual and automatic.

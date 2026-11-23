@@ -16,6 +16,7 @@ const relay = require('../hyperliquid/relay');
 const H = require('../../public/hl-core.js');
 const regions = require('../compliance/regions');
 const auto = require('../hyperliquid/auto');
+const protect = require('../hyperliquid/protect');
 
 const router = express.Router();
 
@@ -36,8 +37,11 @@ const BUILDER_MIN_ACCOUNT_USD = 100;
 function builderConfig() {
   const b = relay.builder();
   if (!b) return { address: null, fee_tenths_bps: 0, fee_pct: 0, note: 'No builder address is set (HL_BUILDER_ADDRESS), so orders are sent with no builder field and RektBull takes no fee on them.' };
+  const pf = protect.proposalBuilder().f;
   return {
     address: b.b, fee_tenths_bps: b.f, fee_pct: b.f / 1000, max_fee_rate: H.feeRate(b.f),
+    // Orders from a RektBull proposal (a stop-loss, reducing by half) carry this instead: hyperliquid/protect.js.
+    proposal_fee_tenths_bps: pf, proposal_fee_rate: H.feeRate(pf),
     note: `RektBull's fee is ${H.feeRate(b.f)} of each fill, taken by Hyperliquid when an order fills and never otherwise. You approve it once, as a most-per-fill rate; it isn't a token approval and can't be raised without a new signature from your wallet.`,
     builder_min_account_usd: BUILDER_MIN_ACCOUNT_USD,
   };
@@ -98,10 +102,16 @@ router.get('/v1/hyperliquid/approvals', requireEvmWallet, refusal(async (req, re
   res.json(await markets.approvals(req.account.wallet, req.query.fresh ? { ms: 0 } : {}));
 }));
 
-/** A signed action, passed on to Hyperliquid. */
+/** A signed action, passed on to Hyperliquid. With proposal_id: an order from a RektBull proposal, which may carry the proposal fee. */
 router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, res) => {
+  let proposal = null;
+  if (req.body?.proposal_id !== undefined) {
+    proposal = await protect.live(req.account.id, req.body.proposal_id);
+    if (!proposal) throw new relay.RelayRefused('This proposal has expired or was already used. Proposals are good for 10 minutes: refresh for one made from the prices now.', 409, 'proposal_expired');
+  }
   const out = await relay.send(req.body, {
     wallet: req.account.wallet,
+    proposal,
     before: checked => {
       // RektBull's own agent is approved only through /auto/grant, so its limits are always recorded with it.
       const a = checked.payload.action;
@@ -114,6 +124,7 @@ router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, re
       }
     },
   });
+  if (proposal) await protect.acted(proposal.id);
   // RektBull Points: a rebate of the builder fee on what filled (Hyperliquid's own answer, not the page's).
   const b = req.body?.action?.builder;
   const filledUsd = (out.results || []).filter(r => r.filled).reduce((s, r) => s + r.size * r.avg_px, 0);
@@ -121,6 +132,19 @@ router.post('/v1/hyperliquid/exchange', requireEvmWallet, refusal(async (req, re
     await require('../rewards/points').safeCredit({ accountId: req.account.id, source: 'perps', ref: `${req.account.id}:${req.body.nonce}`, feeUsd: filledUsd * b.f / 100000 });
   }
   res.json(out);
+}));
+
+/* ── protecting positions and market alerts (hyperliquid/protect.js): rules, not predictions ── */
+
+/** The signed-in wallet's open positions, each checked by the stated rules, with any fix ready to sign. */
+router.get('/v1/hyperliquid/protect', requireEvmWallet, refusal(async (req, res) => {
+  res.json(await protect.save(req.account, await protect.review(req.account.wallet)));
+}));
+
+/** What's happening in the deep markets: extreme funding, mark and oracle apart, open interest building or flushing. */
+router.get('/v1/hyperliquid/alerts', refusal(async (_req, res) => {
+  res.set('cache-control', 'public, max-age=30');
+  res.json(await protect.marketAlerts());
 }));
 
 /* ── automatic trading (hyperliquid/auto.js): RektBull's agent, the user's limits, enforced by the trade service ── */

@@ -89,6 +89,9 @@ const env = {
   // tenths of a basis point (10 = 0.01%). Unset address: orders carry no builder field and no RektBull fee.
   hlBuilderAddress: /^0x[0-9a-fA-F]{40}$/.test(process.env.HL_BUILDER_ADDRESS || '') ? process.env.HL_BUILDER_ADDRESS.toLowerCase() : '',
   hlBuilderFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_BUILDER_FEE_TENTHS_BPS, 10))), // Hyperliquid's cap on perps is 0.1% (100)
+  // The fee on an order from a RektBull proposal (hyperliquid/protect.js), 0.05% by default: the owner, 23 November 2026.
+  // Only an order matching a live proposal may carry it (hyperliquid/relay.js); the user's own orders carry the fee above.
+  hlProposalFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_PROPOSAL_FEE_TENTHS_BPS, 50))),
   // Automatic trading only opens positions in markets at least this deep (both must hold).
   hlAutoMinOpenInterestUsd: int(process.env.HL_AUTO_MIN_OPEN_INTEREST_USD, 5000000),
   hlAutoMinDayVolumeUsd: int(process.env.HL_AUTO_MIN_DAY_VOLUME_USD, 5000000),

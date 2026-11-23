@@ -214,7 +214,7 @@
     $('fee-revoke').hidden = !b.address || !f?.approved_tenths_bps;
     if (!b.address) return say('fee-status', '');
     if (!f || f.error) return say('fee-status', f?.error || 'Whether the fee is approved couldn\'t be read.', 'bad');
-    say('fee-status', f.approved ? `Approved: at most ${b.max_fee_rate} of each fill, to ${short(b.address)}.` : `Not approved yet. Hyperliquid refuses an order that carries a fee you haven't approved.`, f.approved ? 'ok' : '');
+    say('fee-status', f.approved ? `Approved: at most ${H.feeRate(f.approved_tenths_bps)} of each fill, to ${short(b.address)}. Your own orders carry ${b.max_fee_rate}${b.proposal_fee_tenths_bps > b.fee_tenths_bps ? `; fixes from a RektBull proposal carry ${b.proposal_fee_rate}` : ''}.` : `Not approved yet. Hyperliquid refuses an order that carries a fee you haven't approved.`, f.approved ? 'ok' : '');
   };
   async function approveFee(tenthsBps) {
     try {
@@ -233,14 +233,14 @@
 
   /* ── orders ── */
 
-  /** Signs an L1 action with the trading key and sends the signature through RektBull's relay. */
-  async function send(action) {
+  /** Signs an L1 action with the trading key and sends the signature through RektBull's relay. extra: e.g. { proposal_id }. */
+  async function send(action, extra = {}) {
     const signer = agentSigner();
     if (!signer) throw new Error('Approve a trading key first (step 2).');
     const n = nonce();
     const expiresAfter = n + hl.config.order.expires_seconds * 1000;
     const signature = await H.signL1(signer, action, { nonce: n, mainnet: mainnet(), expiresAfter });
-    return api('POST', '/v1/hyperliquid/exchange', { action, nonce: n, signature, expiresAfter });
+    return api('POST', '/v1/hyperliquid/exchange', { ...extra, action, nonce: n, signature, expiresAfter });
   }
   const outcome = r => (r.results || []).map(x => (x.filled ? `Filled ${x.size} at ${px(x.avg_px)}.` : x.resting ? `Order ${x.oid} is resting on the book.` : x.error ? `Hyperliquid refused it: ${x.error}` : x.status || 'Done.')).join(' ') || 'Done.';
   const failed = r => (r.results || []).some(x => x.error);
@@ -381,6 +381,7 @@
     await Promise.all([loadAccount(), loadApprovals()]);
     if (hl.afterSignIn) await hl.afterSignIn();
     if (RB.state.hlAuto) await RB.state.hlAuto.load();
+    if (RB.state.hlProtect) await RB.state.hlProtect.load();
     showPlan();
   }
 
@@ -400,6 +401,11 @@
     await loadMarkets();
     setInterval(() => { if (!document.hidden) loadMarkets().then(showPlan); }, 5000);
     setInterval(() => { if (!document.hidden) loadAccount(); }, 10000);
+    if (RB.state.hlProtect) {
+      RB.state.hlProtect.alerts();
+      setInterval(() => { if (!document.hidden) RB.state.hlProtect.alerts(); }, 60000);
+      setInterval(() => { if (!document.hidden) RB.state.hlProtect.load(); }, 60000);
+    }
     if (hl.init) hl.init();
     await afterSignIn();
   }

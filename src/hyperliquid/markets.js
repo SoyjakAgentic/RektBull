@@ -118,7 +118,11 @@ async function approvals(user, { ms = 5000 } = {}) {
   if (agents.ok) out.agents = (agents.value || []).map(a => ({ name: a.name, address: String(a.address).toLowerCase(), valid_until: a.validUntil ?? null }));
   else out.agents_error = `Approved agents couldn't be read: ${agents.error}`;
   if (!builder) out.builder_fee = { set: false, note: 'RektBull has no builder address set, so orders carry no RektBull fee.' };
-  else if (fee.ok) out.builder_fee = { set: true, builder, approved_tenths_bps: Number(fee.value) || 0, needed_tenths_bps: env.hlBuilderFeeTenthsBps, approved: (Number(fee.value) || 0) >= env.hlBuilderFeeTenthsBps };
+  else if (fee.ok) {
+    const approved = Number(fee.value) || 0;
+    const proposal = Math.max(env.hlProposalFeeTenthsBps, env.hlBuilderFeeTenthsBps);
+    out.builder_fee = { set: true, builder, approved_tenths_bps: approved, needed_tenths_bps: env.hlBuilderFeeTenthsBps, approved: approved >= env.hlBuilderFeeTenthsBps, proposal_tenths_bps: proposal, proposal_approved: approved >= proposal };
+  }
   else out.builder_fee = { set: true, builder, error: `The builder fee approval couldn't be read: ${fee.error}` };
   return out;
 }

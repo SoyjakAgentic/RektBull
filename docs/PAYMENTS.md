@@ -16,7 +16,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **AI proposal fee** | Acting on a Polymarket AI proposal: $0.25 of Safety Pro AI credits, once (seeing it is free). Meme coin picks are free (docs/MEME_PROPOSALS.md) | Yes (Safety Pro) | `forecasts/proposals.js` |
 | **Automation fee** (Polymarket) | Each automatic entry RektBull's Session Key places that fills: 1% of what filled, at least $0.25, from Safety Pro AI credits, on top of the AI builder fee | Yes (wallet sign-in; Safety Pro) | `polymarket/auto.js` |
 | **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.1% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
-| **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
+| **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill. A fix from a RektBull proposal (a stop-loss, reducing by half): 0.05% | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js`, `hyperliquid/protect.js` |
 | **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives, in the claimed tokens | No | `services/claims.js` |
 
 ## Order a run is paid in
@@ -253,6 +253,16 @@ transaction", docs.axiom.trade/perpetuals/deposit, read 16 November 2026).
   open a position unless it names RektBull's builder at exactly RektBull's
   rate, and refuses any other builder address. Orders that can only close a
   position (reduce-only) may go without it, so a position can always be closed.
+- **Orders from a RektBull proposal: 0.05%** (`HL_PROPOSAL_FEE_TENTHS_BPS`,
+  the owner, 23 November 2026). This is a fix for a position the user holds:
+  a stop-loss, or reducing by half ([HYPERLIQUID.md](HYPERLIQUID.md#protecting-positions-proposals-phase-1)).
+  - Seeing proposals and market alerts, and Perps Guard's alerts, is free; the
+    fee is only on what fills.
+  - Hyperliquid sets the builder fee per order, so it's the same builder
+    address. The user approves the higher rate once, and their own orders
+    still carry 0.01%.
+  - The relay accepts 0.05% only on a live proposal's reduce-only orders, in
+    its market, for the account it was made for.
 - **Unset address, no fee.** With `HL_BUILDER_ADDRESS` unset, orders are sent
   with no builder field, and `GET /v1/hyperliquid/config` says so.
 - **The user can take it back** at any time: on the Perps page (an approval
