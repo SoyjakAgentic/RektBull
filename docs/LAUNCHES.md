@@ -297,11 +297,32 @@ provider; switching is two settings.
 - **Volume to watch:** pump.fun's busiest hours are hundreds of transactions a
   second. The filter keeps only pump.fun's, but check the add-on's limits on
   streams and bandwidth when it's bought.
-- **Next uses, not built yet:**
-  - Meme Watch on Solana: launch-bundle and insider wallets selling, within
-    seconds instead of every 6 hours (a filter on those wallets).
-  - A Solana Wallet Tracker: following wallets' buys and sells, as on the EVM
-    chains.
+- **Meme Watch on Solana, streamed: built** (`src/services/insiderWatch.js`).
+  It watches the launch-bundle groups Meme Watch found for the Solana coins
+  its users hold, as they trade.
+  - **On the stream:** their wallets ride the same subscription as pump.fun's
+    program, as filters of 200 wallets, at most 19, so up to 3,800 wallets.
+    The list is rebuilt every minute and sent to the live connection only when
+    it changes. Wallets beyond the limit are left to the 6-hour check, and the
+    health view says how many.
+  - **What counts as a sale:** a transaction after which a group's wallets,
+    together, hold less of the coin, read from that transaction's own token
+    balances. Moves between the group's own wallets cancel out. Each sale is
+    recorded once (`solana_insider_sells`), so a reconnect's resend adds
+    nothing.
+  - **Alerts,** to every account that holds the coin and has Meme Watch on:
+    - **the group's first sale,** high, once;
+    - **each 20% of what it bought,** critical. This is the same alert, under
+      the same key, as the 6-hour check, so nobody is told twice.
+
+    "What it bought" is its share of the supply at launch, times the supply
+    (Solana RPC, kept a day). What's gone counts the sales seen since the
+    stream started watching the group.
+  - **The fallback:** the 6-hour balance check carries on whatever the stream
+    does, and covers any gap while it's down.
+- **Next use, not built yet:** a Solana Wallet Tracker, following wallets'
+  buys and sells as on the EVM chains, on the same subscription's spare
+  filters.
 
 ## AI picks: built (meme coin proposals)
 

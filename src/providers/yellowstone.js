@@ -41,16 +41,36 @@ function status(name) {
   return { configured: true, live: !!live, ...s, ...(live ? {} : { why: s.last_error || 'no messages in the last minute' }) };
 }
 
+// Chainstack's limits on one subscription (its docs; the same on every plan): 20 transaction filters, 200 accounts in each list.
+const MAX_FILTERS = 20;
+const MAX_ACCOUNTS = 200;
+
+const asFilter = f => ({ vote: false, failed: false, accountInclude: f.accountInclude || [], accountExclude: [], accountRequired: f.accountRequired || [] });
+function checkFilters(filters) {
+  const names = Object.keys(filters);
+  if (!names.length || names.length > MAX_FILTERS) throw new Error(`a subscription takes 1 to ${MAX_FILTERS} transaction filters (${names.length} given)`);
+  for (const [k, f] of Object.entries(filters)) {
+    for (const list of ['accountInclude', 'accountRequired']) if ((f[list] || []).length > MAX_ACCOUNTS) throw new Error(`filter ${k}: at most ${MAX_ACCOUNTS} accounts in ${list}`);
+    if (!(f.accountInclude || []).length && !(f.accountRequired || []).length) throw new Error(`filter ${k} has no accounts (the provider refuses a filter with no condition)`);
+  }
+}
+
 /**
- * Opens a named transaction stream. filter: { accountInclude, accountRequired? }.
- * onTransaction(update.transaction) is called for each confirmed, successful
- * transaction that matches. Returns a stop function. Does nothing when unset.
+ * Opens a named subscription: one connection carrying several named
+ * transaction filters ({ name: { accountInclude, accountRequired? } }, at
+ * most 20, each list at most 200 accounts). onTransaction(update.transaction,
+ * filterNames) is called for each confirmed, successful transaction that
+ * matches, with the names of the filters it matched. updateFilters() changes
+ * them on the live connection, and every restart uses the current set.
+ * Returns a stop function. Does nothing when unset.
  */
-async function subscribeTransactions(name, filter, onTransaction, control = { stopped: false }) {
+async function subscribe(name, filters, onTransaction, control = { stopped: false }) {
   if (!configured() || control.stopped) return () => {};
   if (streams.has(name)) throw new Error(`a Yellowstone stream called ${name} is already open`);
-  const status = { connected: false, started_at: Date.now(), last_message_at: null, messages: 0, transactions: 0, reconnects: 0, last_error: null };
-  const entry = { status, stream: null, timer: null };
+  control.filters ||= filters;
+  checkFilters(control.filters);
+  const status = { connected: false, started_at: Date.now(), last_message_at: null, messages: 0, transactions: 0, reconnects: 0, last_error: null, filters: Object.keys(control.filters).length };
+  const entry = { status, stream: null, timer: null, request: null, control };
   streams.set(name, entry);
   try {
     const lib = loadClient();
@@ -58,9 +78,10 @@ async function subscribeTransactions(name, filter, onTransaction, control = { st
     const client = new Client(env.yellowstoneGrpcUrl, env.yellowstoneGrpcToken, undefined, { backoff: { initialIntervalMs: 500, multiplier: 2, maxRetries: 20 }, policy: 'NoReplay' });
     const request = {
       accounts: {}, slots: {}, transactionsStatus: {}, blocks: {}, blocksMeta: {}, entry: {}, accountsDataSlice: [],
-      transactions: { [name]: { vote: false, failed: false, accountInclude: filter.accountInclude || [], accountExclude: [], accountRequired: filter.accountRequired || [] } },
+      transactions: Object.fromEntries(Object.entries(control.filters).map(([k, f]) => [k, asFilter(f)])),
       commitment: lib.CommitmentLevel ? lib.CommitmentLevel.CONFIRMED : 1,
     };
+    entry.request = request;
     await track('yellowstone', () => client.connect());
     const stream = await client.subscribeWithReconnect(request);
     entry.stream = stream;
@@ -72,7 +93,7 @@ async function subscribeTransactions(name, filter, onTransaction, control = { st
       const update = event.type === 'Update' ? event.update : event;
       if (!update?.transaction?.transaction) return;
       status.transactions++;
-      try { onTransaction(update.transaction); } catch (err) { status.last_error = `a transaction couldn't be read: ${err.message}`; }
+      try { onTransaction(update.transaction, update.filters || []); } catch (err) { status.last_error = `a transaction couldn't be read: ${err.message}`; }
     });
     stream.on('error', err => {
       status.connected = false;
@@ -82,7 +103,7 @@ async function subscribeTransactions(name, filter, onTransaction, control = { st
       clearInterval(entry.timer);
       streams.delete(name);
       // Unless it was stopped meanwhile: a worker that gave up its lock must never reopen it.
-      if (!control.stopped) setTimeout(() => { if (!control.stopped) subscribeTransactions(name, filter, onTransaction, control).catch(e => logger.warn('yellowstone restart failed', { name, error: e.message })); }, 60000).unref();
+      if (!control.stopped) setTimeout(() => { if (!control.stopped) subscribe(name, control.filters, onTransaction, control).catch(e => logger.warn('yellowstone restart failed', { name, error: e.message })); }, 60000).unref();
     });
     let id = 1;
     entry.timer = setInterval(() => { try { stream.write({ ...request, ping: { id: id++ } }); } catch { /* the error handler sees it */ } }, PING_MS);
@@ -101,6 +122,26 @@ async function subscribeTransactions(name, filter, onTransaction, control = { st
     try { cur.stream?.end?.(); } catch { /* already closed */ }
     streams.delete(name);
   };
+}
+
+/** One filter on its own subscription (the first use: pump.fun's program). */
+const subscribeTransactions = (name, filter, onTransaction, control) => subscribe(name, { [name]: filter }, onTransaction, control);
+
+/**
+ * Replaces a subscription's filters on the live connection (the client sends
+ * the new request; its reconnects use it too), and for any restart to come.
+ * Returns false when there's no such subscription open.
+ */
+function updateFilters(name, filters) {
+  checkFilters(filters);
+  const e = streams.get(name);
+  if (!e) return false;
+  e.control.filters = filters;
+  e.status.filters = Object.keys(filters).length;
+  if (!e.request || !e.stream) return true; // still opening: it will use them
+  e.request.transactions = Object.fromEntries(Object.entries(filters).map(([k, f]) => [k, asFilter(f)]));
+  e.stream.write(e.request);
+  return true;
 }
 
 /* ── reading a transaction update (the client's protobuf shapes) ── */
@@ -122,10 +163,26 @@ function readTransaction(t) {
   const ix = [];
   for (const i of msg?.instructions || []) ix.push({ program: keys[i.programIdIndex], data: Buffer.from(i.data || []) });
   for (const group of meta.innerInstructions || []) for (const i of group.instructions || []) ix.push({ program: keys[i.programIdIndex], data: Buffer.from(i.data || []) });
-  return { signature: info.signature ? b58(info.signature) : null, slot: t.slot ?? null, keys, logs: meta.logMessages || [], instructions: ix, failed: !!meta.err };
+  // Token balances before and after, summed per owner and mint (an owner can hold a mint in several accounts).
+  const sum = list => {
+    const out = new Map();
+    for (const b of list || []) {
+      if (!b.owner || !b.mint) continue;
+      const k = `${b.owner}|${b.mint}`;
+      out.set(k, (out.get(k) || 0n) + BigInt(b.uiTokenAmount?.amount || '0'));
+    }
+    return out;
+  };
+  const pre = sum(meta.preTokenBalances);
+  const post = sum(meta.postTokenBalances);
+  const balances = [...new Set([...pre.keys(), ...post.keys()])].map(k => {
+    const [owner, mint] = k.split('|');
+    return { owner, mint, pre: pre.get(k) || 0n, post: post.get(k) || 0n };
+  });
+  return { signature: info.signature ? b58(info.signature) : null, slot: t.slot ?? null, keys, logs: meta.logMessages || [], instructions: ix, balances, failed: !!meta.err };
 }
 
 module.exports = {
-  SOURCE, configured, status, subscribeTransactions, readTransaction,
+  SOURCE, MAX_FILTERS, MAX_ACCOUNTS, configured, status, subscribe, subscribeTransactions, updateFilters, readTransaction,
   _setClient: fn => { loadClient = fn; }, _reset: () => { for (const e of streams.values()) clearInterval(e.timer); streams.clear(); },
 };
