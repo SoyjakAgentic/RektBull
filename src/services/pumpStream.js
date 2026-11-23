@@ -1,0 +1,213 @@
+/**
+ * pump.fun's own events, streamed (providers/yellowstone.js): the coins
+ * created, every buy and sell on their curves, and each curve completing and
+ * moving to PumpSwap, seconds after the chain confirms them. It feeds the
+ * Solana launch feed (solanaLaunches.js), and through it the meme picks'
+ * watchlist, instead of polling GeckoTerminal every 20 seconds.
+ *
+ * The events are pump.fun's Anchor events, read with the layouts in pump.fun's
+ * published IDL (github.com/pump-fun/pump-public-docs, idl/pump.json, read
+ * 23 November 2026):
+ *   CreateEvent                    name, symbol, uri, mint, bonding_curve, user, creator, timestamp,
+ *                                  reserves, supply, token_program, flags, quote_mint, …
+ *   TradeEvent                     mint, sol_amount, token_amount, is_buy, user, timestamp,
+ *                                  virtual and real reserves, …, quote_mint, …
+ *   CompleteEvent                  user, mint, bonding_curve, timestamp, quote_mint
+ *   CompletePumpAmmMigrationEvent  user, mint, amounts, bonding_curve, timestamp, pool, quote_mint
+ * Only the leading fields are needed; later fields pump.fun adds are ignored.
+ * Each event is found either as a self-CPI inner instruction (Anchor's
+ * emit_cpi: an 8-byte event tag, then the event's 8-byte discriminator) or as
+ * a "Program data:" log line (emit!), whichever the program used.
+ *
+ * Curves priced in anything other than SOL are left out, as in the polled feed.
+ *
+ * Runs in the worker only. What it holds is kept in memory and written to the
+ * shared cache every few seconds (STATE_KEY) for the web role to read; the
+ * feed uses it only while it's fresh, and otherwise polls as before.
+ */
+const { getAddressDecoder } = require('@solana/kit');
+const yellowstone = require('../providers/yellowstone');
+const cache = require('../lib/cache');
+const logger = require('../config/logger');
+
+const PUMP = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+const STATE_KEY = 'launches:stream:solana';
+const FLUSH_MS = 2000;
+const FRESH_MS = 30000; // the feed trusts the stream's state while it was written within this
+const NEW_WINDOW_MS = 3600000; // new coins kept for an hour
+const KEEP_NAMES_MS = 24 * 3600000; // a coin's name and symbol kept for a day, for its graduation card
+const TRADED_WINDOW_MS = 3600000; // a curve counts as active for an hour after its last trade
+const MAX = { creates: 20000, curves: 5000, graduated: 200, written_curves: 300, written_new: 200 };
+
+// pump.fun's IDL discriminators (sha256("event:<Name>")[0..8]).
+const DISC = {
+  create: Buffer.from([27, 114, 169, 77, 222, 235, 99, 118]),
+  trade: Buffer.from([189, 219, 127, 211, 78, 230, 97, 238]),
+  complete: Buffer.from([95, 114, 97, 156, 212, 46, 152, 8]),
+  migrate: Buffer.from([189, 233, 93, 185, 92, 148, 234, 148]),
+};
+// Anchor's tag before a self-CPI event (EVENT_IX_TAG, little-endian).
+const EVENT_TAG = Buffer.from([0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d]);
+const SOL_QUOTES = new Set(['So11111111111111111111111111111111111111112', '11111111111111111111111111111111']);
+
+/** A borsh reader that says when it ran out, so a field pump.fun hasn't sent reads as undefined. */
+class Reader {
+  constructor(b) { this.b = b; this.o = 0; }
+  has(n) { return this.o + n <= this.b.length; }
+  take(n) { if (!this.has(n)) throw new RangeError('short'); const s = this.b.subarray(this.o, this.o + n); this.o += n; return s; }
+  pubkey() { return getAddressDecoder().decode(Uint8Array.from(this.take(32))); }
+  u64() { return this.take(8).readBigUInt64LE(0); }
+  i64() { return this.take(8).readBigInt64LE(0); }
+  u16() { return this.take(2).readUInt16LE(0); }
+  bool() { return this.take(1)[0] === 1; }
+  u8() { return this.take(1)[0]; }
+  string() { const n = this.take(4).readUInt32LE(0); if (n > 1000) throw new RangeError('long'); return this.take(n).toString('utf8'); }
+  /** Reads the rest only if it's there: undefined when pump.fun's event stops before it. */
+  maybe(fn) { const at = this.o; try { return fn(); } catch { this.o = at; return undefined; } }
+}
+
+function decodeCreate(r) {
+  const e = { type: 'create', name: r.string(), symbol: r.string(), uri: r.string(), mint: r.pubkey(), bonding_curve: r.pubkey(), user: r.pubkey(), creator: r.pubkey(), timestamp: Number(r.i64()) };
+  r.maybe(() => { r.u64(); r.u64(); r.u64(); r.u64(); r.pubkey(); r.bool(); r.bool(); e.quote_mint = r.pubkey(); });
+  return e;
+}
+function decodeTrade(r) {
+  const e = {
+    type: 'trade', mint: r.pubkey(), sol_amount: r.u64(), token_amount: r.u64(), is_buy: r.bool(), user: r.pubkey(), timestamp: Number(r.i64()),
+    virtual_sol_reserves: r.u64(), virtual_token_reserves: r.u64(), real_sol_reserves: r.u64(), real_token_reserves: r.u64(),
+  };
+  // On to quote_mint: fee_recipient, fee_bps, fee, creator, creator_fee_bps, creator_fee, track_volume, two totals,
+  // current_sol_volume, last_update_timestamp, ix_name, mayhem_mode, cashback bps and amount, buyback bps and amount, shareholders.
+  r.maybe(() => {
+    r.pubkey(); r.u64(); r.u64(); r.pubkey(); r.u64(); r.u64(); r.bool(); r.u64(); r.u64(); r.u64(); r.i64(); r.string(); r.bool(); r.u64(); r.u64(); r.u64(); r.u64();
+    const n = r.take(4).readUInt32LE(0);
+    if (n > 100) throw new RangeError('long');
+    for (let i = 0; i < n; i++) { r.pubkey(); r.u16(); }
+    e.quote_mint = r.pubkey();
+  });
+  return e;
+}
+function decodeComplete(r) {
+  const e = { type: 'complete', user: r.pubkey(), mint: r.pubkey(), bonding_curve: r.pubkey(), timestamp: Number(r.i64()) };
+  r.maybe(() => { e.quote_mint = r.pubkey(); });
+  return e;
+}
+function decodeMigrate(r) {
+  const e = { type: 'migrate', user: r.pubkey(), mint: r.pubkey(), mint_amount: r.u64(), sol_amount: r.u64(), pool_migration_fee: r.u64(), bonding_curve: r.pubkey(), timestamp: Number(r.i64()), pool: r.pubkey() };
+  r.maybe(() => { e.quote_mint = r.pubkey(); });
+  return e;
+}
+const DECODE = [[DISC.create, decodeCreate], [DISC.trade, decodeTrade], [DISC.complete, decodeComplete], [DISC.migrate, decodeMigrate]];
+
+/** One event from its bytes (discriminator first), or null when it isn't one of these four or can't be read. */
+function decodeEvent(bytes) {
+  if (!bytes || bytes.length < 8) return null;
+  const d = bytes.subarray(0, 8);
+  const hit = DECODE.find(([disc]) => disc.equals(d));
+  if (!hit) return null;
+  try { return hit[1](new Reader(bytes.subarray(8))); } catch { return null; }
+}
+
+/** pump.fun's events in one transaction (from yellowstone.readTransaction), self-CPI first, else its log lines. */
+function eventsOf(tx) {
+  if (tx.failed) return [];
+  const cpi = tx.instructions.filter(i => i.program === PUMP && i.data.length > 16 && i.data.subarray(0, 8).equals(EVENT_TAG)).map(i => decodeEvent(i.data.subarray(8))).filter(Boolean);
+  if (cpi.length) return cpi;
+  return tx.logs.filter(l => l.startsWith('Program data: ')).map(l => decodeEvent(Buffer.from(l.slice(14), 'base64'))).filter(Boolean);
+}
+const inSol = e => e.quote_mint === undefined || SOL_QUOTES.has(e.quote_mint);
+
+/* ── what the worker holds ── */
+
+function emptyState() {
+  return { creates: new Map(), curves: new Map(), graduated: new Map(), started_at: Date.now(), events: 0, changed: false };
+}
+let st = emptyState();
+
+/** Takes one decoded event into the state. */
+function apply(e, now = Date.now(), s = st) {
+  if (!inSol(e)) return;
+  s.events++;
+  s.changed = true;
+  const at = e.timestamp > 0 ? e.timestamp * 1000 : now;
+  if (e.type === 'create') {
+    s.creates.set(e.mint, { mint: e.mint, curve: e.bonding_curve, name: e.name, symbol: e.symbol, creator: e.creator, at });
+  } else if (e.type === 'trade') {
+    s.curves.set(e.mint, { mint: e.mint, real_token: e.real_token_reserves.toString(), real_sol: e.real_sol_reserves.toString(), last_trade_at: at, trades: (s.curves.get(e.mint)?.trades || 0) + 1 });
+  } else if (e.type === 'complete') {
+    s.curves.delete(e.mint);
+    if (!s.graduated.has(e.mint)) s.graduated.set(e.mint, { mint: e.mint, pool: null, at });
+  } else if (e.type === 'migrate') {
+    s.curves.delete(e.mint);
+    s.graduated.set(e.mint, { mint: e.mint, pool: e.pool, at: s.graduated.get(e.mint)?.at || at });
+  }
+}
+
+/** Drops what's too old and keeps each map within bounds. */
+function prune(now = Date.now(), s = st) {
+  const cut = (map, keep, field, max) => {
+    for (const [k, v] of map) if (now - v[field] > keep) map.delete(k);
+    while (map.size > max) map.delete(map.keys().next().value); // oldest first: a Map keeps insertion order
+  };
+  cut(s.creates, KEEP_NAMES_MS, 'at', MAX.creates);
+  cut(s.curves, TRADED_WINDOW_MS, 'last_trade_at', MAX.curves);
+  cut(s.graduated, KEEP_NAMES_MS, 'at', MAX.graduated);
+}
+
+/** What's written for the feed: the last hour's new coins, the most-funded active curves, and the day's graduations. */
+function snapshot(now = Date.now(), s = st) {
+  const name = m => s.creates.get(m) || {};
+  return {
+    written_at: new Date(now).toISOString(), started_at: new Date(s.started_at).toISOString(), events: s.events,
+    live: yellowstone.status('pumpfun').live,
+    launches: [...s.creates.values()].filter(c => now - c.at < NEW_WINDOW_MS).sort((a, b) => b.at - a.at).slice(0, MAX.written_new),
+    curves: [...s.curves.values()].sort((a, b) => (BigInt(b.real_sol) > BigInt(a.real_sol) ? 1 : -1)).slice(0, MAX.written_curves)
+      .map(c => ({ ...c, symbol: name(c.mint).symbol || null, name: name(c.mint).name || null })),
+    graduated: [...s.graduated.values()].sort((a, b) => b.at - a.at).map(g => ({ ...g, symbol: name(g.mint).symbol || null, name: name(g.mint).name || null })),
+  };
+}
+
+let stop = null;
+let flusher = null;
+let written = 0;
+
+/** The worker's start: opens the stream when YELLOWSTONE_GRPC_URL and its token are set; otherwise does nothing. */
+async function start() {
+  if (!yellowstone.configured() || stop) return false;
+  st = emptyState();
+  stop = await yellowstone.subscribeTransactions('pumpfun', { accountInclude: [PUMP] }, t => {
+    for (const e of eventsOf(yellowstone.readTransaction(t))) apply(e);
+  });
+  flusher = setInterval(() => {
+    prune();
+    if (!st.changed && Date.now() - written < 10000) return; // quiet: still written every 10 seconds, so the feed sees it's alive
+    st.changed = false;
+    written = Date.now();
+    cache.set(STATE_KEY, snapshot(), 300).catch(err => logger.warn('pump stream state not written', { error: err.message }));
+  }, FLUSH_MS);
+  flusher.unref();
+  logger.info('pump.fun stream started (Yellowstone gRPC)');
+  return true;
+}
+function halt() { clearInterval(flusher); flusher = null; if (stop) stop(); stop = null; }
+
+/** The stream's state for the feed, or null when it's not running or not fresh. */
+async function fresh(now = Date.now()) {
+  const s = await cache.get(STATE_KEY);
+  if (!s || !s.live || now - Date.parse(s.written_at) > FRESH_MS) return null;
+  return s;
+}
+
+/** For the admin panel's health view (the web role reads what the worker wrote). */
+async function health(now = Date.now()) {
+  const name = 'pump.fun stream (Yellowstone gRPC)';
+  if (!yellowstone.configured()) return { name, state: 'not set', note: 'YELLOWSTONE_GRPC_URL and YELLOWSTONE_GRPC_TOKEN aren\'t set: the Solana launch feed polls GeckoTerminal and RPC.' };
+  const s = await cache.get(STATE_KEY).catch(() => null);
+  const ok = s && s.live && now - Date.parse(s.written_at) <= FRESH_MS;
+  return {
+    name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null,
+    note: ok ? 'The Solana launch feed reads the stream.' : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
+  };
+}
+
+module.exports = { health, PUMP, STATE_KEY, FRESH_MS, DISC, EVENT_TAG, decodeEvent, eventsOf, apply, prune, snapshot, emptyState, start, halt, fresh, _state: () => st };

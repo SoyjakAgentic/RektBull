@@ -22,7 +22,9 @@ async function status() {
     db.query(`SELECT kind, count(*)::int AS n FROM alert_channels WHERE disabled_at > now() - interval '7 days' GROUP BY kind`),
   ]);
   const services = (await require('./providers').list()).filter(p => p.errors_today > 0 || p.off).map(p => ({ name: p.name, errors_today: p.errors_today, calls_today: p.calls_today, last_error: p.last_error, off: p.off }));
+  const streams = [await require('../services/pumpStream').health()];
   const problems = [
+    ...streams.filter(s => s.state === 'down').map(s => `${s.name}: down`),
     ...jobList.filter(j => j.state === 'late' || j.state === 'failing').map(j => `${j.name}: ${j.state === 'late' ? 'hasn\'t run' : 'failing'}`),
     ...deliveries.rows.filter(d => d.overdue > 0).map(d => `${d.kind} alerts: ${d.overdue} overdue`),
     ...services.filter(s => s.off).map(s => `${s.name}: switched off`),
@@ -31,6 +33,7 @@ async function status() {
     problems, jobs: jobList,
     alerts: { by_channel: deliveries.rows, recent_errors: failures.rows, channels_switched_off_7d: disabled.rows },
     services_with_errors: services,
+    streams,
     source: 'job_runs, alert_deliveries, alert_channels, provider_usage',
   };
 }

@@ -64,6 +64,10 @@ const env = {
   swapFeeWalletEvm: (process.env.SWAP_FEE_WALLET_EVM || '').toLowerCase(),
   // RektBull's Solana fee wallet (a public address; Solana addresses are case-sensitive). Unset: Solana trades carry no fee.
   swapFeeWalletSolana: (process.env.SWAP_FEE_WALLET_SOLANA || '').trim(),
+  // Solana's Yellowstone gRPC stream (providers/yellowstone.js): Chainstack's add-on, or any Yellowstone provider.
+  // Unset, the Solana launch feed polls GeckoTerminal and RPC as before. The token is a secret.
+  yellowstoneGrpcUrl: (process.env.YELLOWSTONE_GRPC_URL || '').trim(),
+  yellowstoneGrpcToken: (process.env.YELLOWSTONE_GRPC_TOKEN || '').trim(),
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
   sessionKeyAddress: (process.env.SESSION_KEY_ADDRESS || '').toLowerCase(),
   kmsSessionKeyVersion: process.env.KMS_SESSION_KEY_VERSION || '',

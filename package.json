@@ -26,6 +26,7 @@
     "@metamask/delegation-core": "^3.0.0",
     "@metamask/delegation-deployments": "^2.1.0",
     "@solana/kit": "8.6.0",
+    "@triton-one/yellowstone-grpc": "10.0.0",
     "axios": "^1.7.2",
     "compression": "^1.8.2",
     "ethers": "^6.13.1",
