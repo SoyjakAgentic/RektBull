@@ -67,6 +67,8 @@
       box('polymarket_auto', 'Place automated Polymarket entries (Session Keys)'), el('br'),
       el('p', { class: 'small' }, f.memes ? `Meme picks: ${f.memes.picks.scored_24h} scored at 24 hours (median ${f.memes.picks.median_24h_pct ?? '—'}%, all the rest ${f.memes.all_passed.median_24h_pct ?? '—'}%).` : ''),
       box('memes', 'Run meme coin picks'), ' ', box('meme_proposals', 'Offer meme proposals'), el('br'),
+      el('p', { class: 'small' }, f.hyperliquid ? `Hyperliquid entries (${f.hyperliquid.mode}): ${f.hyperliquid.overall.signals} signals, ${f.hyperliquid.overall.scored} scored, average ${f.hyperliquid.overall.avg_r ?? '—'}R net, take-profit ${f.hyperliquid.overall.win_rate_pct ?? '—'}% of the time. Offer them only once the average is positive over many signals.` : ''),
+      box('hyperliquid', 'Run Hyperliquid entry rules (shadow)'), ' ', box('hyperliquid_proposals', 'Offer Hyperliquid entry proposals'), el('br'),
       num('meme_refresh_minutes', 'Every (minutes)'), ' ', num('meme_picks', 'Picks a run'), ' ', num('meme_min_liquidity_usd', 'Min liquidity ($)'), ' ',
       num('meme_min_volume_usd', 'Min 24h volume ($)'), ' ', num('meme_min_buys', 'Min buys (24h)'), ' ', num('meme_expiry_hours', 'Picks expire after (hours)'), ' ', num('meme_proposal_usd', 'Price to act ($)', '0.01'), el('br'),
       num('auto_edge_pct', 'Automated edge (points)'), ' ', num('auto_fee_pct', 'Fee on fills (%)', '0.1'), ' ', num('auto_fee_min_usd', 'Minimum fee ($)', '0.01'), ' ',

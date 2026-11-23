@@ -24,7 +24,7 @@
       <h2>Markets <span class="tag" id="net-tag" hidden>Test network</span></h2>
       <div class="row">
         <input id="m-filter" placeholder="Find a market, e.g. BTC" autocomplete="off" spellcheck="false" aria-label="Find a market">
-        <label class="small"><input type="checkbox" id="m-auto-only"> Only markets open to automatic trading</label>
+        <label class="inline small"><input type="checkbox" id="m-auto-only"> Only markets open to automatic trading</label>
       </div>
       <div class="tablewrap"><table class="rank" id="m-table">
         <thead><tr><th>Market</th><th class="num">Mark price</th><th class="num">24 h</th><th class="num">Funding / hour</th><th class="num">Open interest</th><th class="num">24 h volume</th><th class="num">Max leverage</th></tr></thead>
@@ -38,6 +38,17 @@
       <p class="muted">What's happening in Hyperliquid's deep markets (open interest and 24-hour volume of $5M or more): extreme funding, Hyperliquid's price apart from the oracle, and open interest building or flushing within an hour. Each is a fact with its source, not a call on direction.</p>
       <ul id="m-alerts" class="plain"><li class="muted">Reading the markets…</li></ul>
       <p id="alerts-msg" class="msg small muted"></p>
+    </section>
+
+    <section class="card" id="entries-card">
+      <h2>Entry proposals <span class="tag" id="entries-mode"></span></h2>
+      <p class="muted">Signals from three stated rules on Hyperliquid's busiest deep markets: a breakout on volume, a fade of a crowd paying heavy funding, and a reversal after open interest is flushed. Each is a full bracket: an entry, a stop-loss at 1R and a take-profit at 2R. Each is scored in public, in R, net of fees and estimated funding. They're offered only once the record says they're worth it, and then only to those who ask. Not financial advice: most short-term trades lose, and leverage can take all the margin in a position.</p>
+      <div id="entries-score"></div>
+      <p id="entries-optin-wrap" hidden><label class="inline"><input type="checkbox" id="entries-optin"> Show me entry proposals</label></p>
+      <div id="entries-open"></div>
+      <h3>Latest signals</h3>
+      <div class="tablewrap"><table class="rank"><thead><tr><th>Made</th><th>Market</th><th>Side</th><th>Rule</th><th class="num">Entry</th><th class="num">Stop</th><th class="num">Take-profit</th><th>Outcome</th><th class="num">Result</th></tr></thead><tbody id="entries-latest"><tr><td colspan="9" class="muted">Reading…</td></tr></tbody></table></div>
+      <p id="entries-msg" class="msg small"></p>
     </section>
 
     <section class="card" id="connect-card">
@@ -160,6 +171,7 @@
   <script src="/hl-core.js"></script>
   <script src="/perps-auto.js"></script>
   <script src="/perps-protect.js"></script>
+  <script src="/perps-entries.js"></script>
   <script src="/perps.js"></script>
 </body>
 </html>

@@ -146,6 +146,34 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     await page.waitForFunction(() => /fixes from a RektBull proposal carry 0\.05%/.test(document.getElementById('fee-status').textContent));
     console.log('✔ market alerts shown; a stop-loss from a proposal signed in the browser, with the 0.05% proposal fee');
 
+    // Entry proposals: off by default; offered, a signal is sized for this account and signed here with the trading key.
+    await page.locator('#entries-mode', { hasText: 'Off' }).waitFor();
+    const adminSettings = require('../../src/admin/settings');
+    await adminSettings.set('forecasts', { hyperliquid: true, hyperliquid_proposals: true }, { wallet: '0xadmin', action: 'forecasts', reason: 'browser test' });
+    await adminSettings.fresh();
+    const { rows: [sol] } = await db.query(`INSERT INTO hl_signals (coin, asset, rule, side, entry_px, stop_px, tp_px, stop_pct, funding_hourly_pct, facts, offered)
+      VALUES ('SOL', 5, 'breakout', 'long', 71.919, 69.04, 77.67, 4, 0.001, $1, true) RETURNING id`,
+    [JSON.stringify([{ text: 'The last hour closed above the previous 24 hours\' high', source: 'Hyperliquid\'s candles (info API)' }])]);
+    // The scorecard is cached a minute (public, max-age=60): read past the browser's copy, as a user would a minute later.
+    await page.route('**/v1/hyperliquid/entries', route => route.continue()); // a route turns Playwright's HTTP cache off
+    await page.evaluate(() => window.RB.state.hlEntries.load());
+    await page.locator('#entries-mode', { hasText: 'Offered' }).waitFor();
+    await page.locator('#entries-optin-wrap').waitFor({ state: 'visible' });
+    await page.check('#entries-optin');
+    const review = page.getByRole('button', { name: 'Review, sized for my account' });
+    await review.waitFor();
+    const beforeEntry = sent.length;
+    await review.click();
+    await page.locator('#entries-msg', { hasText: 'SOL: filled' }).waitFor();
+    const [lev, bracketOrder] = sent.slice(beforeEntry);
+    assert.deepEqual(lev.action, { type: 'updateLeverage', asset: 5, isCross: false, leverage: 10 }, 'isolated, 10x');
+    assert.deepEqual([bracketOrder.action.grouping, bracketOrder.action.builder.f, bracketOrder.action.orders.map(o => [o.r, o.t.limit ? 'ioc' : o.t.trigger.tpsl])],
+      ['normalTpsl', 50, [[false, 'ioc'], [true, 'sl'], [true, 'tp']]], 'the bracket, with the proposal fee');
+    assert.equal(H.recoverL1(bracketOrder.action, bracketOrder.signature, { nonce: bracketOrder.nonce, mainnet: false, expiresAfter: bracketOrder.expiresAfter }), agent.toLowerCase(), 'signed by the browser\'s key');
+    assert.ok((await db.query('SELECT acted_at FROM hl_proposals WHERE kind = $1', ['entry'])).rows[0].acted_at);
+    void sol;
+    console.log('✔ entry proposals: off by default; offered, opted in, sized for the account and signed as a bracket with the proposal fee');
+
     // Automatic trading: the section says what's enforced where, then the wallet approves RektBull's agent with limits.
     await page.locator('#auto-card').waitFor();
     assert.match(await page.textContent('#auto-rb'), /not onchain/);
@@ -173,7 +201,7 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     assert.equal(g.status, 'revoked');
     console.log('✔ automatic trading stopped, and the agent replaced on Hyperliquid');
 
-    assert.ok(sent.every(s => ['approveAgent', 'approveBuilderFee', 'order'].includes(s.action.type)), 'nothing else was ever sent');
+    assert.ok(sent.every(s => ['approveAgent', 'approveBuilderFee', 'order', 'updateLeverage'].includes(s.action.type)), 'nothing else was ever sent');
     assert.deepEqual(errors, []);
     console.log('ok: the Perps page, manual and automatic');
   } finally {

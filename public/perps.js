@@ -382,6 +382,7 @@
     if (hl.afterSignIn) await hl.afterSignIn();
     if (RB.state.hlAuto) await RB.state.hlAuto.load();
     if (RB.state.hlProtect) await RB.state.hlProtect.load();
+    if (RB.state.hlEntries) await RB.state.hlEntries.load();
     showPlan();
   }
 
@@ -401,6 +402,10 @@
     await loadMarkets();
     setInterval(() => { if (!document.hidden) loadMarkets().then(showPlan); }, 5000);
     setInterval(() => { if (!document.hidden) loadAccount(); }, 10000);
+    if (RB.state.hlEntries) {
+      RB.state.hlEntries.load();
+      setInterval(() => { if (!document.hidden) RB.state.hlEntries.load(); }, 60000);
+    }
     if (RB.state.hlProtect) {
       RB.state.hlProtect.alerts();
       setInterval(() => { if (!document.hidden) RB.state.hlProtect.alerts(); }, 60000);

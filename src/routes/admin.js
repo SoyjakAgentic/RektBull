@@ -152,7 +152,7 @@ router.put('/v1/admin/rewards', change, async (req, res) => {
 /* ── AI forecasts: switches and numbers (forecasts/settings.js), and a run on demand (it spends AI usage) ── */
 
 const fsettings = require('../forecasts/settings');
-router.get('/v1/admin/forecasts', admin, async (_req, res) => { await settings.reload(); res.json({ settings: fsettings.get(), defaults: fsettings.DEFAULTS, track_record: await require('../forecasts/polymarket').trackRecord(), auto: await require('../polymarket/auto').adminSummary(), memes: await require('../memes/signals').trackRecord() }); });
+router.get('/v1/admin/forecasts', admin, async (_req, res) => { await settings.reload(); res.json({ settings: fsettings.get(), defaults: fsettings.DEFAULTS, track_record: await require('../forecasts/polymarket').trackRecord(), auto: await require('../polymarket/auto').adminSummary(), memes: await require('../memes/signals').trackRecord(), hyperliquid: await require('../hyperliquid/entries').trackRecord() }); });
 router.put('/v1/admin/forecasts', change, async (req, res) => {
   const reason = reasonOf(req);
   const value = req.body?.default ? null : { ...(settings.get('forecasts') || {}), ...fsettings.check(req.body || {}) };

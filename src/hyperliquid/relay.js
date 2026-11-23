@@ -22,8 +22,9 @@
  * without the fee, so a position can always be closed.
  * The one other rate is the proposal fee (HL_PROPOSAL_FEE_TENTHS_BPS): an
  * order may carry it only when the request names a live proposal of the
- * signed-in account's (hyperliquid/protect.js) and every order in it is
- * reduce-only, in that proposal's market. A fee approval may be for up to the
+ * signed-in account's: a protection proposal (hyperliquid/protect.js), whose
+ * orders must all be reduce-only in its market, or an entry proposal
+ * (hyperliquid/entries.js), whose orders must be exactly the ones proposed. A fee approval may be for up to the
  * higher of the two rates; the user's own orders still carry the lower one.
  */
 const env = require('../config/env');
@@ -75,9 +76,17 @@ function checkBuilder(action, opens, proposal) {
     if (!b || typeof b !== 'object' || !isAddr(b.b) || !Number.isInteger(b.f)) bad('builder must be { b: address, f: tenths of a basis point }');
     if (!ours || b.b.toLowerCase() !== ours.b) throw new RelayRefused('This order names a builder that isn\'t RektBull\'s. RektBull only relays orders that pay its own builder address, or none.', 422, 'wrong_builder');
     if (b.f !== ours.f) {
-      // The proposal fee, only on a live proposal's reduce-only orders in its market.
-      const fits = proposal && b.f === proposal.fee_tenths_bps && action.orders.every(o => o.r === true && o.a === proposal.asset);
-      if (!fits) throw new RelayRefused(`This order's fee (${H.feeRate(b.f)}) isn't RektBull's (${H.feeRate(ours.f)})${proposal ? ': a proposal\'s fee is only for its own reduce-only orders, in its market' : ''}.`, 422, 'wrong_fee');
+      // The proposal fee: on a live protection proposal's reduce-only orders in its market, or on exactly the orders
+      // of a live entry proposal (hyperliquid/entries.js), nothing changed but the client order ids.
+      // Compared with keys sorted: the proposal's orders come back from Postgres JSONB with its own key order.
+      const canon = v => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object'
+        ? Object.fromEntries(Object.keys(v).filter(k => k !== 'c' && v[k] !== undefined).sort().map(k => [k, canon(v[k])])) : v);
+      const same = (x, y) => JSON.stringify(canon(x)) === JSON.stringify(canon(y));
+      const fits = proposal && b.f === proposal.fee_tenths_bps && (proposal.kind === 'entry'
+        ? action.grouping === 'normalTpsl' && action.orders.length === proposal.orders.length && action.orders.every((o, i) => same(o, proposal.orders[i]))
+        : action.orders.every(o => o.r === true && o.a === proposal.asset));
+      const why = !proposal ? '' : proposal.kind === 'entry' ? ': an entry proposal\'s fee is only for its orders exactly as proposed' : ': a proposal\'s fee is only for its own reduce-only orders, in its market';
+      if (!fits) throw new RelayRefused(`This order's fee (${H.feeRate(b.f)}) isn't RektBull's (${H.feeRate(ours.f)})${why}.`, 422, 'wrong_fee');
     }
   } else if (ours && opens) {
     throw new RelayRefused(`Orders sent through RektBull carry its ${H.feeRate(ours.f)} fee on what fills. This one has no builder field.`, 422, 'builder_fee_missing');

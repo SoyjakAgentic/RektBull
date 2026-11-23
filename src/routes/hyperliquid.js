@@ -17,6 +17,7 @@ const H = require('../../public/hl-core.js');
 const regions = require('../compliance/regions');
 const auto = require('../hyperliquid/auto');
 const protect = require('../hyperliquid/protect');
+const entries = require('../hyperliquid/entries');
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ const APPS = { mainnet: 'https://app.hyperliquid.xyz', testnet: 'https://app.hyp
 
 const refusal = fn => async (req, res) => {
   try { await fn(req, res); } catch (err) {
-    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked || err instanceof auto.AutoRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
+    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked || err instanceof auto.AutoRefused || err instanceof entries.EntryRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
     if (err.isHyperliquid || err.isProviderLimit) return res.status(err.status || 503).json({ error: 'hyperliquid_unavailable', message: err.isProviderLimit ? `Hyperliquid couldn't be reached: ${err.message}.` : err.message });
     throw err;
   }
@@ -145,6 +146,23 @@ router.get('/v1/hyperliquid/protect', requireEvmWallet, refusal(async (req, res)
 router.get('/v1/hyperliquid/alerts', refusal(async (_req, res) => {
   res.set('cache-control', 'public, max-age=30');
   res.json(await protect.marketAlerts());
+}));
+
+/* ── entry proposals (hyperliquid/entries.js): stated rules, scored in public; offered once switched on ── */
+
+/** The public scorecard, the mode (off, shadow or offered), and the signals open to act on while offered. */
+router.get('/v1/hyperliquid/entries', refusal(async (_req, res) => {
+  const record = await entries.trackRecord();
+  res.set('cache-control', 'public, max-age=60');
+  res.json({ ...record, open: record.mode === 'offered' ? await entries.actionable() : [] });
+}));
+
+/** One signal's bracket, sized for the signed-in account and saved as its proposal for 2 minutes. It opens a position, so region blocks and a paused Perps desk refuse it. */
+router.post('/v1/hyperliquid/entries/:id/bracket', requireEvmWallet, refusal(async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  regions.refuseIfBlocked(req, 'hyperliquid');
+  await require('../admin/services').refuseIfPaused('perps');
+  res.status(201).json(await entries.bracketFor(req.account, req.params.id));
 }));
 
 /* ── automatic trading (hyperliquid/auto.js): RektBull's agent, the user's limits, enforced by the trade service ── */

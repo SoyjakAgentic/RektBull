@@ -159,9 +159,10 @@ router.post('/v1/points/passes/:product', requireAuth, async (req, res) => {
 /* ── AI forecasts and proposals (forecasts/): a public track record; proposals for Safety Pro users who ask ── */
 const aiProposals = require('../forecasts/proposals');
 router.get('/v1/forecasts/track-record', async (req, res) => {
-  const venue = req.query.venue === 'hyperliquid' ? 'hyperliquid' : 'polymarket';
   res.set('cache-control', 'public, max-age=300');
-  res.json(await require(`../forecasts/${venue}`).trackRecord(venue));
+  // Hyperliquid's are entry signals from stated rules (hyperliquid/entries.js), not forecasts.
+  if (req.query.venue === 'hyperliquid') return res.json(await require('../hyperliquid/entries').trackRecord());
+  res.json(await require('../forecasts/polymarket').trackRecord('polymarket'));
 });
 /** Meme coin picks: the public scorecard (memes/signals.js). Picks show up here only once they've been scored at 24 hours. */
 router.get('/v1/memes/track-record', async (_req, res) => {
