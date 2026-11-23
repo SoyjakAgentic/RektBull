@@ -37,8 +37,34 @@ own price; "not priced" is shown as no dollar figure, never a guess.
 
 **Not seen:** a trade paid in ETH from a smart-contract wallet (sent by a
 bundler); a sale into a pool that pays native ETH without WETH (some Uniswap v4
-pools); Solana (addresses are recognised and the table stores them, so adding
-it needs no schema change; following one says it comes with Solana trading).
+pools).
+
+## Solana (built 23 November 2026, with the Yellowstone stream)
+
+`src/services/solanaTracker.js`.
+- **Only with the stream.** Followed Solana wallets ride the one Yellowstone
+  subscription ([LAUNCHES.md](LAUNCHES.md)) as filters of 200, ahead of Meme
+  Watch's insider wallets, which get the room left. There's no affordable way
+  to poll Solana wallets, so while the stream isn't set up
+  (`YELLOWSTONE_GRPC_URL`), following one is refused, saying why. Followed
+  wallets beyond what the stream takes aren't followed, and the health view
+  says how many.
+- **How a trade is seen,** per transaction and followed wallet, from the
+  transaction's own balances before and after: its token balances, its SOL
+  and its wrapped SOL.
+  - **A buy:** a token came in, and SOL, a stablecoin (USDC, USDT) or another
+    token went out.
+  - **A sale:** a token went out, and one of those came back.
+  - **Not a trade:** a token that only came in (an airdrop) or only went out
+    (a transfer).
+  - **Payment threshold:** the fee is added back when the wallet paid it, and
+    SOL moves under 0.001 SOL don't count as a payment. What a buy paid
+    includes a new token account's rent (about 0.002 SOL), so it says "about".
+- **The rest is the EVM tracker's:**
+  - the `wallet_trades` record (once per transaction, wallet, token and side);
+  - the token check and, for a young token, the bundle check, on a buy alert;
+  - the alert, with Solscan's link and the buy ready on the Trade desk;
+  - at most 60 alerts a minute, the rest recorded and shown, not alerted.
 
 **Falling behind:** a read that's more than two minutes behind starts again from
 the newest block (the chain's pace is measured from its own blocks; Base makes

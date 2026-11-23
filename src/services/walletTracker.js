@@ -85,7 +85,7 @@ function parseAddress(input) {
   const s = String(input || '').trim();
   if (/^0x[0-9a-fA-F]{40}$/.test(s)) return { address: s.toLowerCase(), family: 'evm' };
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) return { address: s, family: 'solana' };
-  throw new TrackerRefused('That isn\'t a wallet address (0x and 40 hex characters).');
+  throw new TrackerRefused('That isn\'t a wallet address (0x and 40 hex characters, or a Solana address).');
 }
 
 async function limitFor(accountId) {
@@ -95,7 +95,9 @@ async function limitFor(accountId) {
 
 async function follow(accountId, { address, label } = {}) {
   const w = parseAddress(address);
-  if (w.family === 'solana') throw new TrackerRefused('Following Solana wallets comes with RektBull\'s Solana trading, which isn\'t here yet. Wallets on Base, Ethereum, Arbitrum and BNB Chain (0x…) can be followed now.');
+  if (w.family === 'solana' && !require('../providers/yellowstone').configured()) {
+    throw new TrackerRefused('Following Solana wallets needs RektBull\'s Solana stream, which isn\'t switched on here yet. Wallets on Base, Ethereum, Arbitrum and BNB Chain (0x…) can be followed now.', 503);
+  }
   const { pro, limit } = await limitFor(accountId);
   const { rows: [{ n }] } = await db.query('SELECT count(*)::int AS n FROM followed_wallets WHERE account_id = $1 AND address <> $2', [accountId, w.address]);
   if (n >= limit) {
@@ -116,14 +118,18 @@ async function unfollow(accountId, id) {
   return list(accountId);
 }
 
+/** A chain's name and transaction links: the Trade desk's EVM chains, and Solana (its own module, trade/solana.js). */
+const SOLANA = { label: 'Solana', explorerTx: sig => `https://solscan.io/tx/${sig}` };
+const chainOf = c => (c === 'solana' ? SOLANA : TRADE_CHAINS[c]);
+
 const tradeLink = (chain, token) => `/trade?chain=${chain}&token=${token}&side=buy#trade-card`;
 const tokenLink = (chain, token) => `/token?chain=${chain}&token=${token}`;
 
 function presentTrade(t, label) {
   return {
-    chain: t.chain, chain_name: TRADE_CHAINS[t.chain]?.label || t.chain, wallet: t.wallet, label: label || null, side: t.side, token: t.token, symbol: t.symbol,
+    chain: t.chain, chain_name: chainOf(t.chain)?.label || t.chain, wallet: t.wallet, label: label || null, side: t.side, token: t.token, symbol: t.symbol,
     amount: t.amount === null ? null : Number(t.amount), other: t.other, usd: t.usd === null ? null : Number(t.usd), tx: t.tx_hash,
-    tx_url: TRADE_CHAINS[t.chain]?.explorerTx(t.tx_hash) || null, at: t.seen_at, buy: tradeLink(t.chain, t.token), page: tokenLink(t.chain, t.token),
+    tx_url: chainOf(t.chain)?.explorerTx(t.tx_hash) || null, at: t.seen_at, buy: tradeLink(t.chain, t.token), page: tokenLink(t.chain, t.token),
   };
 }
 
@@ -139,9 +145,9 @@ async function list(accountId) {
   const on = await require('./myAgents').isOn(accountId, 'wallet_tracker');
   return {
     wallets: wallets.rows, limit, free_limit: FREE_WALLETS, pro_limit: PRO_WALLETS, safety_pro: pro, alerts_on: on,
-    chains: CHAINS.map(c => TRADE_CHAINS[c].label),
+    chains: [...CHAINS.map(c => TRADE_CHAINS[c].label), ...(require('../providers/yellowstone').configured() ? ['Solana'] : [])],
     trades: trades.map(t => presentTrade(t, t.label)),
-    source: 'Token transfers read from each chain every few seconds (ERC-20 Transfer events); a check that couldn\'t run says why',
+    source: 'Token transfers read from each chain every few seconds (ERC-20 Transfer events); on Solana, each followed wallet\'s transactions as the chain confirms them (Yellowstone gRPC). A check that couldn\'t run says why',
     note: 'A wallet\'s trades are information, not advice. Wallets that did well before can lose everything on the next trade, and some wallets trade to be copied.',
   };
 }
@@ -291,12 +297,12 @@ const num = n => (n === null ? 'an amount it couldn\'t read' : n >= 1e6 ? `${(n 
 function alertFor(d, label, checks) {
   const who = label || short(d.wallet);
   const sym = d.symbol || short(d.token);
-  const chainName = TRADE_CHAINS[d.chain].label;
+  const chainName = chainOf(d.chain).label;
   const verb = d.side === 'buy' ? 'bought' : 'sold';
   const otherText = d.other.amount === null ? (d.other.native ? `for ${d.other.symbol}` : '') : `${d.side === 'buy' ? 'for' : 'for'} ${num(d.other.amount)} ${d.other.symbol || short(d.other.token)}`;
   const worth = money(d.usd);
   const reasons = [
-    { text: `${who} ${verb} ${num(d.amount_whole)} ${sym} ${otherText}${worth ? ` (about ${worth})` : ''}`.replace(/\s+/g, ' ').trim(), source: `transaction ${short(d.tx)} on ${chainName}, read from the chain` },
+    { text: `${who} ${verb} ${num(d.amount_whole)} ${sym} ${otherText}${worth ? ` (about ${worth})` : ''}`.replace(/\s+/g, ' ').trim(), source: `transaction ${short(d.tx)} on ${chainName}, read from the chain${d.chain === 'solana' ? ' (its balances before and after)' : ''}` },
     ...(checks ? checks.reasons : []),
   ];
   return {
@@ -306,7 +312,7 @@ function alertFor(d, label, checks) {
     detail: {
       reasons, side: d.side, label: label || null,
       token: { chain: d.chain, token: d.token, symbol: d.symbol }, amount: d.amount_whole, other: d.other, usd: d.usd,
-      tx: d.tx, tx_url: TRADE_CHAINS[d.chain].explorerTx(d.tx),
+      tx: d.tx, tx_url: chainOf(d.chain).explorerTx(d.tx),
       link: d.side === 'buy' ? tradeLink(d.chain, d.token) : tokenLink(d.chain, d.token),
       ...(checks ? { checks: { verdict: checks.verdict, bundle: checks.bundle } } : {}),
     },

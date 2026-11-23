@@ -170,16 +170,21 @@ function readTransaction(t) {
       if (!b.owner || !b.mint) continue;
       const k = `${b.owner}|${b.mint}`;
       out.set(k, (out.get(k) || 0n) + BigInt(b.uiTokenAmount?.amount || '0'));
+      if (b.uiTokenAmount?.decimals !== undefined) decimals.set(b.mint, b.uiTokenAmount.decimals);
     }
     return out;
   };
+  const decimals = new Map();
   const pre = sum(meta.preTokenBalances);
   const post = sum(meta.postTokenBalances);
   const balances = [...new Set([...pre.keys(), ...post.keys()])].map(k => {
     const [owner, mint] = k.split('|');
-    return { owner, mint, pre: pre.get(k) || 0n, post: post.get(k) || 0n };
+    return { owner, mint, pre: pre.get(k) || 0n, post: post.get(k) || 0n, decimals: decimals.get(mint) ?? null };
   });
-  return { signature: info.signature ? b58(info.signature) : null, slot: t.slot ?? null, keys, logs: meta.logMessages || [], instructions: ix, balances, failed: !!meta.err };
+  // SOL balances (lamports) before and after, per account key; the signers; the fee (paid by the first signer).
+  const lamports = keys.map((address, i) => ({ address, pre: BigInt(meta.preBalances?.[i] ?? 0), post: BigInt(meta.postBalances?.[i] ?? 0) }));
+  const signers = keys.slice(0, msg?.header?.numRequiredSignatures || 0);
+  return { signature: info.signature ? b58(info.signature) : null, slot: t.slot ?? null, keys, signers, logs: meta.logMessages || [], instructions: ix, balances, lamports, fee: BigInt(meta.fee || 0), failed: !!meta.err };
 }
 
 module.exports = {
