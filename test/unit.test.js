@@ -25,7 +25,9 @@ test('stablecoin amounts convert to whole cents, rounding down', () => {
 test('catalog: runs try Safety Pro, points, credits, then x402; reports take no points; passes are credits only', () => {
   assert.deepEqual(catalog.rails(catalog.product('token_quick_check')), ['pass', 'points', 'credits', 'x402']);
   assert.deepEqual(catalog.rails(catalog.product('approval_cleanup')), ['pass', 'points', 'credits', 'x402']);
-  assert.deepEqual(catalog.rails(catalog.product('token_report')), ['pass', 'credits', 'x402'], 'each report costs real AI money: no points');
+  // The report is free (the owner, 22 November 2026): signed in, capped a day. At a price an admin sets, no points (each costs real AI money).
+  assert.deepEqual(catalog.rails(catalog.product('token_report')), ['free']);
+  assert.deepEqual(catalog.rails({ ...catalog.product('token_report'), price_cents: 300 }), ['pass', 'credits', 'x402'], 'each report costs real AI money: no points');
   assert.deepEqual(catalog.rails(catalog.product('pro_30d')), ['credits']);
   for (const id of ['token_quick_check', 'approval_cleanup']) assert.ok(catalog.product(id).price_cents <= catalog.X402_DEFAULT_CLIENT_CAP_CENTS, `${id} must work with default x402 clients`);
   const pro = catalog.product('pro_30d');
@@ -40,7 +42,10 @@ test('catalog: runs try Safety Pro, points, credits, then x402; reports take no 
   assert.equal(catalog.product('approval_cleanup').points, 5);
   assert.equal(catalog.FREE_POINTS.per_month, 30);
   const report = catalog.publicCatalog().find(p => p.id === 'token_report');
-  assert.match(report.x402_note, /\$1 default/);
+  assert.equal(report.price_cents, 0);
+  assert.equal(report.x402_note, undefined, 'free: no x402');
+  assert.match(catalog.publicCatalog().find(p => p.id === 'contract_audit').x402_note, /\$1 default/);
+  assert.equal(catalog.fill('{{price:token_report}}'), 'free');
 });
 
 test('x402 requirements ask for the exact USDC amount on Base', () => {

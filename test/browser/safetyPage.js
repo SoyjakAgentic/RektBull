@@ -131,9 +131,26 @@ Object.assign(process.env, {
   const msg = () => page.textContent('#check-msg');
 
   try {
+    // By default the report is free, paused and hidden (the owner, 22 November 2026): its button isn't shown.
+    await page.goto(url + '/safety');
+    await page.locator('#quick').waitFor();
+    assert.equal(await page.isVisible('#report'), false, 'a hidden check\'s button isn\'t shown');
+    // Paused but shown: the button says so and is off.
+    await require('../../src/admin/services').set('token_report', 'paused', { wallet: '0xadmin', reason: 'shown, paused' });
+    await require('../../src/admin/settings').fresh();
+    await page.goto(url + '/safety');
+    await page.getByText('· paused for now').waitFor();
+    assert.equal(await page.isDisabled('#report'), true, 'a paused check\'s button is off');
+    console.log('✔ the token report: hidden by default; paused and shown, its button off');
+    // The rest of this test is the paid path an admin can put back: priced at $3 and switched on.
+    const settingsMod = require('../../src/admin/settings');
+    await settingsMod.set('price:token_report', { price_cents: 300 }, { wallet: '0xadmin', action: 'price', reason: 'test the paid path' });
+    await require('../../src/admin/services').set('token_report', 'on', { wallet: '0xadmin', reason: 'test the paid path' });
+    await settingsMod.fresh();
     await page.goto(url + '/safety');
     await page.getByText('· 1 point or $0.25').waitFor();
     await page.getByText('· $3.00 (in Safety Pro\'s AI allowance)').waitFor();
+    assert.equal(await page.isDisabled('#report'), false);
     await page.getByText('· 5 points or $1.00').waitFor();
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.card')).borderTopWidth), '1px', 'the stylesheet loaded and parsed');
 
@@ -221,7 +238,7 @@ Object.assign(process.env, {
     await page.locator('#pass-msg', { hasText: 'is active' }).waitFor();
     await page.locator('#pass', { hasText: /^Until / }).waitFor();
     await page.locator('#ai-left', { hasText: '100% left' }).waitFor();
-    assert.match(await page.textContent('#ai-note'), /For full token reports and proposal summaries\. Resets \d+ \w+\./);
+    assert.match(await page.textContent('#ai-note'), /For full token reports, proposal summaries and AI trade proposals\. Resets \d+ \w+\./);
     assert.equal(await page.evaluate(() => document.getElementById('ai-bar').style.width), '0%');
     await page.getByRole('button', { name: /Quick check/ }).click();
     await page.getByText('Paid with your Safety Pro pass').first().waitFor();

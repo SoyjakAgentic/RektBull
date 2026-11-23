@@ -21,7 +21,7 @@ For RektBull's owners. Open `/admin` and sign in with a wallet listed in
 
 | What | Can change | Limits |
 |---|---|---|
-| Paid runs (quick check, report, launch check, contract audit, pre-sign check, proposal summary, approval cleanup) | Price, and points where a run takes points | $0.01 to $1,000; 1 to 100 points |
+| Paid runs (quick check, report, launch check, contract audit, pre-sign check, proposal summary, approval cleanup) | Price, and points where a run takes points | Free ($0: signed in, capped a day) to $1,000; 1 to 100 points |
 | Safety Pro, 30 and 365 days | Price | $1 to $1,000 |
 | Claim fee | Standard and Safety Pro rate | 0% to 10%; Safety Pro no higher than standard |
 | Yield move fee | Nothing | Fixed by the Yield Router |
@@ -47,6 +47,61 @@ Contract Audit) is in one of three states:
   any charge), schedules stop, and its users get one alert: accounts that had it
   on, each Group Guard group, and each Channel Poster owner. Settings are kept,
   so switching it back on carries on where it was.
+
+## Services
+
+Any service can be paused, or paused and hidden, and switched back on, without
+a deploy (`src/admin/services.js`). The owner asked for both on 22 November
+2026.
+
+Each service is in one of three states:
+
+- **On:** working and shown.
+- **Paused:** new work is refused with a plain message. It's still shown, and
+  says so: a paused check's button on the Safety page is off and reads "paused
+  for now".
+- **Paused and hidden:** also taken off the site.
+  - **Removed:** its menu link, tiles, cards and buttons are hidden on every
+    page.
+  - **Desk pages** (Trade, Perps, Predictions) drop out of the sitemap and
+    `llms.txt` and are marked `noindex`. They still open by their link and say
+    they're paused, so anyone holding a position can still sell, close or
+    redeem there.
+  - **Only where there's something to hide:** the panel offers "Pause and
+    hide" only for services that have something on the site.
+  - **How:** pages mark what belongs to a service (`<!--svc:id-->…<!--/svc:id-->`
+    for cards and tiles, `<!--svc-inline:id-->…` for links and buttons). A
+    hidden one stays in the page, hidden, so the page's scripts still work.
+
+- **The rule:** pausing stops new work only. Selling, closing, cancelling,
+  withdrawing, redeeming and revoking always stay open, as with region blocks.
+- **Paid checks:** a paused check is refused before any charge, and before its
+  input is even read. The quick check, the token report, the launch check, the
+  pre-sign check, the proposal summary and approval cleanup each have a
+  switch.
+- **Desks:**
+
+  | Desk | Pausing stops | Still open |
+  | --- | --- | --- |
+  | Trade desk, including Launches buys | Buys, and new automatic-trading permissions and intents | Sells, cancels, revokes |
+  | Perps (Hyperliquid) | Opening or adding to positions, leverage and margin changes, new agent approvals | Closing, cancelling, revoking |
+  | Predictions (Polymarket) | Buys, approvals, wallet set-up, funding, new automatic trading | Selling, redeeming, withdrawing, stopping automatic trading, sending what was prepared |
+  | Yield moves | Deposits and moves, new automatic permissions | Withdrawals to the wallet, revokes |
+  | Airdrop and unclaimed-funds finder | New checks and claims | Confirming a claim already sent |
+  | Governance votes | New votes | — |
+  | Free wallet checkup | New checkups | — |
+
+- **Users see:** a plain message ("… is paused by RektBull for now. Nothing
+  was charged. Still open: …"). The Safety page turns a paused check's button
+  off, the catalog and the developer reference mark it `paused`, and the API
+  answers `503 service_paused`.
+- **How a switch is kept:** it's read from the database on every request, so
+  it takes effect at once on every instance. Each change needs a reason and is
+  logged.
+- **Defaults:** the token report starts paused and hidden (`default_state`).
+  "Back to the default" stores nothing.
+- **Elsewhere:** AI agents, the emergency stops and the AI forecasts and picks
+  keep their own switches (above, below, and the AI forecasts card).
 
 ## Emergency stops
 

@@ -37,6 +37,22 @@
       }, s.on ? 'Resume' : 'Stop now'))));
   }
 
+  function switches(list) {
+    const LABEL = { on: 'on', paused: 'PAUSED', hidden: 'PAUSED AND HIDDEN' };
+    const ACTION = { on: 'Switch on', paused: 'Pause', hidden: 'Pause and hide' };
+    const groups = [...new Set(list.map(s => s.group))];
+    $('switches').replaceChildren(...groups.flatMap(g => [el('h3', {}, g), ...list.filter(s => s.group === g).map(s => el('div', { class: 'row' },
+      el('p', {}, el('strong', {}, s.name), ' ', el('span', { class: `tag${s.state !== 'on' ? ' bad' : ''}` }, LABEL[s.state]),
+        s.default_state !== 'on' ? el('span', { class: 'small muted' }, ` (${s.default_state} by default)`) : '', el('br'),
+        el('span', { class: 'small muted' }, `Pausing stops: ${s.stops}${s.open ? ` Still open: ${s.open}` : ''}`),
+        s.shown || s.page ? el('span', { class: 'small muted' }, ` Hiding takes off ${s.shown || 'its links'}${s.page ? `; ${s.page} leaves the sitemap and search, and still opens by its link so anyone can get out` : ''}.`) : ''),
+      // "Pause and hide" only where something on the site can be hidden.
+      el('div', {}, ...['on', 'paused', 'hidden'].filter(st => st !== s.state && (st !== 'hidden' || s.shown || s.page)).map(st => el('button', {
+        class: st === 'on' ? 'btn' : 'btn danger', type: 'button',
+        onclick: () => { if (st === 'on' || window.confirm(`${ACTION[st]}: ${s.name}?`)) change('switches-msg', `${ACTION[st]}: ${s.name}`, 'PUT', `/v1/admin/services/${s.id}`, { state: st }); },
+      }, ACTION[st])))))]));
+  }
+
   function forecasts(f) {
     const s = f.settings;
     const box = (k, label) => el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': k, checked: !!s[k] }), ` ${label}`);
@@ -274,7 +290,7 @@
       const o = await api('GET', '/v1/admin/overview');
       $('panel').hidden = false;
       say('gate-msg', '');
-      stops(o.stops); prices(o.prices); agents(o.agents); log(o.log);
+      stops(o.stops); switches(o.services); prices(o.prices); agents(o.agents); log(o.log);
       regions(await api('GET', '/v1/admin/regions'));
       rewards(await api('GET', '/v1/admin/rewards'));
       forecasts(await api('GET', '/v1/admin/forecasts'));

@@ -70,16 +70,21 @@ const ENDPOINTS = [
 function priceOf(id) {
   const p = product(id);
   return {
-    product: id, price_usd: usd(p.price_cents), points: p.points || null, x402: !!p.x402,
+    product: id, price_usd: usd(p.price_cents), points: p.points || null, x402: !!p.x402 && p.price_cents > 0,
+    ...(p.price_cents === 0 ? { free: 'Free: sign in with your wallet; up to 10 a day per account.' } : {}),
+    ...(require('../admin/services').pausedNow(id) ? { paused: true } : {}),
     x402_note: p.x402 && p.price_cents > X402_DEFAULT_CLIENT_CAP_CENTS ? 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.' : null,
   };
 }
+
+/** The endpoints shown: a paid run whose service is hidden (admin/services.js) isn't listed. */
+const listed = () => ENDPOINTS.filter(e => !(e.product && require('../admin/services').hiddenNow(e.product)));
 
 /** The endpoints with their allowance or price filled in, for the page and the API. */
 function reference() {
   return {
     groups: GROUPS.map(([id, title, text]) => ({ id, title, text })),
-    endpoints: ENDPOINTS.map(e => ({
+    endpoints: listed().map(e => ({
       method: e.method, path: e.path, group: e.group, summary: e.summary, auth: !!e.auth,
       input: e.body ? { in: 'body', fields: e.body } : e.query ? { in: 'query', fields: e.query } : null,
       ...(e.limit ? { free_per_day: FREE_LIMITS[e.limit] } : {}),
@@ -93,7 +98,7 @@ const field = f => ({ type: 'string', description: f.text });
 /** An OpenAPI 3.1 document for the same endpoints. */
 function openapi(publicUrl) {
   const paths = {};
-  for (const e of ENDPOINTS) {
+  for (const e of listed()) {
     const op = {
       summary: e.summary,
       tags: [GROUPS.find(g => g[0] === e.group)[1]],

@@ -27,6 +27,10 @@
       $('quick-price').textContent = window.RB.priceLabel(catalog.token_quick_check);
       $('report-price').textContent = window.RB.priceLabel(catalog.token_report);
       $('launch-price').textContent = window.RB.priceLabel(catalog.launch_check);
+      // A service paused in the admin panel: its button is off, and says so.
+      for (const [btn, id] of [['quick', 'token_quick_check'], ['report', 'token_report'], ['launch', 'launch_check']]) {
+        if (catalog[id]?.paused) { $(btn).disabled = true; $(btn).title = 'Paused by RektBull for now'; }
+      }
       if ($('audit-card')) {
       $('audit-price').textContent = window.RB.priceLabel(catalog.contract_audit);
       $('audit-chain').replaceChildren(...chains.filter(c => c !== 'solana').map(c => el('option', { value: c }, CHAIN_NAMES[c] || c)));
@@ -41,6 +45,7 @@
   $('report').addEventListener('click', () => run('report', 'token_report'));
   $('launch').addEventListener('click', () => run('launch', 'launch_check'));
   const BUTTONS = ['quick', 'report', 'launch'];
+  const PRODUCT_OF = { quick: 'token_quick_check', report: 'token_report', launch: 'launch_check' };
 
   async function run(path, productId) {
     const body = { chain: $('chain').value, token_address: $('token').value.trim() };
@@ -56,7 +61,7 @@
       say('check-msg', explain(err, productId), 'bad');
       if (err.status === 402) $('account-card').scrollIntoView({ behavior: 'smooth' });
     } finally {
-      for (const b of BUTTONS) $(b).disabled = false;
+      for (const b of BUTTONS) $(b).disabled = !!catalog[PRODUCT_OF[b]]?.paused; // a paused one stays off
       if (window.RB.signedIn()) loadAccount();
     }
   }

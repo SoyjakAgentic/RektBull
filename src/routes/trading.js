@@ -65,10 +65,14 @@ router.get('/v1/trading/settings', requireAuth, async (req, res) => res.json(awa
 router.put('/v1/trading/settings', requireAuth, async (req, res) => res.json(await rules.saveSettings(req.account.id, req.body || {})));
 
 // One click: the checks before the click (preview), then the checked trade and its wallet calls in one step (trades).
-router.post('/v1/trading/preview', requireTradeWallet, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
-router.post('/v1/trading/trades', requireTradeWallet, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
+const services = require('../admin/services');
+const isSell = req => String(req.body?.side || '').toLowerCase() === 'sell';
+const tradeGate = services.gate('trade', isSell);
 
-router.post('/v1/trading/proposals', requireTradeWallet, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
+router.post('/v1/trading/preview', requireTradeWallet, tradeGate, guard(async (req, res) => res.json(await proposals.preview(req.account, req.body || {}))));
+router.post('/v1/trading/trades', requireTradeWallet, tradeGate, guard(async (req, res) => res.status(201).json(await proposals.trade(req.account, req.body || {}))));
+
+router.post('/v1/trading/proposals', requireTradeWallet, tradeGate, guard(async (req, res) => res.status(201).json(await proposals.propose(req.account, req.body || {}))));
 router.get('/v1/trading/proposals', requireAuth, async (req, res) => res.json({ proposals: await proposals.list(req.account) }));
 router.get('/v1/trading/proposals/:id', requireAuth, async (req, res) => res.json(await proposals.get(req.account, req.params.id)));
 router.post('/v1/trading/proposals/:id/approve', currentWallets, guard(async (req, res) => res.json(await proposals.approve(req.account, req.params.id))));
@@ -195,11 +199,11 @@ router.get('/v1/trading/auto/setup', requireEvmWallet, async (req, res) => {
   res.status(400).json({ error: 'bad_request', message: 'wallet_type must be safe or coinbase (MetaMask uses /v1/trading/auto/delegation)' });
 });
 
-router.post('/v1/trading/auto/intents', requireEvmWallet, async (req, res) => res.status(201).json(await autonomous.queue(req.account, req.body || {})));
+router.post('/v1/trading/auto/intents', requireEvmWallet, tradeGate, async (req, res) => res.status(201).json(await autonomous.queue(req.account, req.body || {})));
 router.get('/v1/trading/auto/intents', requireAuth, async (req, res) => res.json({ intents: await autonomous.list(req.account) }));
 router.post('/v1/trading/auto/intents/:id/cancel', requireAuth, async (req, res) => res.json(await autonomous.cancel(req.account, req.params.id)));
 
-router.post('/v1/trading/permissions', requireEvmWallet, async (req, res) => {
+router.post('/v1/trading/permissions', requireEvmWallet, services.gate('trade'), async (req, res) => {
   if (!env.sessionKeyAddress) return res.status(503).json({ error: 'not_configured', message: 'Automatic trading is not set up yet (SESSION_KEY_ADDRESS).' });
   res.status(201).json(await permissions.register(req.account, req.body || {}, { sessionKey: env.sessionKeyAddress }));
 });

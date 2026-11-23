@@ -94,7 +94,7 @@ test('a call: the result with its sources, input refused before anything runs, e
   assert.equal((await call('no_such_tool', {})).body.error.code, -32602);
 
   const paid = (await call('paid_services', {})).body.result.structuredContent;
-  assert.deepEqual(paid.services.map(s => s.path), ['/v1/tokens/quick-check', '/v1/tokens/report', '/v1/contracts/audit', '/v1/launch/check', '/v1/approvals/cleanup', '/v1/presign/check', '/v1/governance/summary']);
+  assert.deepEqual(paid.services.map(s => s.path), ['/v1/tokens/quick-check', '/v1/contracts/audit', '/v1/launch/check', '/v1/approvals/cleanup', '/v1/presign/check', '/v1/governance/summary'], 'the token report is hidden by default: not listed');
   assert.equal(paid.services[0].url, 'https://rektbull.test/v1/tokens/quick-check');
   assert.equal(paid.services[0].price.price_usd, '$0.25');
   assert.match(paid.how_to_pay, /402[\s\S]*X-PAYMENT[\s\S]*only when the run succeeds/);
@@ -123,7 +123,19 @@ test('the reference: every documented endpoint is a real route; paid ones priced
 
   const ref = await (await fetch(base + '/v1/developers')).json();
   assert.equal(ref.mcp.url, 'https://rektbull.test/mcp');
-  assert.equal(ref.endpoints.find(e => e.path === '/v1/tokens/report').price.x402_note, 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.');
+  assert.equal(ref.endpoints.find(e => e.path === '/v1/contracts/audit').price.x402_note, 'Above the $1 default limit of most x402 clients: raise your client\'s limit, or pay with credits.');
+  assert.equal(ref.endpoints.find(e => e.path === '/v1/tokens/report'), undefined, 'the report is hidden by default: not in the reference');
+  assert.equal((await (await fetch(base + '/v1/openapi.json')).json()).paths['/v1/tokens/report'], undefined, 'nor in the OpenAPI document');
+  // Paused but shown: listed, saying it's free and paused.
+  const services = require('../src/admin/services');
+  const { hiddenNow, pausedNow } = services;
+  services.hiddenNow = () => false; services.pausedNow = id => id === 'token_report';
+  try {
+    const rep = (await (await fetch(base + '/v1/developers')).json()).endpoints.find(e => e.path === '/v1/tokens/report').price;
+    assert.deepEqual([rep.price_usd, rep.x402, rep.paused], ['$0.00', false, true], 'the report is free, with no x402, and paused for now');
+    assert.match(rep.free, /sign in/);
+    assert.ok((await (await fetch(base + '/v1/openapi.json')).json()).paths['/v1/tokens/report']);
+  } finally { Object.assign(services, { hiddenNow, pausedNow }); }
   assert.deepEqual(ref.endpoints.find(e => e.path === '/v1/checkup').free_per_day, { account: 10, anonymous: 3 });
 
   const doc = await (await fetch(base + '/v1/openapi.json')).json();

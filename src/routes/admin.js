@@ -10,6 +10,7 @@ const catalog = require('../payments/catalog');
 const settings = require('../admin/settings');
 const agentStates = require('../admin/agentStates');
 const stops = require('../admin/stops');
+const services = require('../admin/services');
 
 const router = express.Router();
 const admin = [requireAuth, requireAdmin];
@@ -29,6 +30,7 @@ router.get('/v1/admin/overview', admin, async (_req, res) => {
     prices: catalog.adminPrices(),
     agents: agentStates.adminList(),
     stops: await stops.list(),
+    services: await services.list(),
     log: await settings.log({ limit: 50 }),
   });
 });
@@ -70,6 +72,13 @@ router.put('/v1/admin/ai-allowance', change, async (req, res) => {
 router.put('/v1/admin/agents/:id', change, async (req, res) => {
   const reason = reasonOf(req);
   res.json(await agentStates.setState(req.params.id, String(req.body?.state || ''), { wallet: who(req), reason }));
+});
+
+/* ── services: pause any of them (admin/services.js); pausing never blocks a way out ── */
+
+router.put('/v1/admin/services/:id', change, async (req, res) => {
+  const reason = reasonOf(req);
+  res.json(await services.set(req.params.id, req.body?.state ?? req.body?.paused, { wallet: who(req), reason }));
 });
 
 /* ── emergency stops ── */

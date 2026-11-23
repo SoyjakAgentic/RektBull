@@ -10,6 +10,7 @@ const invoices = require('../payments/invoices');
 const passes = require('../payments/passes');
 const x402 = require('../payments/x402');
 const { paidRoute, takeAllowance } = require('../payments/gate');
+const services = require('../admin/services'); // admin-paused services (pausing never blocks a way out)
 const points = require('../payments/points');
 const { product: productOf } = require('../payments/catalog');
 const approvals = require('../services/approvals');
@@ -296,8 +297,8 @@ const validated = parse => (req, res, next) => {
   req.input = input;
   next();
 };
-router.post('/v1/claims/check', validated(claims.parseWallet), dailyLimit('check'), claimCall(req => claims.check(req.input.wallet, { accountId: req.account?.id || null })));
-router.post('/v1/claims/prepare', validated(claims.parsePrepare), dailyLimit('prepare'), claimCall(req => claims.prepare(req.input, { accountId: req.account?.id || null })));
+router.post('/v1/claims/check', services.gate('claims'), validated(claims.parseWallet), dailyLimit('check'), claimCall(req => claims.check(req.input.wallet, { accountId: req.account?.id || null })));
+router.post('/v1/claims/prepare', services.gate('claims'), validated(claims.parsePrepare), dailyLimit('prepare'), claimCall(req => claims.prepare(req.input, { accountId: req.account?.id || null })));
 router.post('/v1/claims/:id/confirm', claimCall(req => {
   if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new claims.ClaimRefused('No such claim.', 404);
   return claims.confirm(req.params.id, req.body?.tx_hashes);
@@ -332,7 +333,8 @@ router.post('/v1/yield/proposals', validated(claims.parseWallet), yieldCall(asyn
   await yieldProposals.requirePro(req.account?.id);
   return yieldProposals.scan(req.input.wallet);
 }));
-router.post('/v1/yield/moves/prepare', validated(yieldProposals.parseMove), yieldLimit('prepare'), yieldCall(req => yieldProposals.prepare(req.input, { accountId: req.account?.id || null })));
+// A move with no venue to go to is a withdrawal to the wallet: never paused.
+router.post('/v1/yield/moves/prepare', services.gate('yield', req => !req.body?.to), validated(yieldProposals.parseMove), yieldLimit('prepare'), yieldCall(req => yieldProposals.prepare(req.input, { accountId: req.account?.id || null })));
 router.post('/v1/yield/moves/:id/confirm', yieldCall(req => {
   if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new yieldVenues.YieldRefused('No such move.', 404);
   return yieldProposals.confirm(req.params.id, req.body?.tx_hashes);
@@ -353,7 +355,7 @@ router.get('/v1/yield/auto', (_req, res) => res.json({
   note: env.yieldAutoEnabled ? 'Automatic rebalancing uses a limited, revocable permission that may only call the RektBull Yield Router.' : 'Automatic rebalancing is built and switched off until the Yield Router is audited. Proposals you sign yourself work now.',
 }));
 router.get('/v1/yield/auto/setup', autoCall(req => yieldAuto.setupCalls(Number(req.query.chain_id), { limits: Object.fromEntries(['USDC', 'USDT', 'WETH'].filter(a => Number(req.query[a]) > 0).map(a => [a, Number(req.query[a])])), days: Number(req.query.days) || 30 })));
-router.post('/v1/yield/auto/permissions', requireEvmWallet, autoCall(async req => {
+router.post('/v1/yield/auto/permissions', requireEvmWallet, services.gate('yield'), autoCall(async req => {
   await yieldProposals.requirePro(req.account.id);
   return yieldAuto.register(req.account, req.body || {}, { sessionKey: env.sessionKeyAddress });
 }));
@@ -380,8 +382,8 @@ router.post('/v1/governance/summary', paidRoute('governance_summary', {
   validate: req => (claude.available() ? governance.parseProposalId(req.body) : { error: 'Summaries are not available yet: the AI key is not configured' }),
   run: input => governance.summarize(input),
 }));
-router.post('/v1/governance/votes/prepare', validated(governance.parseVote), govCall(req => governance.prepareVote(req.input)));
-router.post('/v1/governance/votes', govCall(req => governance.submitVote(req.body || {}, { accountId: req.account?.id || null }), 201));
+router.post('/v1/governance/votes/prepare', services.gate('governance_votes'), validated(governance.parseVote), govCall(req => governance.prepareVote(req.input)));
+router.post('/v1/governance/votes', services.gate('governance_votes'), govCall(req => governance.submitVote(req.body || {}, { accountId: req.account?.id || null }), 201));
 // On-chain governors: votes and delegations are transactions the wallet sends; prepared and simulated here.
 const governorsSvc = require('../services/governors');
 const onchainCall = fn => async (req, res) => {
@@ -651,7 +653,7 @@ const homeCall = fn => async (req, res) => {
   }
 };
 router.post('/v1/lookup', validated(home.parseQuery), homeLimit('lookup'), homeCall(req => home.identify(req.input)));
-router.post('/v1/checkup', validated(claims.parseWallet), homeLimit('checkup'), homeCall(req => home.checkup(req.input.wallet, { accountId: req.account?.id || null })));
+router.post('/v1/checkup', services.gate('checkup'), validated(claims.parseWallet), homeLimit('checkup'), homeCall(req => home.checkup(req.input.wallet, { accountId: req.account?.id || null })));
 
 // ── The risk monitor (Safety Pro) ──
 const monitor = require('../services/monitor');

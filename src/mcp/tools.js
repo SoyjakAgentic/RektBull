@@ -155,7 +155,7 @@ const TOOLS = {
   },
   paid_services: {
     title: 'Paid services (x402)',
-    description: 'RektBull\'s paid runs (token quick check, full token report, approval cleanup, pre-sign check, proposal summary): what each does, its price, and how to call it over HTTP with x402 (USDC on Base, no account).',
+    description: 'RektBull\'s paid runs (such as the token quick check, approval cleanup, pre-sign check and proposal summary): what each does, its price, and how to call it over HTTP with x402 (USDC on Base, no account).',
     inputSchema: NONE, parse: () => ({}),
     run: () => {
       const api = require('../developers/api');

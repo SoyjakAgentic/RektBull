@@ -36,7 +36,20 @@ charged.
 | Token quick check | 1 | $0.25 | Included (fair use 200 a day) |
 | Approval cleanup | 5 | $1 | Included (fair use 20 a day) |
 | Proposal summary (AI, governance) | 1 | $0.10 | Included (fair use 50 a day) |
-| Token report (AI) | — (each costs real AI money) | $3 | 5 a month included, then $3 |
+| Token report (AI) | — | **Free** (signed in, 10 a day); paused and hidden for now | — |
+
+**Free runs.** An admin can set any run's price to $0. The owner made the token
+report free on 22 November 2026, because competitors' scanners (GoPlus,
+RugCheck, Token Sniffer) are free, and held it off for now: paused and hidden
+(admin panel, Services).
+
+- **Who:** signed-in accounts only, so the AI and data cost can't run away.
+- **How many:** at most 10 a day per account and 20 a day per IP address
+  (`FREE_RUNS` in `payments/gate.js`).
+- **If it fails:** the day's use is given back.
+- **No x402:** a free run offers none.
+- **Shared reports:** a report on one token is reused for an hour, so popular
+  tokens cost one AI call however many people check them.
 
 **Free points** (`FREE_POINTS` in `payments/catalog.js`): 30 a month (UTC),
 fixed when the month's first point is spent. A wallet with no transactions
@@ -57,9 +70,9 @@ use points: 3 a day signed out, 10 signed in.
 
 **The $1 question:** x402 client libraries default to refusing more than
 about $1 a call unless the payer raises the limit. The $0.25 quick check
-works with default clients. The $3 report accepts x402 too, but most
-callers will need to raise their limit or use credits; the catalog says so
-in `x402_note`.
+works with default clients. The $99 contract audit accepts x402 too, but
+most callers will need to raise their limit or use credits; the catalog says
+so in `x402_note`.
 
 **Setup:** `X402_PAY_TO` (an address you control, ideally a hardware wallet
 or Safe), `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` from the Coinbase Developer

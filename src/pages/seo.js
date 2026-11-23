@@ -60,8 +60,8 @@ const UNLISTED = {
  */
 const FAQ = {
   '/safety': [
-    ['What does the token check look at?', 'Whether the token can be sold after you buy it, what it taxes on buys and sells, what its owner can still change (minting, pausing, blocking wallets, changing taxes), how concentrated its holders are, and, in the full report, its liquidity, volume and age. Each finding names its source, such as GoPlus, the block explorer or the chain itself.'],
-    ['How much does it cost?', 'The quick check is {{points:token_quick_check}} free point or {{price:token_quick_check}}; the full report, written in plain English, is {{price:token_report}}. Safety Pro ({{price:pro_30d}} for 30 days, {{price:pro_365d}} for a year) includes unlimited quick checks within fair use and an AI allowance every 30 days for full reports and proposal summaries (about 20 reports). Bots and AI agents can pay per call with x402, in USDC on Base.'],
+    ['What does the token check look at?', 'Whether the token can be sold after you buy it, what it taxes on buys and sells, what its owner can still change (minting, pausing, blocking wallets, changing taxes) and how concentrated its holders are. Each finding names its source, such as GoPlus, the block explorer or the chain itself.'],
+    ['How much does it cost?', 'The quick check is {{points:token_quick_check}} free point or {{price:token_quick_check}}. Safety Pro ({{price:pro_30d}} for 30 days, {{price:pro_365d}} for a year) includes unlimited quick checks within fair use and an AI allowance every 30 days for its AI runs, such as proposal summaries. Bots and AI agents can pay per call with x402, in USDC on Base.'],
     ['What is a token approval, and why revoke it?', 'An approval lets a contract spend a token from your wallet, often with no limit, until you take it back. Drainers use old or unlimited approvals to empty wallets long after you\'ve forgotten them. The free preview shows how many you have open on six chains and how much they put at risk; the cleanup ({{price:approval_cleanup}} or {{points:approval_cleanup}} points) rates each one with its sources and prepares the revokes for your wallet to sign.'],
     ['Does a clean result mean a token is safe?', 'No. A check finds known patterns; it can\'t prove that a token or its team is honest, or that nothing will change later. Treat a clean result as "nothing known was found", never as a guarantee.'],
   ],
@@ -256,7 +256,7 @@ const robots = base => [
 /** The listed pages, plus any extra entries (the published digests) with their dates. */
 function sitemap(base, extra = []) {
   const urls = [
-    ...Object.keys(PAGES).map(route => `  <url><loc>${esc(base + route)}</loc></url>`),
+    ...Object.keys(PAGES).filter(route => !require('../admin/services').pageHidden(route)).map(route => `  <url><loc>${esc(base + route)}</loc></url>`),
     ...extra.map(e => `  <url><loc>${esc(e.loc)}</loc>${e.lastmod ? `<lastmod>${esc(e.lastmod)}</lastmod>` : ''}</url>`),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
@@ -272,12 +272,12 @@ function llms(base, digests = []) {
     '',
     'Key facts:',
     '- Free wallet checkup on Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain: risky token approvals, unclaimed rewards, idle stablecoins and open DAO votes.',
-    '- Paid runs (token quick check {{price:token_quick_check}}, full token report {{price:token_report}}, approval cleanup {{price:approval_cleanup}}, pre-sign check {{price:presign_check}}, proposal summary {{price:governance_summary}}, launch check {{price:launch_check}}, contract audit {{price:contract_audit}}) take x402 (USDC on Base, no account), points, credits or Safety Pro ({{price:pro_30d}} for 30 days). Charged only when the run succeeds.',
+    `- Paid runs (token quick check {{price:token_quick_check}}, ${require('../admin/services').hiddenNow('token_report') ? '' : 'full token report {{price:token_report}}, '}approval cleanup {{price:approval_cleanup}}, pre-sign check {{price:presign_check}}, proposal summary {{price:governance_summary}}, launch check {{price:launch_check}}, contract audit {{price:contract_audit}}) take x402 (USDC on Base, no account), points, credits or Safety Pro ({{price:pro_30d}} for 30 days). Charged only when the run succeeds.`,
     '- AI agents (sign in with a wallet, switch one on, alerts by Telegram, email or browser): Wallet Checkup, Claim Assistant and Meme Watch are free; Wallet Guardian, Token Watch, DAO Votes and Yield Watch are part of Safety Pro. They never sign or move money, and AI never decides a fact.',
     '- Data sources include GoPlus, Etherscan and Blockscout, DefiLlama, Merkl, Snapshot, GeckoTerminal, CoinGecko, Coinbase\'s x402 Bazaar and the chains themselves.',
     '',
     '## Checks and tools',
-    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/points', '/launches'].map(line),
+    ...['/', '/safety', '/extension', '/portfolio', '/find', '/governance', '/trade', '/perps', '/predictions', '/points', '/launches'].filter(route => !require('../admin/services').pageHidden(route)).map(line),
     '',
     '## Data and research',
     ...['/research', '/discover', '/markets', '/opportunities', '/agents'].map(line),
