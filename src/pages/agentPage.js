@@ -59,7 +59,7 @@ const PAGES = {
       ['Whether a reward token is worth claiming', 'GoPlus token flags; DefiLlama prices'],
     ],
     faq: [
-      ['Is the airdrop checker free?', 'Yes. Checking is free, and claiming on the project\'s own site is free. If you claim through RektBull, {{fee:airdrop_claim}} of what arrives ({{profee:airdrop_claim}} with Safety Pro) goes to RektBull in a separate transfer you sign with the claim.'],
+      ['Is the airdrop checker free?', 'Yes. Checking is free, and claiming on the project\'s own site is free. If you claim through RektBull, {{fee:airdrop_claim}} of what arrives{{profee_note:airdrop_claim}} goes to RektBull in a separate transfer you sign with the claim.'],
       ['Will it claim for me?', 'No. It tells you what can be claimed and prepares the claim for your own wallet to sign. Nothing moves without your signature.'],
       ['Someone sent me a link to claim an airdrop. Is it real?', 'Treat it as a scam until proven otherwise: fake claim pages are the most common way wallets are drained. RektBull never sends claim links in DMs; check from rektbull.com or the project\'s own site, typed in yourself.'],
     ],

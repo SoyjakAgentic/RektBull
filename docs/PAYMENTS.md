@@ -17,7 +17,7 @@ Crypto only. Every paid run goes through the same payment gate
 | **Automation fee** (Polymarket) | Each automatic entry RektBull's Session Key places that fills: 1% of what filled, at least $0.25, from Safety Pro AI credits, on top of the AI builder fee | Yes (wallet sign-in; Safety Pro) | `polymarket/auto.js` |
 | **Predictions fee** (a Polymarket builder code) | Each order prepared on `/predictions`: 0.1% of what fills, charged by Polymarket on the fill | Yes (wallet sign-in) | `polymarket/desk.js`, `polymarket/orders.js` |
 | **Perps fee** (a Hyperliquid builder code) | Each perp order RektBull sends to Hyperliquid, placed by the user or by their agent: 0.01% of what fills, taken by Hyperliquid on the fill | Yes (wallet sign-in) | `hyperliquid/relay.js`, `routes/hyperliquid.js` |
-| **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives (3% with Safety Pro), in the claimed tokens | No | `services/claims.js` |
+| **Claim fee** | Airdrops and rewards claimed through RektBull: 5% of what arrives, in the claimed tokens | No | `services/claims.js` |
 
 ## Order a run is paid in
 
@@ -35,7 +35,7 @@ charged.
 |---|---|---|---|
 | Token quick check | 1 | $0.25 | Included (fair use 200 a day) |
 | Approval cleanup | 5 | $1 | Included (fair use 20 a day) |
-| Proposal summary (AI, governance) | 1 | $0.10 | Included (fair use 50 a day) |
+| Proposal summary (AI, governance) | 5 | $1 (from 23 November 2026) | Included (fair use 50 a day) |
 | Token report (AI) | — | **Free** (signed in, 10 a day); paused and hidden for now | — |
 
 **Free runs.** An admin can set any run's price to $0. The owner made the token
@@ -129,7 +129,7 @@ not the user.
 Crypto can't safely pull a payment every month, so time is prepaid:
 **Safety Pro**, `pro_30d` ($9) and `pro_365d` ($79), covers every Safety
 desk check (fair use), an AI allowance, the risk monitor (up to 3
-wallets, checked daily; paused while no pass is active), and a 3% claim fee instead of 5%. Buying again while active extends from the current end date.
+wallets, checked daily; paused while no pass is active), and (until 23 November 2026) a 3% claim fee instead of 5%: the claim fee is now 5% for everyone, though an admin can set a lower Safety Pro rate. Buying again while active extends from the current end date.
 
 **The AI allowance** (`src/payments/aiAllowance.js`, decided 7 November 2026):
 - Runs that use AI (full token reports, proposal summaries, and later the
@@ -158,8 +158,9 @@ Renewal reminders by email are planned for when alert emails exist.
 
 Checking a wallet for unclaimed airdrops and rewards is free. When RektBull
 prepares a claim, the wallet is given the claim call(s) and, after them, a
-plain ERC-20 `transfer` per token of **5% of what arrives** (3% with an
-active Safety Pro pass) to `CLAIM_FEE_WALLET_EVM`. That's the whole fee
+plain ERC-20 `transfer` per token of **5% of what arrives** to
+`CLAIM_FEE_WALLET_EVM`, for everyone (the owner, 23 November 2026; an admin
+can set a lower Safety Pro rate, and the pages name it only while it's lower). That's the whole fee
 mechanism:
 
 - **No approval, nothing held.** It's the user's own transfer, shown in the

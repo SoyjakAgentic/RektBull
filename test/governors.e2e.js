@@ -161,7 +161,7 @@ test('on-chain governor votes, end to end', { skip: (!DB && 'set TEST_DATABASE_U
     assert.equal(s.status, 200, JSON.stringify(s.body));
     assert.match(prompt, /transfer\(address,uint256\) on 0x[0-9a-f]{40} \(address 0x[0-9a-fA-F]{40}, uint256 500000000000000000000\) \[moves funds\]/);
     assert.match(prompt, /trust these over the description/);
-    assert.deepEqual([s.body.run.paid_with, s.body.run.points], ['points', 1]);
+    assert.deepEqual([s.body.run.paid_with, s.body.run.points], ['points', 5], 'a summary is $1, or 5 points');
   });
 
   await t.test('Safety Pro: an alert for the on-chain vote, once', async () => {

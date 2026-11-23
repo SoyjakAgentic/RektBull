@@ -134,11 +134,11 @@ test('votes, summaries, spaces and alerts, through the API', { skip: !DB && 'set
     assert.match((await call(null, 'POST', '/v1/governance/votes', { message: stale, sig })).body.message, /too long ago/);
   });
 
-  await t.test('a summary is a paid run (1 point), written once from the proposal\'s own text', async () => {
+  await t.test('a summary is a paid run ($1, or 5 points), written once from the proposal\'s own text', async () => {
     const s = await call(token, 'POST', '/v1/governance/summary', { proposal_id: open.id });
     assert.equal(s.status, 200, JSON.stringify(s.body));
     assert.match(s.body.summary_markdown, /500,000 USDC/);
-    assert.deepEqual([s.body.run.paid_with, s.body.run.points], ['points', 1]);
+    assert.deepEqual([s.body.run.paid_with, s.body.run.points], ['points', 5]);
     assert.match(s.body.note, /not a recommendation/);
     const again = await call(token, 'POST', '/v1/governance/summary', { proposal_id: open.id });
     assert.equal(again.status, 200);

@@ -158,6 +158,8 @@ test('find money, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') || (!bui
   const adminToken = await mkAccount(admin.address);
   const proToken = await mkAccount(me);
   await db.query(`INSERT INTO passes (account_id, product, starts_at, ends_at) SELECT id, 'pro_30d', now(), now() + interval '30 days' FROM accounts WHERE wallet = $1`, [me]);
+  // The claim fee is 5% for everyone by default (23 November 2026); an admin can still set a lower Safety Pro rate. Test that path.
+  await require('../src/admin/settings').set('price:airdrop_claim', { pro_fee_bps: 300 }, { wallet: admin.address, action: 'price', reason: 'test the Safety Pro rate' });
   const program = { slug: 'test-drop', name: 'Test Drop', chain: 'base-sepolia', distributor: distributor.target, token: AIR, format: 'uniswap', tree_url: 'https://example.org/tree.json', official_url: 'https://example.org/claim', source: 'the project\'s announcement' };
 
   await t.test('an airdrop is added only when its tree matches the distributor onchain', async () => {
@@ -177,7 +179,7 @@ test('find money, end to end', { skip: (!DB && 'set TEST_DATABASE_URL') || (!bui
   });
 
   let found;
-  await t.test('the free check finds the airdrop and Merkl rewards, each checked onchain, at 5% (3% with Safety Pro)', async () => {
+  await t.test('the free check finds the airdrop and Merkl rewards, each checked onchain, at 5% (3% with a lower Safety Pro rate set)', async () => {
     const anon = await call(null, 'POST', '/v1/claims/check', { wallet: claimer.address });
     assert.equal(anon.status, 200, JSON.stringify(anon.body));
     assert.equal(anon.body.fee.rate, '5%');

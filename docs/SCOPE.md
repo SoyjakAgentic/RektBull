@@ -56,7 +56,7 @@ finds or saves**, and show that figure in the result.
 | Protect | **Pre-sign check**: in the RektBull browser extension, every transaction and signature is decoded, simulated and checked (spenders, recipients, permits, Seaport orders, sign-ins, the site) before the wallet shows it | 1 point or $0.10; in Safety Pro | ✅ built (`extension/`, `/extension`) |
 | Protect | **Approval cleanup** (every open token, NFT and Permit2 permission on six chains, rated with sources, value at risk, revokes prepared for the wallet to sign) | 5 points or $1; free preview | ✅ built, on `/safety` |
 | Protect | **Risk monitor**: up to 3 wallets checked daily for new risky approvals, flagged spenders, upgraded spender contracts, stablecoin depegs; alerts by Telegram, email and browser notifications | in Safety Pro | ✅ built, on `/safety` |
-| Find | **Airdrop and unclaimed-funds finder**: Merkl rewards on six chains and Merkle airdrops RektBull checked, each verified onchain; claims prepared for the wallet to sign | Check free; 5% of what's claimed (3% with Safety Pro), in the claimed tokens | ✅ built, on `/find` |
+| Find | **Airdrop and unclaimed-funds finder**: Merkl rewards on six chains and Merkle airdrops RektBull checked, each verified onchain; claims prepared for the wallet to sign | Check free; 5% of what's claimed, in the claimed tokens | ✅ built, on `/find` |
 | Find | **Yield proposals**: Aave v3, Compound v3 and Spark sUSDC on Ethereum, Base and Arbitrum, rates read onchain; moves that pass the rules, prepared for the wallet to sign; risk alerts | In Safety Pro; 0.1% of each move | ✅ built, on `/find`; automatic rebalancing built and switched off ([YIELD_ROUTER.md](YIELD_ROUTER.md)) |
 | Save | Tax and profit report | $29–99 / year | after paid data |
 | Save | **Governance assistant**: the Snapshot votes and on-chain governor proposals (OpenZeppelin Governor, Compound Bravo) a wallet can cast, its voting power, summaries of each proposal's own text (never a recommendation), votes signed by the wallet; alerts when a vote opens or closes | Free check and voting; summary 1 point or $0.10; alerts in Safety Pro | ✅ built, on `/governance`, with on-chain votes and delegation sent from the wallet |
@@ -65,8 +65,8 @@ finds or saves**, and show that figure in the result.
 **Free:** rankings, safety-score summaries, the airdrop and rewards check,
 approval previews, and **30 points a month** for signed-in wallets (a quick
 check is 1, an approval cleanup 5). **Safety Pro** ($9 for 30 days, $79 a
-year) covers every Safety desk check, an AI allowance (about 20 reports every 30 days) and the risk
-monitor, and lowers the claim fee to 3%. Users pay for monitoring, deep
+year) covers every Safety desk check, an AI allowance every 30 days and the risk
+monitor. The claim fee is 5% for everyone. Users pay for monitoring, deep
 reports and volume, and a share of money found when they claim it here.
 
 ## 4. How people pay
@@ -116,7 +116,7 @@ comes first, one PR per step:
    sign-in, credits, top-ups and passes (`/safety`).
 2. ✅ Approval cleanup (5 points or $1, with a free preview), free points and Safety Pro.
 3. ✅ Pre-sign check, as a browser extension (1 point or $0.10, in Safety Pro; bots over x402). ✅ Also as a MetaMask Snap (`snap/`), showing the check in MetaMask's confirmation screen; it needs MetaMask's allowlisting (network access) before regular MetaMask installs it.
-4. ✅ Airdrop and unclaimed-funds finder (`/find`): Merkl rewards and admin-added Merkle airdrops, each verified onchain; free check, 5% claim fee (3% with Safety Pro) as a transfer the user signs with the claim.
+4. ✅ Airdrop and unclaimed-funds finder (`/find`): Merkl rewards and admin-added Merkle airdrops, each verified onchain; free check, 5% claim fee as a transfer the user signs with the claim.
 
 **Deployment comes after the planned desks** (decided 2026-11-02): see
 [LAUNCH_PLAN.md](LAUNCH_PLAN.md) for the build order before launch and the
