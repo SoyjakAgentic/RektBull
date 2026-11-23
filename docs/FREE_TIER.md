@@ -135,3 +135,24 @@ run's AI cost is stored (`runs.ai_cost_usd`). Safety Pro's AI runs come out
 of a $2 allowance every 30 days (PAYMENTS.md), so one Pro user can't cost
 more than about $2 a month in AI. To lower cost further, set `REPORT_MODEL`
 and `REPORT_EFFORT`; no code change needed.
+
+## Paid plans chosen for launch (Chainstack)
+
+The owner chose two Chainstack plans, $49 a month each, to buy before launch
+(23 November 2026). Neither is needed until then, and both slots are ready:
+
+- **Chainstack's node API (RPC):** its endpoint URLs go in `RPC_URLS_<CHAIN>`
+  (`RPC_URLS_SOLANA`, `RPC_URLS_BASE`, `RPC_URLS_BSC`, …), comma-separated. Your
+  own endpoints are always asked first, with the free public ones after them.
+  - The URL carries the access key, so it's a secret: put it in the
+    environment's secret settings.
+  - On Solana this is what the token checks, the bundle check and the launch
+    feed's RPC reads use. On BNB Chain the Wallet Tracker's log queries need
+    an endpoint of your own in production.
+- **Chainstack's Solana Yellowstone gRPC:** `YELLOWSTONE_GRPC_URL` and
+  `YELLOWSTONE_GRPC_TOKEN`. It streams pump.fun's events to the Solana launch
+  feed ([LAUNCHES.md](LAUNCHES.md#pumpfuns-events-streamed-yellowstone-grpc-built-off-until-its-key-is-set)).
+  Unset, the feed polls GeckoTerminal and RPC.
+
+The admin panel's External services tab counts calls to each. Its health view
+shows whether the stream is live.

@@ -229,6 +229,58 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
   pools within seconds; a live read built the three columns in about 2
   seconds (22 new coins, 10 curves, 7 graduations in the day).
 
+### pump.fun's events, streamed (Yellowstone gRPC): built, off until its key is set
+
+Decided by the owner on 23 November 2026: Chainstack's Solana Yellowstone gRPC
+add-on ($49 a month), bought before launch. The code takes any Yellowstone
+provider; switching is two settings.
+
+- **What it's for.** pump.fun's own events, pushed as the chain confirms them,
+  replace the polling above:
+  - `CreateEvent`: a new coin, within a second or two, not up to 20 seconds;
+  - `TradeEvent`: each curve's progress from its last trade's reserves, with
+    no GeckoTerminal "busiest" list and no curve reads;
+  - `CompleteEvent` and `CompletePumpAmmMigrationEvent`: a graduation and its
+    PumpSwap pool, as it happens.
+
+  The meme picks' watchlist reads the same feed, so it gets graduations sooner
+  too. GeckoTerminal's free quota (about 30 calls a minute) is then left for
+  the picks.
+- **How** (`src/providers/yellowstone.js`, `src/services/pumpStream.js`):
+  - **One stream, opened by the worker:** confirmed, successful transactions
+    that touch pump.fun's program (`6EF8…F6P`), filtered by the provider.
+  - **Decoding:** events are read with the layouts in pump.fun's published IDL
+    (github.com/pump-fun/pump-public-docs, `idl/pump.json`). Each is found as
+    an Anchor self-CPI event, or a `Program data:` log line. Only the leading
+    fields are read, so fields pump.fun adds later don't break it. Curves
+    priced in anything but SOL are left out, as in the polled feed.
+  - **Sharing:** the worker keeps the state in memory and writes it to the
+    shared cache every 2 seconds (every 10 when quiet).
+  - **Names:** coins that launched before the stream started get their names
+    from DexScreener (30 a call, kept a day).
+- **The fallback.** The feed uses the stream only while its state is under 30
+  seconds old and the stream is receiving. Otherwise it polls exactly as
+  before, and each column names the source it used.
+  - The client reconnects by itself, without replay, since polling covers the
+    gap. If it gives up, the worker starts it again a minute later.
+  - The admin panel's health view shows the stream as live, down or not set.
+    "Down" is listed as a problem.
+- **Settings:** `YELLOWSTONE_GRPC_URL` (the endpoint, `https://…:443`) and
+  `YELLOWSTONE_GRPC_TOKEN` (the access token: a secret, kept in the
+  environment's secret settings, never in the repo or a chat). Unset, nothing
+  connects.
+- **Client:** `@triton-one/yellowstone-grpc` 10.0.0 (Triton One, Yellowstone's
+  authors; Apache-2.0). It uses a prebuilt native module for Linux x64, so the
+  server image must be Linux x64 (glibc or musl) or macOS.
+- **Volume to watch:** pump.fun's busiest hours are hundreds of transactions a
+  second. The filter keeps only pump.fun's, but check the add-on's limits on
+  streams and bandwidth when it's bought.
+- **Next uses, not built yet:**
+  - Meme Watch on Solana: launch-bundle and insider wallets selling, within
+    seconds instead of every 6 hours (a filter on those wallets).
+  - A Solana Wallet Tracker: following wallets' buys and sells, as on the EVM
+    chains.
+
 ## AI picks: built (meme coin proposals)
 
 Coins RektBull's rules pick from the busiest pools on Base, BNB Chain and

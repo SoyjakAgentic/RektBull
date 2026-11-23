@@ -20,6 +20,10 @@
  * Each card of the newest launches also carries what the mint itself says: a
  * freeze or mint authority still set (read from the chain in one call).
  *
+ * With YELLOWSTONE_GRPC_URL and its token set, the feed reads pump.fun's own
+ * events instead, streamed as the chain confirms them (pumpStream.js), and
+ * falls back to the polling below whenever the stream isn't fresh.
+ *
  * The cost: two GeckoTerminal calls every 20 seconds and two more a minute
  * (its free plan allows about 30 a minute), and two RPC calls every 20
  * seconds (about 260,000 a month on RPC_URLS_SOLANA, for everyone at once:
@@ -164,9 +168,73 @@ function refresh() {
   });
 }
 
+/**
+ * Names for coins the stream saw trade or graduate but not launch (they launched before it started): DexScreener,
+ * 30 a call, each kept a day. A coin with none yet shows its address.
+ */
+async function names(mints) {
+  const out = {};
+  const missing = [];
+  for (const m of [...new Set(mints)]) {
+    const got = await cache.get(`launches:solana:name:${m}`);
+    if (got) out[m] = got; else missing.push(m);
+  }
+  if (missing.length) {
+    const found = await require('../providers/dexscreener').pairs('solana', missing.slice(0, 30)).catch(() => ({}));
+    for (const [m, p] of Object.entries(found)) {
+      out[m] = { symbol: p.symbol || null, name: p.name || null };
+      await cache.set(`launches:solana:name:${m}`, out[m], 86400);
+    }
+  }
+  return out;
+}
+
+const STREAM_SOURCE = 'pump.fun\'s own events, streamed as the chain confirms them (Yellowstone gRPC)';
+
+/** The three columns from the stream (pumpStream.js), when it's live. */
+async function streamedView(s) {
+  const newest = s.launches.slice(0, SHOW.new).map(c => ({
+    kind: 'new', chain: 'solana', launchpad: 'pumpfun', launchpad_name: 'pump.fun', token: c.mint, symbol: c.symbol, name: c.name, at: new Date(c.at).toISOString(), key: c.curve, pool: c.curve,
+  }));
+  const flags = await cache.cached(`launches:live:solana:flags:${newest.slice(0, FLAGGED).map(i => i.token).join(',')}`, 300, () => mintFlags(newest.slice(0, FLAGGED).map(i => i.token)));
+  let near;
+  try {
+    const initial = BigInt((await pumpGlobal()).initial_real_token_reserves);
+    near = s.curves.map(c => {
+      const real = BigInt(c.real_token);
+      const sold = initial > real ? initial - real : 0n;
+      return { token: c.mint, symbol: c.symbol, name: c.name, launchpad: 'pumpfun', launchpad_name: 'pump.fun', progress_pct: initial ? Number(sold * 1000n / initial) / 10 : 0, in_curve: Number(c.real_sol) / 1e9, symbol_in_curve: 'SOL', tradable: true };
+    }).filter(c => c.progress_pct < 100).sort((a, b) => b.progress_pct - a.progress_pct).slice(0, SHOW.graduating);
+    near = { items: near, source: `${STREAM_SOURCE}: each curve's last trade says how much of its ${(Number(initial) / 1e12).toFixed(1)} million tokens for sale is sold (pump.fun's Global account)` };
+  } catch (err) {
+    near = { items: [], not_checked: `couldn't be read: ${err.message}` };
+  }
+  const graduated = s.graduated.slice(0, SHOW.graduated).map(g => ({
+    kind: 'graduated', chain: 'solana', launchpad: 'pumpfun', launchpad_name: 'pump.fun → PumpSwap', token: g.mint, symbol: g.symbol, name: g.name, at: new Date(g.at).toISOString(), key: g.pool || g.mint, pool: g.pool,
+  }));
+  const unnamed = [...near.items, ...graduated].filter(i => !i.symbol).map(i => i.token);
+  if (unnamed.length) {
+    const found = await names(unnamed);
+    for (const i of [...near.items, ...graduated]) if (!i.symbol && found[i.token]) Object.assign(i, found[i.token]);
+  }
+  const hours = Math.min(24, (Date.now() - Date.parse(s.started_at)) / 3600000);
+  return {
+    chain: 'solana', chain_name: 'Solana', read_at: s.written_at, refresh_seconds: 5, streamed: true,
+    columns: {
+      new: { items: newest.map((i, n) => (n < FLAGGED ? { ...i, flags: flags[i.token] } : i)), source: `${STREAM_SOURCE}: each coin pump.fun creates` },
+      graduating: near,
+      graduated: { items: graduated, hours_covered: Math.max(0.1, Math.round(hours * 10) / 10), source: `${STREAM_SOURCE}: each curve that completed and moved to PumpSwap, since the stream started` },
+    },
+    note: 'Most new tokens go to zero, and many are scams. Nothing here is a recommendation or financial advice. A buy runs RektBull\'s full token check and the bundle check first.',
+  };
+}
+
 let inflight = null;
 
 async function view() {
+  // The stream when it's live (YELLOWSTONE_GRPC_URL set and messages arriving); otherwise GeckoTerminal and RPC, as before.
+  const streamed = await require('./pumpStream').fresh().catch(() => null);
+  if (streamed) return streamedView(streamed);
   if (!inflight) inflight = refresh().finally(() => { inflight = null; });
   const { state: st, not_checked: notChecked } = await inflight;
   const { LaunchesRefused } = require('./launches');
@@ -190,4 +258,4 @@ async function view() {
 
 const live = () => cache.cached('launches:live:view:solana', 5, view);
 
-module.exports = { live, advance, graduating, mintFlags, decodeCurve, curveOf, pumpGlobal, REFRESH_S, PUMP };
+module.exports = { live, view, streamedView, advance, graduating, mintFlags, decodeCurve, curveOf, pumpGlobal, REFRESH_S, PUMP };
