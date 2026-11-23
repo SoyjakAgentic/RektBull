@@ -46,8 +46,8 @@ function status(name) {
  * onTransaction(update.transaction) is called for each confirmed, successful
  * transaction that matches. Returns a stop function. Does nothing when unset.
  */
-async function subscribeTransactions(name, filter, onTransaction) {
-  if (!configured()) return () => {};
+async function subscribeTransactions(name, filter, onTransaction, control = { stopped: false }) {
+  if (!configured() || control.stopped) return () => {};
   if (streams.has(name)) throw new Error(`a Yellowstone stream called ${name} is already open`);
   const status = { connected: false, started_at: Date.now(), last_message_at: null, messages: 0, transactions: 0, reconnects: 0, last_error: null };
   const entry = { status, stream: null, timer: null };
@@ -81,7 +81,8 @@ async function subscribeTransactions(name, filter, onTransaction) {
       // The client already spent its retries: start again in a minute, from scratch.
       clearInterval(entry.timer);
       streams.delete(name);
-      setTimeout(() => subscribeTransactions(name, filter, onTransaction).catch(e => logger.warn('yellowstone restart failed', { name, error: e.message })), 60000).unref();
+      // Unless it was stopped meanwhile: a worker that gave up its lock must never reopen it.
+      if (!control.stopped) setTimeout(() => { if (!control.stopped) subscribeTransactions(name, filter, onTransaction, control).catch(e => logger.warn('yellowstone restart failed', { name, error: e.message })); }, 60000).unref();
     });
     let id = 1;
     entry.timer = setInterval(() => { try { stream.write({ ...request, ping: { id: id++ } }); } catch { /* the error handler sees it */ } }, PING_MS);
@@ -91,9 +92,13 @@ async function subscribeTransactions(name, filter, onTransaction) {
     status.last_error = String(err.message || err).slice(0, 300);
     logger.warn('yellowstone stream could not open', { name, error: status.last_error });
   }
+  // Stops it for good: whichever connection is current (after a restart, not the first), and any restart still to come.
   return () => {
-    clearInterval(entry.timer);
-    try { entry.stream?.end?.(); } catch { /* already closed */ }
+    control.stopped = true;
+    const cur = streams.get(name);
+    if (!cur) return;
+    clearInterval(cur.timer);
+    try { cur.stream?.end?.(); } catch { /* already closed */ }
     streams.delete(name);
   };
 }

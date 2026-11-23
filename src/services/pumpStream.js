@@ -28,6 +28,7 @@
 const { getAddressDecoder } = require('@solana/kit');
 const yellowstone = require('../providers/yellowstone');
 const cache = require('../lib/cache');
+const db = require('../config/db');
 const logger = require('../config/logger');
 
 const PUMP = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
@@ -167,13 +168,82 @@ function snapshot(now = Date.now(), s = st) {
   };
 }
 
+/*
+ * One worker streams at a time. Chainstack's $49 plan allows 2 connections at once (the owner's choice,
+ * 23 November 2026): one streams, and the other is headroom for a deploy's overlap or a reconnect. So the
+ * stream is held behind a Postgres advisory lock on a connection of its own. A second worker waits on
+ * standby and tries again every STANDBY_MS; when the holder stops, or its database connection drops (which
+ * frees the lock), one standby takes over. A holder that loses its connection stops streaming at once, so
+ * two never stream together. With no database (local development), there's no lock.
+ */
+const LOCK_ID = 727020; // pg advisory lock: one pump.fun stream at a time (src/hyperliquid/auto.js: 727002; src/trade/autonomous.js: 727001)
+let STANDBY_MS = 30000;
+const HEARTBEAT_MS = 15000;
+
 let stop = null;
 let flusher = null;
 let written = 0;
+let lock = null; // { client, heartbeat } while this worker holds the lock
+let standby = null;
+let leading = false;
+const WORKER = `${require('os').hostname()}:${process.pid}`;
 
-/** The worker's start: opens the stream when YELLOWSTONE_GRPC_URL and its token are set; otherwise does nothing. */
-async function start() {
-  if (!yellowstone.configured() || stop) return false;
+/** Takes the lock on a connection of its own, or returns null when another worker holds it. */
+async function acquire() {
+  if (!require('../config/env').databaseUrl) return { client: null };
+  const client = await db.getPool().connect();
+  try {
+    const { rows: [r] } = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK_ID]);
+    if (r.ok) return { client };
+  } catch (err) {
+    client.release(err);
+    throw err;
+  }
+  client.release();
+  return null;
+}
+
+/** Gives the lock back (or drops its connection, which frees it). */
+function release(err) {
+  if (!lock) return;
+  const { client, heartbeat } = lock;
+  lock = null;
+  clearInterval(heartbeat);
+  if (!client) return;
+  if (err) { client.release(err); return; }
+  client.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]).catch(() => {}).finally(() => client.release());
+}
+
+function waitOnStandby() {
+  clearTimeout(standby);
+  standby = setTimeout(() => { standby = null; lead().catch(err => logger.warn('pump stream standby check failed', { error: err.message })); }, STANDBY_MS);
+  standby.unref();
+}
+
+/** The lock's connection failed: stop streaming at once (another worker may take over), then wait on standby. */
+function lost(err) {
+  if (!leading) return;
+  logger.warn('pump stream lost its lock connection: stopping, on standby', { error: err.message });
+  stopStream();
+  release(err);
+  leading = false;
+  waitOnStandby();
+}
+
+/** Tries to become the worker that streams; on standby otherwise. True when this worker streams. */
+async function lead() {
+  if (leading) return true;
+  let got;
+  try { got = await acquire(); } catch (err) { logger.warn('pump stream lock not reached', { error: err.message }); waitOnStandby(); return false; }
+  if (!got) { waitOnStandby(); return false; }
+  leading = true;
+  lock = { client: got.client, heartbeat: null };
+  if (got.client) {
+    got.client.on('error', lost);
+    // A quiet connection can die unnoticed: ask it something every 15 seconds.
+    lock.heartbeat = setInterval(() => { got.client.query('SELECT 1').catch(lost); }, HEARTBEAT_MS);
+    lock.heartbeat.unref();
+  }
   st = emptyState();
   stop = await yellowstone.subscribeTransactions('pumpfun', { accountInclude: [PUMP] }, t => {
     for (const e of eventsOf(yellowstone.readTransaction(t))) apply(e);
@@ -183,13 +253,26 @@ async function start() {
     if (!st.changed && Date.now() - written < 10000) return; // quiet: still written every 10 seconds, so the feed sees it's alive
     st.changed = false;
     written = Date.now();
-    cache.set(STATE_KEY, snapshot(), 300).catch(err => logger.warn('pump stream state not written', { error: err.message }));
+    cache.set(STATE_KEY, { ...snapshot(), worker: WORKER }, 300).catch(err => logger.warn('pump stream state not written', { error: err.message }));
   }, FLUSH_MS);
   flusher.unref();
-  logger.info('pump.fun stream started (Yellowstone gRPC)');
+  logger.info('pump.fun stream started (Yellowstone gRPC)', { worker: WORKER });
   return true;
 }
-function halt() { clearInterval(flusher); flusher = null; if (stop) stop(); stop = null; }
+
+/** The worker's start: when YELLOWSTONE_GRPC_URL and its token are set, streams if no other worker does, else waits on standby. */
+async function start() {
+  if (!yellowstone.configured() || leading || standby) return leading;
+  return lead();
+}
+function stopStream() { clearInterval(flusher); flusher = null; if (stop) stop(); stop = null; }
+/** Stops streaming and gives the lock back (a standby elsewhere takes over). */
+function halt() {
+  clearTimeout(standby); standby = null;
+  stopStream();
+  release();
+  leading = false;
+}
 
 /** The stream's state for the feed, or null when it's not running or not fresh. */
 async function fresh(now = Date.now()) {
@@ -205,9 +288,9 @@ async function health(now = Date.now()) {
   const s = await cache.get(STATE_KEY).catch(() => null);
   const ok = s && s.live && now - Date.parse(s.written_at) <= FRESH_MS;
   return {
-    name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null,
-    note: ok ? 'The Solana launch feed reads the stream.' : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
+    name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null, worker: s?.worker || null,
+    note: ok ? `The Solana launch feed reads the stream, from ${s.worker || 'the worker'} (one worker streams; any other waits on standby).` : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
   };
 }
 
-module.exports = { health, PUMP, STATE_KEY, FRESH_MS, DISC, EVENT_TAG, decodeEvent, eventsOf, apply, prune, snapshot, emptyState, start, halt, fresh, _state: () => st };
+module.exports = { LOCK_ID, acquire, lead, lost, health, PUMP, STATE_KEY, FRESH_MS, DISC, EVENT_TAG, decodeEvent, eventsOf, apply, prune, snapshot, emptyState, start, halt, fresh, _state: () => st, _leading: () => leading, _setStandbyMs: ms => { STANDBY_MS = ms; } };

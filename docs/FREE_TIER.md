@@ -150,7 +150,9 @@ The owner chose two Chainstack plans, $49 a month each, to buy before launch
     feed's RPC reads use. On BNB Chain the Wallet Tracker's log queries need
     an endpoint of your own in production.
 - **Chainstack's Solana Yellowstone gRPC:** `YELLOWSTONE_GRPC_URL` and
-  `YELLOWSTONE_GRPC_TOKEN`. It streams pump.fun's events to the Solana launch
+  `YELLOWSTONE_GRPC_TOKEN`. The $49 plan allows 2 connections at once: one
+  stream, from one worker at a time (a database lock), and one spare for
+  deploys and reconnects. It streams pump.fun's events to the Solana launch
   feed ([LAUNCHES.md](LAUNCHES.md#pumpfuns-events-streamed-yellowstone-grpc-built-off-until-its-key-is-set)).
   Unset, the feed polls GeckoTerminal and RPC.
 
