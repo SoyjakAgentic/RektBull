@@ -38,6 +38,12 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     VALUES (gen_random_uuid(), 'solana', 'OldMint11111111111111111111111111111111111', 'OLD', true, 5, 1, '{}', 1.1, 2, now(), now(), now() - interval '2 days')`);
   const proposals = require('../../src/forecasts/proposals');
   await proposals.offerSignal(acct.id, { signal: sig, priceUsd: 0 }); // free: no pass, no credits needed
+  // A pick made 7 hours ago, never acted on: expired.
+  const { rows: [old] } = await db.query(`INSERT INTO meme_signals (run_id, chain, token, symbol, picked, score, price_usd, facts, checks, reason, risks, model, created_at)
+    VALUES (gen_random_uuid(), 'base', $1, 'STALE', true, 8, 0.5, $2, '[]', 'An older pick.', '[]', 'claude-haiku-5-5', now() - interval '7 hours') RETURNING *`, ['0x' + 'b2'.repeat(20), JSON.stringify(facts)]);
+  await proposals.offerSignal(acct.id, { signal: old, priceUsd: 0 });
+  // DexScreener's price now: AAA picked at $0.0012, now $0.00156.
+  require('../../src/providers/dexscreener').prices = async (chain, tokens) => Object.fromEntries(tokens.filter(t => t === token).map(t => [t, 0.00156]));
   const jwt = require('../../src/auth/siwe').issueToken(acct);
 
   const server = require('../../src/app').createApp().listen(0);
@@ -61,6 +67,12 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     assert.match(card, /AAA on Base/);
     assert.match(card, /Liquidity \$120\.0K, \$900\.0K traded in 24 hours, 900 buys to 500 sells, \+8% in the last hour \(DexScreener/);
     assert.match(card, /GoPlus flags \(GoPlus token security\); bundle and insider check \(Base RPC\)/);
+    assert.match(card, /Now \$0\.00156 \(\+30% since the pick\) · DexScreener, read .*Picks expire after 6 hours/);
+    assert.match(card, /STALE on Base · expired.*Expired: picked over 6 hours ago, so the facts behind it are stale/);
+    assert.ok(card.indexOf('AAA on Base') < card.indexOf('STALE on Base'), 'live picks first');
+    assert.doesNotMatch(card, /An older pick/, 'an expired pick is one line, without its reason');
+    assert.equal(await page.getByRole('button', { name: 'Review the trade', exact: true }).count(), 1, 'no button on the expired pick');
+    console.log('✔ the price now against the price when picked; an expired pick has no trade button');
     assert.match(await page.textContent('#p-about'), /not a recommendation, and no coin is called safe/);
     await page.click('#picks-card summary');
     assert.match(await page.textContent('#p-rules'), /At least \$50\.0K of liquidity/);
@@ -74,7 +86,7 @@ Object.assign(process.env, { DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CH
     assert.match(await page.textContent('#p-about'), /Picks are free; the trade itself has RektBull's usual 1% fee/);
     await page.getByRole('button', { name: 'Review the trade', exact: true }).click();
     await page.waitForURL(/\/trade\?chain=base&token=0x(a1){20}&side=buy#trade-card/);
-    const { rows: [p] } = await db.query(`SELECT status, paid_from FROM ai_proposals WHERE venue = 'meme'`);
+    const { rows: [p] } = await db.query(`SELECT status, paid_from FROM ai_proposals WHERE venue = 'meme' AND market = 'AAA'`);
     assert.deepEqual([p.status, p.paid_from], ['approved', null], 'free: nothing charged');
     console.log('✔ acting on a pick: free, then the Trade desk on that coin');
 

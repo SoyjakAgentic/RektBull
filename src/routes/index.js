@@ -169,12 +169,14 @@ router.get('/v1/memes/track-record', async (_req, res) => {
 });
 router.get('/v1/ai/proposals', requireAuth, async (req, res) => {
   const s = require('../forecasts/settings').get();
+  const memes = require('../memes/signals');
+  await memes.expire(req.account.id, s); // so the page is right even if the worker is behind
   res.json({
-    settings: await aiProposals.getSettings(req.account.id), proposals: await aiProposals.list(req.account.id),
+    settings: await aiProposals.getSettings(req.account.id), proposals: await memes.withPriceNow(await aiProposals.list(req.account.id)),
     ai_credits: await require('../payments/aiAllowance').status(req.account.id),
     offered: { polymarket: !!s.polymarket_proposals, hyperliquid: !!s.hyperliquid_proposals, meme: !!s.meme_proposals }, price_usd: s.proposal_usd, edge_pct: s.edge_pct,
     meme: {
-      price_usd: s.meme_proposal_usd, rules: require('../memes/signals').RULES, refresh_minutes: s.meme_refresh_minutes,
+      price_usd: s.meme_proposal_usd, rules: require('../memes/signals').RULES, refresh_minutes: s.meme_refresh_minutes, expiry_hours: s.meme_expiry_hours,
       thresholds: { min_liquidity_usd: s.meme_min_liquidity_usd, min_volume_usd: s.meme_min_volume_usd, min_buys: s.meme_min_buys },
       about: 'AI picks are young coins on Base, BNB Chain and Solana that RektBull\'s rules picked and that passed its safety checks, with a short AI explanation of the facts. Acting on one opens the Trade desk, whose checks run again before you sign. Most meme coins lose most of their value: a pick is not a recommendation, and no coin is called safe.',
     },

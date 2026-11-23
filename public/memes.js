@@ -41,6 +41,16 @@
     } catch (err) { $('p-how').textContent = `The scorecard couldn't be read: ${err.message}`; }
   }
 
+  /** The price now against the price when picked, or why it couldn't be read; or that the pick has expired. */
+  function nowLine(p, s, hours) {
+    if (p.status === 'expired') return el('p', { class: 'small muted' }, `Expired: picked over ${hours} hours ago, so the facts behind it are stale. Wait for a fresh pick.`);
+    if (!p.now) return '';
+    if (p.now.not_checked) return el('p', { class: 'small warn' }, `Price now: couldn't be read (${p.now.not_checked}).`);
+    const up = p.now.change_pct >= 0;
+    return el('p', { class: 'small' }, el('strong', { class: up ? 'ok' : 'bad' }, `Now ${price(p.now.price_usd)} (${pct(p.now.change_pct)} since the pick)`),
+      ' ', el('span', { class: 'muted' }, `· ${p.now.source}, read ${new Date(p.now.read_at).toLocaleTimeString()}. Picks expire after ${hours} hours.`));
+  }
+
   async function load() {
     if (!RB.signedIn()) { $('p-about').textContent = 'Sign in to get AI picks, free. The scorecard below is public.'; return; }
     try {
@@ -53,13 +63,21 @@
       $('p-on').checked = !!out.settings.meme;
       const c = out.ai_credits;
       $('p-credits').textContent = m.price_usd > 0 ? (c ? `AI credits: ${c.left_pct}% of this month's allowance left, $${Number(c.topup_usd).toFixed(2)} top-up.` : 'Acting on a pick needs AI credits (Safety Pro).') : '';
-      const picks = out.proposals.filter(p => p.venue === 'meme' && p.signal);
+      // Live picks first; expired and dismissed ones after, one line each.
+      const live = p => ['offered', 'approved'].includes(p.status);
+      const picks = out.proposals.filter(p => p.venue === 'meme' && p.signal).sort((a, b) => live(b) - live(a));
       $('p-list').replaceChildren(...(picks.length ? picks.map(p => {
         const s = p.signal; const f = s.facts || {};
+        if (!live(p)) {
+          return el('div', { class: 'row proposal muted small' }, el('div', {},
+            el('strong', {}, `${s.symbol || s.token.slice(0, 8)} on ${NAMES[p.chain] || p.chain}`), ` · ${p.status} · picked ${new Date(s.picked_at).toLocaleString()} at ${price(s.price_usd)}`,
+            p.status === 'expired' ? nowLine(p, s, m.expiry_hours) : ''));
+        }
         return el('div', { class: 'row proposal' },
           el('div', {},
             el('strong', {}, `${s.symbol || s.token.slice(0, 8)} on ${NAMES[p.chain] || p.chain}`), ' ',
             el('span', { class: 'small muted' }, `· ${p.status} · picked ${new Date(s.picked_at).toLocaleString()} at ${price(s.price_usd)}${p.paid_from ? ` · $${p.price_usd} from your ${p.paid_from === 'topup' ? 'top-up' : 'allowance'}` : ''}`),
+            nowLine(p, s, m.expiry_hours),
             el('p', { class: 'small' }, s.reason),
             el('div', { class: 'small' }, `Liquidity ${money(f.liquidity_usd)}, ${money(f.volume_24h_usd)} traded in 24 hours, ${f.buys_24h} buys to ${f.sells_24h} sells, ${pct(f.change_1h_pct)} in the last hour (${f.source}).`),
             s.risks?.length ? el('ul', { class: 'small' }, ...s.risks.map(r => el('li', { class: 'warn' }, r))) : '',

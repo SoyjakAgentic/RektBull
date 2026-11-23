@@ -279,6 +279,43 @@ async function run(s = fsettings.get()) {
   return { run_id: runId, added, passed: passed.length, picked: stored.length, offered, dropped: passed.filter(c => c.dropped).map(c => ({ token: c.token, why: c.dropped })) };
 }
 
+/* ── picks as the user sees them: the price now, and expiry ── */
+
+/** Offered meme picks older than `meme_expiry_hours` expire (all accounts, or one). Returns how many. */
+async function expire(accountId = null, s = fsettings.get()) {
+  const { rowCount } = await db.query(`UPDATE ai_proposals p SET status = 'expired', acted_at = now()
+    FROM meme_signals g WHERE g.id = p.signal_id AND p.venue = 'meme' AND p.status = 'offered'
+      AND g.created_at < now() - make_interval(hours => $1) ${accountId ? 'AND p.account_id = $2' : ''}`,
+  accountId ? [s.meme_expiry_hours, accountId] : [s.meme_expiry_hours]);
+  return rowCount;
+}
+
+/**
+ * The price now of each pick in a list of presented proposals (proposals.present), read from DexScreener in one
+ * call per chain and cached a minute: adds { now: { price_usd, change_pct, source, read_at } }, or
+ * { now: { not_checked } } when it couldn't be read. Picks that expired or were dismissed aren't priced.
+ */
+async function withPriceNow(list) {
+  const picks = list.filter(p => p.venue === 'meme' && p.signal && ['offered', 'approved'].includes(p.status));
+  const byChain = {};
+  for (const p of picks) (byChain[p.chain] ||= new Set()).add(p.signal.token);
+  const read = {};
+  await Promise.all(Object.entries(byChain).map(async ([chain, set]) => {
+    const tokens = [...set].sort();
+    try {
+      read[chain] = await require('../lib/cache').cached(`memes:now:${chain}:${tokens.join(',')}`, 60, async () => ({ prices: await dexscreener.prices(chain, tokens), read_at: new Date().toISOString() }));
+    } catch (err) { read[chain] = { not_checked: `DexScreener couldn't be read: ${err.message}` }; }
+  }));
+  for (const p of picks) {
+    const r = read[p.chain];
+    const now = r?.prices?.[p.signal.token];
+    if (r?.not_checked) p.now = { not_checked: r.not_checked };
+    else if (!(now > 0)) p.now = { not_checked: 'DexScreener has no pair for it now', price_usd: 0 };
+    else p.now = { price_usd: now, change_pct: round((now / p.signal.price_usd - 1) * 100, 1), source: 'DexScreener', read_at: r.read_at };
+  }
+  return list;
+}
+
 /* ── the scorecard ── */
 
 /** Prices every signal again 1 hour and 24 hours after it, in batches per chain (DexScreener). */
@@ -340,6 +377,7 @@ async function tick({ force = false } = {}) {
   const s = fsettings.get();
   if (!env.databaseUrl) return { off: true };
   const scored = await score().catch(err => { logger.warn('meme score failed', { error: err.message }); return 0; });
+  await expire(null, s).catch(err => logger.warn('meme expiry failed', { error: err.message }));
   if (!s.memes) return { off: true, scored };
   // Due a refresh interval after the last run started, whether or not it picked anything (30 seconds' slack
   // for the worker's one-minute clock).
@@ -348,4 +386,4 @@ async function tick({ force = false } = {}) {
   return { scored, ran: true, ...(await run(s)) };
 }
 
-module.exports = { PACE, tick, run, score, screen, gather, watched, checksFor, explain, onlyFactNumbers, numbersIn, plainReason, trackRecord, RULES, CHAINS, CHAIN_NAMES };
+module.exports = { PACE, tick, run, score, expire, withPriceNow, screen, gather, watched, checksFor, explain, onlyFactNumbers, numbersIn, plainReason, trackRecord, RULES, CHAINS, CHAIN_NAMES };
