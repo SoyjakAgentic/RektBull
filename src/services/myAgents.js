@@ -30,6 +30,14 @@ const LAUNCH_SAFETY_MAX = 5;
 const TOKEN_LISTS = { token_watch: TOKEN_WATCH_MAX, launch_safety: LAUNCH_SAFETY_MAX };
 const PER_TICK = 10;
 const RETRY_MINUTES = 60;
+/**
+ * Agents on a schedule under an hour have their own job (src/server.js), every minute, so they don't wait
+ * behind the others or hold them up. Perps Guard: every 5 minutes, up to FAST_PER_TICK accounts a minute,
+ * which keeps its Hyperliquid reads (about 22 weight an account) inside the free per-IP allowance.
+ */
+const FAST = ['perps_guard'];
+const FAST_PER_TICK = 20;
+const FAST_RETRY_MINUTES = 5;
 const RANK = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 
 /**
@@ -620,8 +628,9 @@ async function runOne(row) {
 }
 
 /** The worker's job: run the agents that are due, a few at a time. */
-async function tick({ limit = PER_TICK } = {}) {
-  const ids = Object.keys(RUNNERS).filter(id => !agentStates.isOff(id));
+async function tick({ limit, fast = false } = {}) {
+  limit = limit ?? (fast ? FAST_PER_TICK : PER_TICK);
+  const ids = Object.keys(RUNNERS).filter(id => FAST.includes(id) === fast && !agentStates.isOff(id));
   if (!ids.length) return 0;
   const { rows } = await db.query(
     'SELECT * FROM agent_settings WHERE enabled AND agent = ANY($1::text[]) AND next_run_at <= now() ORDER BY next_run_at LIMIT $2',
@@ -630,7 +639,7 @@ async function tick({ limit = PER_TICK } = {}) {
   for (const row of rows) {
     try { await runOne(row); } catch (err) {
       logger.warn('agent run failed', { agent: row.agent, account: row.account_id, error: err.message });
-      await db.query('UPDATE agent_settings SET last_error = $3, next_run_at = now() + make_interval(mins => $4) WHERE account_id = $1 AND agent = $2', [row.account_id, row.agent, err.message.slice(0, 300), RETRY_MINUTES]);
+      await db.query('UPDATE agent_settings SET last_error = $3, next_run_at = now() + make_interval(mins => $4) WHERE account_id = $1 AND agent = $2', [row.account_id, row.agent, err.message.slice(0, 300), FAST.includes(row.agent) ? FAST_RETRY_MINUTES : RETRY_MINUTES]);
     }
   }
   return rows.length;

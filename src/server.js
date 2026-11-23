@@ -56,6 +56,7 @@ async function main() {
     job('monitor', 5 * 60 * 1000, () => require('./services/monitor').tick());
     // AI agents that run on a schedule (wallet checkup, claim assistant, token watch): the due ones, every 5 minutes.
     job('agents', 5 * 60 * 1000, () => require('./services/myAgents').tick());
+    job('agents_fast', 60 * 1000, () => require('./services/myAgents').tick({ fast: true })); // Perps Guard: every 5 minutes per account, 20 accounts a minute
     // Channel Poster: new drafts for project channels, sent to their admins to approve, every 30 minutes.
     job('channel_poster', 30 * 60 * 1000, () => require('./services/channelPoster').tick());
     // The wallet tracker: followed wallets' trades, read from each chain every 5 seconds.

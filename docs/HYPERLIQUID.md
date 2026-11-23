@@ -159,6 +159,18 @@ switches it on) runs the same review and alerts each risk once per position.
 It alerts again if the risk gets worse (high to critical). Each alert links the
 fix on the Perps page. It never trades.
 
+**Capacity.** Perps Guard has its own job (`agents_fast`, every minute, up to
+20 accounts a minute), so it doesn't wait behind the other agents.
+- **Cost per check:** each account's check reads about 22 weight of
+  Hyperliquid's free allowance (its positions and open orders). The market list
+  is shared across accounts for a few seconds, and each market's candles for
+  5 minutes.
+- **What fits:** about 100 accounts at a 5-minute cadence from one server IP,
+  alongside page traffic, inside `HL_WEIGHT_PER_MINUTE`.
+- **Beyond that,** checks run later rather than failing. A check refused for
+  being over the allowance is retried in 5 minutes.
+- **To grow past it:** more server IPs, or a paid Hyperliquid info endpoint.
+
 ## The fee
 
 This is a Hyperliquid builder code: 0.01% of each fill by default, which is

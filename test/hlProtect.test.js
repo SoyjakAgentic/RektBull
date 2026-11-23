@@ -185,4 +185,10 @@ test('through the app: proposals saved, the proposal fee only on their orders, m
   assert.match(m.url, /\/perps#protect-card$/);
   assert.match(m.text, /Nothing on the book would close this position before it's liquidated\. \(RektBull's rules/);
   assert.equal((await agents.runOne(await row())).alerts, 0, 'the same risks aren\'t sent twice');
+  // It has its own job: the shared agents job leaves it alone; the fast one runs it, and sets the next run 5 minutes on.
+  await db.query(`UPDATE agent_settings SET next_run_at = now() - interval '1 minute' WHERE agent = 'perps_guard'`);
+  assert.equal(await agents.tick(), 0);
+  assert.equal(await agents.tick({ fast: true }), 1);
+  const next = (await row()).next_run_at - Date.now();
+  assert.ok(next > 4 * 60000 && next <= 5 * 60000, `next run in about 5 minutes (${Math.round(next / 1000)}s)`);
 });
