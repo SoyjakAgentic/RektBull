@@ -320,9 +320,12 @@ provider; switching is two settings.
     stream started watching the group.
   - **The fallback:** the 6-hour balance check carries on whatever the stream
     does, and covers any gap while it's down.
-- **Next use, not built yet:** a Solana Wallet Tracker, following wallets'
-  buys and sells as on the EVM chains, on the same subscription's spare
-  filters.
+- **The Wallet Tracker on Solana: built** (`src/services/solanaTracker.js`,
+  [WALLET_TRACKER.md](WALLET_TRACKER.md#solana-built-23-november-2026-with-the-yellowstone-stream)).
+  Followed Solana wallets ride the same subscription, ahead of Meme Watch's
+  insiders: the filters beside pump.fun's go to followed wallets first, then
+  the insiders get the room left. Their buys and sells are read from each
+  transaction's balances and alerted within seconds.
 
 ## AI picks: built (meme coin proposals)
 

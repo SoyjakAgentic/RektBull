@@ -162,6 +162,7 @@ function snapshot(now = Date.now(), s = st) {
     written_at: new Date(now).toISOString(), started_at: new Date(s.started_at).toISOString(), events: s.events,
     live: yellowstone.status('pumpfun').live,
     insiders: require('./insiderWatch').summary(), // Meme Watch's Solana wallets on the stream
+    followed: require('./solanaTracker').summary(), // the Wallet Tracker's Solana wallets on the stream
     launches: [...s.creates.values()].filter(c => now - c.at < NEW_WINDOW_MS).sort((a, b) => b.at - a.at).slice(0, MAX.written_new),
     curves: [...s.curves.values()].sort((a, b) => (BigInt(b.real_sol) > BigInt(a.real_sol) ? 1 : -1)).slice(0, MAX.written_curves)
       .map(c => ({ ...c, symbol: name(c.mint).symbol || null, name: name(c.mint).name || null })),
@@ -250,12 +251,21 @@ async function lead() {
   // One subscription: pump.fun's program, and the launch-bundle wallets Meme Watch follows on Solana (insiderWatch.js).
   const insiders = require('./insiderWatch');
   const pumpFilter = { pumpfun: { accountInclude: [PUMP] } };
+  const tracker = require('./solanaTracker');
   stop = await yellowstone.subscribe('pumpfun', pumpFilter, t => {
     const tx = yellowstone.readTransaction(t);
     for (const e of eventsOf(tx)) apply(e);
     insiders.onTransaction(tx);
+    tracker.onTransaction(tx);
   });
-  const watch = () => insiders.refresh('pumpfun', pumpFilter).catch(err => logger.warn('insider watch list not refreshed', { error: err.message }));
+  // The filters beside pump.fun's: the wallets users follow (the Wallet Tracker) first, then Meme Watch's insiders.
+  const watch = async () => {
+    try {
+      const room = yellowstone.MAX_FILTERS - 1;
+      const followed = await tracker.prepare(room);
+      await insiders.refresh('pumpfun', { ...pumpFilter, ...followed.filters }, room - Object.keys(followed.filters).length);
+    } catch (err) { logger.warn('stream filters not refreshed', { error: err.message }); }
+  };
   watch();
   watcher = setInterval(watch, 60000);
   watcher.unref();
@@ -300,7 +310,7 @@ async function health(now = Date.now()) {
   const ok = s && s.live && now - Date.parse(s.written_at) <= FRESH_MS;
   return {
     name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null, worker: s?.worker || null, insiders: s?.insiders || null,
-    note: ok ? `The Solana launch feed reads the stream, from ${s.worker || 'the worker'} (one worker streams; any other waits on standby).${s.insiders ? ` Meme Watch: ${s.insiders.watched} launch-bundle wallets on ${s.insiders.coins} coin${s.insiders.coins === 1 ? '' : 's'} watched as they trade${s.insiders.overflow ? `; ${s.insiders.overflow} more left to the 6-hour check (the stream's limit)` : ''}.` : ''}` : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
+    note: ok ? `The Solana launch feed reads the stream, from ${s.worker || 'the worker'} (one worker streams; any other waits on standby).${s.insiders ? ` Meme Watch: ${s.insiders.watched} launch-bundle wallets on ${s.insiders.coins} coin${s.insiders.coins === 1 ? '' : 's'} watched as they trade${s.insiders.overflow ? `; ${s.insiders.overflow} more left to the 6-hour check (the stream's limit)` : ''}.` : ''}${s.followed ? ` Wallet Tracker: ${s.followed.watched} followed Solana wallets${s.followed.overflow ? `; ${s.followed.overflow} more than the stream takes, not followed` : ''}.` : ''}` : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
   };
 }
 

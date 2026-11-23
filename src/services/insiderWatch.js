@@ -133,15 +133,18 @@ async function record(tx, sales, { raise = require('./myAgents').raise } = {}) {
 let current = { groups: [], byWallet: new Map(), key: '', summary: { wallets: 0, watched: 0, overflow: 0, coins: 0 } };
 const busy = { on: false };
 
-/** Rebuilds the list and gives the stream its filters when they changed. pumpFilter: the pump.fun filter to keep. */
-async function refresh(streamName, pumpFilter) {
+/**
+ * Rebuilds the list and gives the stream its filters when they changed. base: the filters ahead of these (pump.fun's
+ * program, the Wallet Tracker's followed wallets); room: how many filters are left for these.
+ */
+async function refresh(streamName, base, room = yellowstone.MAX_FILTERS - 1) {
   const groups = await watchlist();
-  const f = filtersFor(groups);
-  const key = JSON.stringify(f.filters);
+  const f = filtersFor(groups, room);
+  const key = JSON.stringify({ ...base, ...f.filters });
   current = { groups, byWallet: indexOf(groups), key: current.key, summary: { wallets: f.wallets, watched: f.watched, overflow: f.overflow, coins: new Set(groups.map(g => g.mint)).size } };
   if (key !== current.key) {
     current.key = key;
-    yellowstone.updateFilters(streamName, { ...pumpFilter, ...f.filters });
+    yellowstone.updateFilters(streamName, { ...base, ...f.filters });
     if (f.overflow) logger.warn('insider watch: more wallets than the stream takes; the rest are left to the 6-hour check', { overflow: f.overflow });
   }
   return current.summary;

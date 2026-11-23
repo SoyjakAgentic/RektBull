@@ -114,7 +114,7 @@ const PAGES = {
   },
   wallet_tracker: {
     title: 'Crypto Wallet Tracker With Copy-Trade Alerts | RektBull',
-    description: 'Follow any wallet on Base, Ethereum, Arbitrum or BNB Chain and get an alert within seconds of each buy or sell, with the token already checked.',
+    description: 'Follow any wallet on Base, Ethereum, Arbitrum, BNB Chain or Solana and get an alert within seconds of each buy or sell, with the token checked.',
     lead: 'an alert within seconds when a wallet you follow trades',
     checks: [
       ['Did a wallet you follow buy or sell a token, what for, and about how much was it worth?', 'Its token transfers, read from the chain every few seconds; prices from DefiLlama'],
@@ -123,7 +123,7 @@ const PAGES = {
     ],
     faq: [
       ['Does it copy trades for me?', 'No. Each alert links the buy on the Trade desk, where every check runs again before your own wallet is asked to sign. RektBull never trades for you from an alert.'],
-      ['Which trades does it see?', 'Buys and sells of tokens on Base, Ethereum, Arbitrum and BNB Chain, read from the token transfers in each block. A trade paid in ETH from a smart-contract wallet isn\'t seen, and Solana wallets come with RektBull\'s Solana trading.'],
+      ['Which trades does it see?', 'Buys and sells of tokens on Base, Ethereum, Arbitrum and BNB Chain, read from the token transfers in each block; a trade paid in ETH from a smart-contract wallet isn\'t seen. On Solana, each followed wallet\'s transactions as the chain confirms them, from their own balances before and after: a token in for SOL, a stablecoin or another token out is a buy, and the reverse a sale; a transfer or an airdrop isn\'t a trade.'],
       ['What does it cost?', 'Following up to 5 wallets is free for any signed-in wallet; Safety Pro follows up to 25. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
     ],
   },

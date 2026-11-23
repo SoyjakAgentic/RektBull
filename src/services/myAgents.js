@@ -98,7 +98,7 @@ const AGENTS = [
   },
   {
     id: 'wallet_tracker', name: 'Wallet Tracker', was: 'Copy-trading signals', desk: { name: 'Launches', href: '/launches#follow-card' },
-    does: 'Follows up to 5 wallets you choose (25 with Safety Pro) on Base, Ethereum, Arbitrum and BNB Chain. When one buys or sells a token, you get an alert within seconds, with RektBull\'s token check (and, for a token under a week old, the bundle check) already run, and the buy ready on the Trade desk for your wallet to sign. It never buys for you.',
+    does: 'Follows up to 5 wallets you choose (25 with Safety Pro) on Base, Ethereum, Arbitrum and BNB Chain, and on Solana. When one buys or sells a token, you get an alert within seconds, with RektBull\'s token check (and, for a token under a week old, the bundle check) already run, and the buy ready on the Trade desk for your wallet to sign. It never buys for you.',
     alerts: 'Each buy and sell, as it happens, with what was paid and the checks\' results.',
     plan: 'free', every: [], default_every: 0, default_on: true, runs_here: false, wallets: 'none',
   },
