@@ -161,6 +161,7 @@ function snapshot(now = Date.now(), s = st) {
   return {
     written_at: new Date(now).toISOString(), started_at: new Date(s.started_at).toISOString(), events: s.events,
     live: yellowstone.status('pumpfun').live,
+    insiders: require('./insiderWatch').summary(), // Meme Watch's Solana wallets on the stream
     launches: [...s.creates.values()].filter(c => now - c.at < NEW_WINDOW_MS).sort((a, b) => b.at - a.at).slice(0, MAX.written_new),
     curves: [...s.curves.values()].sort((a, b) => (BigInt(b.real_sol) > BigInt(a.real_sol) ? 1 : -1)).slice(0, MAX.written_curves)
       .map(c => ({ ...c, symbol: name(c.mint).symbol || null, name: name(c.mint).name || null })),
@@ -182,6 +183,7 @@ const HEARTBEAT_MS = 15000;
 
 let stop = null;
 let flusher = null;
+let watcher = null;
 let written = 0;
 let lock = null; // { client, heartbeat } while this worker holds the lock
 let standby = null;
@@ -245,9 +247,18 @@ async function lead() {
     lock.heartbeat.unref();
   }
   st = emptyState();
-  stop = await yellowstone.subscribeTransactions('pumpfun', { accountInclude: [PUMP] }, t => {
-    for (const e of eventsOf(yellowstone.readTransaction(t))) apply(e);
+  // One subscription: pump.fun's program, and the launch-bundle wallets Meme Watch follows on Solana (insiderWatch.js).
+  const insiders = require('./insiderWatch');
+  const pumpFilter = { pumpfun: { accountInclude: [PUMP] } };
+  stop = await yellowstone.subscribe('pumpfun', pumpFilter, t => {
+    const tx = yellowstone.readTransaction(t);
+    for (const e of eventsOf(tx)) apply(e);
+    insiders.onTransaction(tx);
   });
+  const watch = () => insiders.refresh('pumpfun', pumpFilter).catch(err => logger.warn('insider watch list not refreshed', { error: err.message }));
+  watch();
+  watcher = setInterval(watch, 60000);
+  watcher.unref();
   flusher = setInterval(() => {
     prune();
     if (!st.changed && Date.now() - written < 10000) return; // quiet: still written every 10 seconds, so the feed sees it's alive
@@ -265,7 +276,7 @@ async function start() {
   if (!yellowstone.configured() || leading || standby) return leading;
   return lead();
 }
-function stopStream() { clearInterval(flusher); flusher = null; if (stop) stop(); stop = null; }
+function stopStream() { clearInterval(flusher); flusher = null; clearInterval(watcher); watcher = null; if (stop) stop(); stop = null; }
 /** Stops streaming and gives the lock back (a standby elsewhere takes over). */
 function halt() {
   clearTimeout(standby); standby = null;
@@ -288,8 +299,8 @@ async function health(now = Date.now()) {
   const s = await cache.get(STATE_KEY).catch(() => null);
   const ok = s && s.live && now - Date.parse(s.written_at) <= FRESH_MS;
   return {
-    name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null, worker: s?.worker || null,
-    note: ok ? `The Solana launch feed reads the stream, from ${s.worker || 'the worker'} (one worker streams; any other waits on standby).` : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
+    name, state: ok ? 'live' : 'down', events: s?.events ?? 0, since: s?.started_at || null, last_written_at: s?.written_at || null, worker: s?.worker || null, insiders: s?.insiders || null,
+    note: ok ? `The Solana launch feed reads the stream, from ${s.worker || 'the worker'} (one worker streams; any other waits on standby).${s.insiders ? ` Meme Watch: ${s.insiders.watched} launch-bundle wallets on ${s.insiders.coins} coin${s.insiders.coins === 1 ? '' : 's'} watched as they trade${s.insiders.overflow ? `; ${s.insiders.overflow} more left to the 6-hour check (the stream's limit)` : ''}.` : ''}` : 'No fresh state from the worker: the Solana launch feed is polling GeckoTerminal and RPC until it\'s back.',
   };
 }
 

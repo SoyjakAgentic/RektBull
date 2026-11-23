@@ -92,7 +92,7 @@ const AGENTS = [
   },
   {
     id: 'meme_watch', name: 'Meme Watch', was: 'Meme Coin Trader (alerts and a ready-made sell)', desk: { name: 'Launches', href: '/launches' },
-    does: `Watches up to ${MEME_WATCH_MAX} tokens you bought on the Trade or Launches desk, on Base, Ethereum, Arbitrum, BNB Chain and Solana: launch-bundle and insider wallets selling, a new red flag (GoPlus's: a honeypot, a tax, owner powers; on Solana, a freeze or mint authority on the mint), liquidity pulled from its pools, a curve graduating, and your take-profit or stop-loss price. Each alert comes with a sell ready for your wallet to sign.`,
+    does: `Watches up to ${MEME_WATCH_MAX} tokens you bought on the Trade or Launches desk, on Base, Ethereum, Arbitrum, BNB Chain and Solana: launch-bundle and insider wallets selling (on Solana, within seconds while RektBull's stream is live), a new red flag (GoPlus's: a honeypot, a tax, owner powers; on Solana, a freeze or mint authority on the mint), liquidity pulled from its pools, a curve graduating, and your take-profit or stop-loss price. Each alert comes with a sell ready for your wallet to sign.`,
     alerts: 'When one of those happens, with the reasons, their sources, and a sell to review and sign.',
     plan: 'free', every: [1, 6], default_every: 1, default_on: false, runs_here: true, wallets: 'signed_in',
   },
