@@ -55,7 +55,7 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     }
     return {
       metaAndAssetCtxs: fixture('metaAndAssetCtxs'), clearinghouseState: fixture('clearinghouseState'), frontendOpenOrders: fixture('frontendOpenOrders'),
-      extraAgents: agents, maxBuilderFee: feeApproved,
+      extraAgents: agents, maxBuilderFee: feeApproved, candleSnapshot: [],
     }[body.type];
   });
 
@@ -125,6 +125,26 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     const agent = await page.evaluate(k => JSON.parse(localStorage.getItem(k)).address, stored[0]);
     assert.equal(H.recoverL1(order.action, order.signature, { nonce: order.nonce, mainnet: false, expiresAfter: order.expiresAfter }), agent.toLowerCase(), 'signed by the browser\'s key');
     console.log('✔ market order signed in the browser and sent with the fee');
+
+    // Market alerts, for everyone; and the positions checked against the rules, with a fix to sign.
+    await page.locator('#alerts-msg', { hasText: 'As of' }).waitFor();
+    assert.ok(await page.locator('#m-alerts li').count() >= 1);
+    await page.locator('#protect-list .alert', { hasText: 'no stop-loss' }).first().waitFor();
+    const fix = page.locator('#protect-list .alert', { hasText: 'no stop-loss' }).first();
+    assert.match(await fix.textContent(), /RektBull's fee on this fix: 0\.05% of what fills.*your own orders carry 0\.01%/);
+    assert.match(await fix.textContent(), /5%, as a typical move couldn't be read/, 'with no candles, the fallback, and it says so');
+    const before = sent.length;
+    await fix.getByRole('button', { name: 'Review and sign with the trading key' }).click();
+    await page.locator('#protect-msg', { hasText: 'the stop-loss is on the book' }).or(page.locator('#protect-msg', { hasText: 'filled' })).waitFor();
+    const [feeUp, stopOrder] = sent.slice(before);
+    assert.deepEqual([feeUp.action.type, feeUp.action.maxFeeRate], ['approveBuilderFee', '0.05%'], 'the wallet approved the proposal fee once');
+    assert.deepEqual(stopOrder.action.builder, { b: BUILDER, f: 50 });
+    assert.ok(stopOrder.action.orders.every(o => o.r === true && o.t.trigger?.tpsl === 'sl'), 'a reduce-only stop-loss');
+    assert.equal(H.recoverL1(stopOrder.action, stopOrder.signature, { nonce: stopOrder.nonce, mainnet: false, expiresAfter: stopOrder.expiresAfter }), agent.toLowerCase(), 'signed by the browser\'s key');
+    const { rows: [used] } = await db.query('SELECT kind FROM hl_proposals WHERE acted_at IS NOT NULL');
+    assert.equal(used.kind, 'no_stop');
+    await page.waitForFunction(() => /fixes from a RektBull proposal carry 0\.05%/.test(document.getElementById('fee-status').textContent));
+    console.log('✔ market alerts shown; a stop-loss from a proposal signed in the browser, with the 0.05% proposal fee');
 
     // Automatic trading: the section says what's enforced where, then the wallet approves RektBull's agent with limits.
     await page.locator('#auto-card').waitFor();

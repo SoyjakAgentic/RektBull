@@ -33,6 +33,13 @@
       <p id="markets-msg" class="msg small muted"></p>
     </section>
 
+    <section class="card" id="alerts-card">
+      <h2>Market alerts</h2>
+      <p class="muted">What's happening in Hyperliquid's deep markets (open interest and 24-hour volume of $5M or more): extreme funding, Hyperliquid's price apart from the oracle, and open interest building or flushing within an hour. Each is a fact with its source, not a call on direction.</p>
+      <ul id="m-alerts" class="plain"><li class="muted">Reading the markets…</li></ul>
+      <p id="alerts-msg" class="msg small muted"></p>
+    </section>
+
     <section class="card" id="connect-card">
       <h2>1. Connect your wallet</h2>
       <p class="muted">Sign in with the wallet that owns your Hyperliquid account. Looking at your positions needs only the sign-in.</p>
@@ -52,6 +59,15 @@
       <div class="tablewrap"><table class="rank"><thead><tr><th>Market</th><th>Order</th><th class="num">Price</th><th class="num">Size</th><th></th></tr></thead><tbody id="orders"></tbody></table></div>
       <p id="orders-msg" class="msg small"></p>
       <p id="account-source" class="small muted"></p>
+    </section>
+
+    <section class="card" id="protect-card" hidden>
+      <h2>Protect your positions</h2>
+      <p class="muted">RektBull checks each open position against stated rules: how close its liquidation price is, whether a stop-loss would close it first, and what funding costs it. A fix is reduce-only (it can close, never open or add) and is signed by the trading key in this browser. RektBull never picks a market or a side.</p>
+      <div id="protect-list"></div>
+      <p id="protect-msg" class="msg small"></p>
+      <details class="small"><summary>The rules</summary><ul id="protect-rules"></ul></details>
+      <p class="small muted">Get these as alerts: switch on <a href="/agents/perps-guard">Perps Guard</a> on the <a href="/agents#yours">AI agents</a> page. It's free and checks every 5 minutes.</p>
     </section>
 
     <section class="card" id="setup-card" hidden>
@@ -143,6 +159,7 @@
   <script src="/common.js"></script>
   <script src="/hl-core.js"></script>
   <script src="/perps-auto.js"></script>
+  <script src="/perps-protect.js"></script>
   <script src="/perps.js"></script>
 </body>
 </html>

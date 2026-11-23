@@ -97,6 +97,21 @@ const PAGES = {
       ['What does it cost?', 'Nothing: it\'s free for any signed-in wallet. Trades carry RektBull\'s 1% fee. Nothing here is financial advice.'],
     ],
   },
+  perps_guard: {
+    title: 'Hyperliquid Liquidation Alert Agent | RektBull',
+    description: 'A free agent that checks your Hyperliquid positions every 5 minutes for a near liquidation price, no stop-loss or heavy funding, with the fix ready to sign.',
+    lead: 'an alert before a liquidation, with the fix ready to sign',
+    checks: [
+      ['Is the liquidation price closer than a typical day\'s move (or within 5%)?', 'Your position and the market\'s hourly candles, from Hyperliquid\'s info API'],
+      ['Is there a stop-loss on the book that would close the position before it\'s liquidated?', 'Your open orders, from Hyperliquid\'s info API'],
+      ['Is the position paying funding at 25% a year or more?', 'The market\'s current funding rate, from Hyperliquid\'s info API'],
+    ],
+    faq: [
+      ['Does it trade for me?', 'No. Each alert links a fix on the Perps page: a stop-loss placed a few typical hourly moves from the price and always before liquidation, or closing half the position. The trading key in your browser signs it, and every such order is reduce-only: it can close, never open or add.'],
+      ['Does it predict prices?', 'No. It checks your positions against stated rules. It never says which way a market will go.'],
+      ['What does it cost?', 'Checking and alerts are free. A fix you sign from a proposal carries RektBull\'s proposal fee on what fills (0.05% by default, instead of 0.01% on your own orders), taken by Hyperliquid only if it fills. Nothing here is financial advice.'],
+    ],
+  },
   wallet_tracker: {
     title: 'Crypto Wallet Tracker With Copy-Trade Alerts | RektBull',
     description: 'Follow any wallet on Base, Ethereum, Arbitrum or BNB Chain and get an alert within seconds of each buy or sell, with the token already checked.',

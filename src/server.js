@@ -41,6 +41,7 @@ async function main() {
     job('polymarket_fills', 10 * 60 * 1000, () => require('./polymarket/fills').tick()); // RektBull Points for Polymarket fills
     job('forecasts', 30 * 60 * 1000, () => require('./forecasts/polymarket').tick()); // AI forecasts (off until switched on in the admin panel)
     job('memes', 60 * 1000, () => require('./memes/signals').tick()); // meme coin picks (every meme_refresh_minutes) and their scorecard (off until switched on)
+    job('hl_markets', 5 * 60 * 1000, () => require('./hyperliquid/protect').snapshot()); // Hyperliquid's deep markets, for the open-interest alerts
     job('polymarket_auto', 15 * 60 * 1000, () => require('./polymarket/auto').tick()); // ends automated-trading keys past their stop date
     // DAO votes opening or closing for watched wallets (Safety Pro), hourly.
     job('governance_alerts', 60 * 60 * 1000, () => require('./services/governance').alertTick());
@@ -55,6 +56,7 @@ async function main() {
     job('monitor', 5 * 60 * 1000, () => require('./services/monitor').tick());
     // AI agents that run on a schedule (wallet checkup, claim assistant, token watch): the due ones, every 5 minutes.
     job('agents', 5 * 60 * 1000, () => require('./services/myAgents').tick());
+    job('agents_fast', 60 * 1000, () => require('./services/myAgents').tick({ fast: true })); // Perps Guard: every 5 minutes per account, 20 accounts a minute
     // Channel Poster: new drafts for project channels, sent to their admins to approve, every 30 minutes.
     job('channel_poster', 30 * 60 * 1000, () => require('./services/channelPoster').tick());
     // The wallet tracker: followed wallets' trades, read from each chain every 5 seconds.
