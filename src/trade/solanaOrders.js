@@ -807,71 +807,116 @@ async function attempt(row, cfg, exec) {
       return later(`the token check found a critical risk: ${flag?.title}`, RETRY_MS.nothing, 'risk', `It fired, but RektBull's token check now finds a critical risk in ${row.symbol || 'this coin'}: ${flag?.title}. Nothing was bought. Cancel the order on the Trade desk to unwrap your SOL and get its deposit back.`);
     }
   }
-  const swapAmount = buy ? otx.buySwapAmount(amount) : amount;
-  const [inMint, outMint] = buy ? [op.WSOL, row.token] : [row.token, op.WSOL];
+  const pc = require('./pumpCurve');
+  const name = row.symbol || 'coins';
+  const belowText = (got, approx = '') => (buy
+    ? `It fired, but ${sol(amount)} SOL would buy ${approx}${fmt(whole(got, row.decimals))} ${name}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the order program won't let it fill. It keeps trying while it's open.`
+    : `It fired, but ${fmt(whole(amount, row.decimals))} ${name} would sell for ${approx}${sol(got)} SOL, below your floor of ${sol(minimum)} SOL after the fee, so the order program won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
 
-  let b;
-  try {
-    b = await jupiter.build({ inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS, taker: transit });
-  } catch (err) {
-    if (!err.isJupiter) throw err;
-    return later(`no route: ${err.message}`, RETRY_MS.failed);
-  }
-  const solana = require('./solana');
-  let route;
-  try {
-    route = await solana.checkInstructions(swapOnly(b), { wallet: transit, inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS });
-    await solana.checkLookupTables(b);
-  } catch (err) {
-    if (!err.isTradeBlocked) throw err;
-    return later(err.message, RETRY_MS.failed);
-  }
-  if (buy && route.quotedOut < minimum) {
-    return later(`below the limit: ${fmt(whole(route.quotedOut, row.decimals))} coins quoted, ${fmt(whole(minimum, row.decimals))} needed`, RETRY_MS.below_floor, 'below_floor',
-      `It fired, but ${sol(amount)} SOL would buy ${fmt(whole(route.quotedOut, row.decimals))} ${row.symbol || 'coins'}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the order program won't let it fill. It keeps trying while it's open.`);
-  }
-  if (!buy && net(route.quotedOut) < minimum) {
-    return later(`below the floor: ${sol(net(route.quotedOut))} SOL quoted after the fee, ${sol(minimum)} SOL needed`, RETRY_MS.below_floor, 'below_floor',
-      `It fired, but ${fmt(whole(amount, row.decimals))} ${row.symbol || 'coins'} would sell for ${sol(net(route.quotedOut))} SOL after the fee, below your floor of ${sol(minimum)} SOL, so the order program won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
-  }
-
-  const tables = { ...(b.addressesByLookupTableAddress || {}), ...(await ownTable(cfg.lookupTable)) };
-  // A pump.fun or PumpSwap volume account for the user's order address that the route uses but that doesn't exist
-  // yet: the user's to open, once (the owner decided on 24 November 2026 that users pay for theirs). Nothing is sent
-  // until they have; they're told, with the one-time setup on the Trade desk.
-  const venues = [op.P.pumpFun, op.P.pumpAmm];
-  const wanted = await Promise.all(venues.map(v => op.volumeOf(v, transit)));
-  const used = wanted.map(a => b.swapInstruction.accounts.some(x => x.pubkey === a));
-  const there = used.some(Boolean) ? await accounts(wanted) : [];
-  if (venues.some((_, i) => used[i] && !there[i])) {
-    return later(`${SETUP_ERROR}: pump.fun's volume account for your order address`, RETRY_MS.nothing, 'setup',
-      `It fired, but this sale goes through pump.fun, which needs a volume account for your order address, opened once by your wallet (about ${sol(VOLUME_RENT)} SOL each). Open Orders on Solana on the Trade desk and press "Set up"; the order fills as soon as it's done.`);
-  }
-  const make = async (units, microLamports) => {
-    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports });
-    const bh = await latestBlockhash();
-    return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
+  /**
+   * The route: straight on pump.fun's curve while the coin is on a SOL curve (no Jupiter in the path: pumpCurve.js),
+   * else Jupiter. Each gives { swap, quotedOut, label, unwrapIn, wrappedOut, tables }, or null once `later` has said why not.
+   */
+  const direct = async curve => {
+    if (buy) {
+      const spend = pc.buySpend(amount);
+      if (spend <= 0n) return undefined; // too small to leave pump.fun its headroom: Jupiter instead
+      const swap = await pc.buySwap({ mint: row.token, tokenProgram: row.token_program, trader: transit, spend, minTokens: minimum });
+      return { swap, quotedOut: curve.virtualToken * spend / (curve.virtualQuote + spend), label: swap.label, unwrapIn: true, wrappedOut: false, tables: {} };
+    }
+    // pump.fun's own check, at what leaves the user their price after RektBull's 1% (the program checks it again).
+    const minSol = (minimum * 10000n + 9899n) / 9900n;
+    const swap = await pc.sellSwap({ mint: row.token, tokenProgram: row.token_program, trader: transit, amount, minSol });
+    return { swap, quotedOut: curve.virtualQuote * amount / (curve.virtualToken + amount), label: swap.label, unwrapIn: false, wrappedOut: false, tables: {} };
   };
-  const first = await make(CU_MAX, 0);
-  if (first.bytes > otx.MAX_TX_BYTES) return later(`the fill is ${first.bytes} bytes, over Solana's ${otx.MAX_TX_BYTES}`, RETRY_MS.failed);
-  const sim = await simulate(first.transaction);
-  if (sim.err) return later(`in a simulation the fill fails${why(sim.logs) ? `: ${why(sim.logs)}` : ` (${JSON.stringify(sim.err)})`}`, RETRY_MS.failed);
-  const units = Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 100_000) * 1.2));
-  const ready = await make(units, await priority(b.swapInstruction, units));
-  if (ready.bytes > otx.MAX_TX_BYTES) return later(`the fill is ${ready.bytes} bytes, over Solana's ${otx.MAX_TX_BYTES}`, RETRY_MS.failed);
+  const viaJupiter = async () => {
+    const swapAmount = buy ? otx.buySwapAmount(amount) : amount;
+    const [inMint, outMint] = buy ? [op.WSOL, row.token] : [row.token, op.WSOL];
+    let b;
+    try {
+      b = await jupiter.build({ inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS, taker: transit });
+    } catch (err) {
+      if (!err.isJupiter) throw err;
+      await later(`no route: ${err.message}`, RETRY_MS.failed);
+      return null;
+    }
+    let route;
+    try {
+      route = await require('./solana').checkInstructions(swapOnly(b), { wallet: transit, inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS });
+      await require('./solana').checkLookupTables(b);
+    } catch (err) {
+      if (!err.isTradeBlocked) throw err;
+      await later(err.message, RETRY_MS.failed);
+      return null;
+    }
+    if (buy ? route.quotedOut < minimum : net(route.quotedOut) < minimum) {
+      await later(buy ? `below the limit: ${fmt(whole(route.quotedOut, row.decimals))} coins quoted, ${fmt(whole(minimum, row.decimals))} needed`
+        : `below the floor: ${sol(net(route.quotedOut))} SOL quoted after the fee, ${sol(minimum)} SOL needed`, RETRY_MS.below_floor, 'below_floor', belowText(buy ? route.quotedOut : net(route.quotedOut)));
+      return null;
+    }
+    return {
+      swap: b.swapInstruction, quotedOut: route.quotedOut, unwrapIn: false, wrappedOut: true,
+      label: (b.routePlan || []).map(p => p.swapInfo?.label).filter(Boolean).join(' → ') || 'Jupiter', tables: b.addressesByLookupTableAddress || {},
+    };
+  };
 
-  const signature = await exec.sign(ready.messageBytes, `solana_fill:${row.id}`);
-  const sigText = b58encode(signature);
-  const wire = otx.withSignature(ready.tx, exec.address, signature);
-  // Recorded before it's sent, so a crash between the two can't lose track of it.
-  await db.query(`INSERT INTO solana_order_fills (order_id, signature, amount_in, quoted_out, route, last_valid_block_height) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [row.id, sigText, amount.toString(), route.quotedOut.toString(), (b.routePlan || []).map(p => p.swapInfo?.label).filter(Boolean).join(' → ') || null, ready.lastValidBlockHeight]);
-  await db.query(`UPDATE solana_orders SET last_attempt_at = now(), attempts = attempts + 1, next_attempt_at = now() + interval '30 seconds', updated_at = now() WHERE id = $1`, [row.id]);
-  try {
-    await rpc.solanaRpc('sendTransaction', [wire, { encoding: 'base64', skipPreflight: true, maxRetries: 3 }]);
-  } catch (err) {
-    await db.query(`UPDATE solana_order_fills SET state = 'failed', error = $2 WHERE signature = $1`, [sigText, `not sent: ${err.message}`.slice(0, 500)]);
+  const curve = await pc.liveCurve(row.token).catch(err => { logger.warn('solana orders: pump.fun curve not read', { token: row.token, error: err.message }); return null; });
+  const own = await ownTable(cfg.lookupTable);
+  for (const kind of curve ? ['direct', 'jupiter'] : ['jupiter']) {
+    const r = kind === 'direct' ? await direct(curve) : await viaJupiter();
+    if (r === null) return; // `later` said why
+    if (r === undefined) continue;
+    // A pump.fun or PumpSwap volume account for the user's order address that the route uses but that doesn't exist
+    // yet: the user's to open, once (the owner decided on 24 November 2026 that users pay for theirs). Nothing is sent
+    // until they have; they're told, with the one-time setup on the Trade desk.
+    const venues = [op.P.pumpFun, op.P.pumpAmm];
+    const wanted = await Promise.all(venues.map(v => op.volumeOf(v, transit)));
+    const used = wanted.map(a => r.swap.accounts.some(x => x.pubkey === a));
+    const there = used.some(Boolean) ? await accounts(wanted) : [];
+    if (venues.some((_, i) => used[i] && !there[i])) {
+      return later(`${SETUP_ERROR}: pump.fun's volume account for your order address`, RETRY_MS.nothing, 'setup',
+        `It fired, but this ${buy ? 'buy' : 'sale'} goes through pump.fun, which needs a volume account for your order address, opened once by your wallet (about ${sol(VOLUME_RENT)} SOL each). Open Orders on Solana on the Trade desk and press "Set up"; the order fills as soon as it's done.`);
+    }
+    const tables = { ...r.tables, ...own };
+    const make = async (units, microLamports) => {
+      const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: r.swap, amountIn: amount, units, microLamports, unwrapIn: r.unwrapIn, wrappedOut: r.wrappedOut });
+      const bh = await latestBlockhash();
+      return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
+    };
+    const first = await make(CU_MAX, 0);
+    if (first.bytes > otx.MAX_TX_BYTES) {
+      if (kind === 'direct') continue;
+      return later(`the fill is ${first.bytes} bytes, over Solana's ${otx.MAX_TX_BYTES}`, RETRY_MS.failed);
+    }
+    const sim = await simulate(first.transaction);
+    if (sim.err) {
+      const logs = why(sim.logs);
+      // Below the user's price: pump.fun's own slippage check, or the order program's.
+      if (/BelowLimit|TooLittleSolReceived|TooMuchSolRequired|slippage/i.test((sim.logs || []).join(' '))) {
+        return later(`below the ${buy ? 'limit' : 'floor'} (${r.label}${logs ? `: ${logs}` : ''})`, RETRY_MS.below_floor, 'below_floor', belowText(r.quotedOut, kind === 'direct' ? 'about ' : ''));
+      }
+      if (kind === 'direct') { logger.warn('solana orders: a direct curve fill failed in simulation; trying Jupiter', { order: row.id, logs }); continue; }
+      return later(`in a simulation the fill fails${logs ? `: ${logs}` : ` (${JSON.stringify(sim.err)})`}`, RETRY_MS.failed);
+    }
+    const units = Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 100_000) * 1.2));
+    const ready = await make(units, await priority(r.swap, units));
+    if (ready.bytes > otx.MAX_TX_BYTES) return later(`the fill is ${ready.bytes} bytes, over Solana's ${otx.MAX_TX_BYTES}`, RETRY_MS.failed);
+
+    const signature = await exec.sign(ready.messageBytes, `solana_fill:${row.id}`);
+    const sigText = b58encode(signature);
+    const wire = otx.withSignature(ready.tx, exec.address, signature);
+    // Recorded before it's sent, so a crash between the two can't lose track of it.
+    await db.query(`INSERT INTO solana_order_fills (order_id, signature, amount_in, quoted_out, route, last_valid_block_height) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [row.id, sigText, amount.toString(), r.quotedOut.toString(), r.label, ready.lastValidBlockHeight]);
+    await db.query(`UPDATE solana_orders SET last_attempt_at = now(), attempts = attempts + 1, next_attempt_at = now() + interval '30 seconds', updated_at = now() WHERE id = $1`, [row.id]);
+    try {
+      await rpc.solanaRpc('sendTransaction', [wire, { encoding: 'base64', skipPreflight: true, maxRetries: 3 }]);
+    } catch (err) {
+      await db.query(`UPDATE solana_order_fills SET state = 'failed', error = $2 WHERE signature = $1`, [sigText, `not sent: ${err.message}`.slice(0, 500)]);
+    }
+    return;
   }
+  return later('no route could fill it just now', RETRY_MS.failed);
 }
 
 /**

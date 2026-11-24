@@ -117,7 +117,7 @@ function cancelInstructions({ program, owner, order, revokeSource = null, tokenP
  *   - the fill itself. The swap's accounts go to the program unsigned: the
  *     program signs for transit, and nothing else.
  */
-async function fillInstructions({ program, executor, owner, order, token, tokenProgram, source, feeWallet, swap, amountIn, units, microLamports = 0, wrappedOut = true, side = 'sell' }) {
+async function fillInstructions({ program, executor, owner, order, token, tokenProgram, source, feeWallet, swap, amountIn, units, microLamports = 0, wrappedOut = true, side = 'sell', unwrapIn = false }) {
   const [delegate, transit] = await Promise.all([op.delegateOf(program), op.transitOf(program, owner)]);
   const [transitCoin, transitWsol] = await Promise.all([op.ataOf(transit, tokenProgram, token), op.ataOf(transit, op.P.token, op.WSOL)]);
   const venueAccounts = swap.accounts.map(a => ({ address: a.pubkey, writable: !!a.isWritable }));
@@ -125,13 +125,15 @@ async function fillInstructions({ program, executor, owner, order, token, tokenP
   const budget = [...(units ? [op.cuLimit(units)] : []), ...(microLamports > 0 ? [op.cuPrice(microLamports)] : [])];
   const open = (ata, mint, tp, who = transit) => op.createAtaIdempotent({ payer: executor, ata, owner: who, mint, tokenProgram: tp });
   if (side === 'buy') {
-    const [ownerOut, feeIn] = await Promise.all([op.ataOf(owner, tokenProgram, token), op.ataOf(feeWallet, op.P.token, op.WSOL)]);
+    // Through Jupiter, the 1% is taken in wrapped SOL (the fee wallet's account); straight on pump.fun's curve
+    // (`unwrapIn`), the program unwraps the SOL for the curve and takes the 1% in SOL.
+    const [ownerOut, feeIn] = await Promise.all([op.ataOf(owner, tokenProgram, token), unwrapIn ? null : op.ataOf(feeWallet, op.P.token, op.WSOL)]);
     const instructions = [
-      ...budget, open(transitWsol, op.WSOL, op.P.token), open(transitCoin, token, tokenProgram), open(feeIn, op.WSOL, op.P.token, feeWallet),
+      ...budget, open(transitWsol, op.WSOL, op.P.token), open(transitCoin, token, tokenProgram), ...(feeIn ? [open(feeIn, op.WSOL, op.P.token, feeWallet)] : []),
       op.fill({
         program, executor, order, owner, delegate, transit, source, inputMint: op.WSOL, transitIn: transitWsol, inputTokenProgram: op.P.token,
         outputMint: token, transitOut: transitCoin, ownerOut, outputTokenProgram: tokenProgram,
-        feeWallet, feeIn, venue: swap.programId, amountIn, unwrapIn: false, venueData: data, venueAccounts,
+        feeWallet, feeIn, venue: swap.programId, amountIn, unwrapIn, venueData: data, venueAccounts,
       }),
     ];
     return { instructions, transit, transitIn: transitWsol, transitOut: transitCoin, ownerOut, feeIn, delegate };
