@@ -1,0 +1,191 @@
+{
+  "about": "Built by solana/scripts/js_client_fixture.js from src/trade/solanaOrderTx.js; run by tests/js_client.rs. Test keys only.",
+  "program": "CYiK4necGUc4CZZmGM9CALRAurATaE1qR3dc6UJoUAsZ",
+  "fee_wallet": "FeeWa11et1111111111111111111111111111111111",
+  "now": 1800000000,
+  "user": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+  "executor": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+  "transit": "BzXqSX5xqFwSDzSVquo82jv25uytJP5s5N1BBA5kEpzf",
+  "meme": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
+  "vault": "8Aq3wHQxKyq8CLNeLJNfrWiCzAwtq97JFpsmxh1e85di",
+  "setup": {
+    "mints": [
+      {
+        "address": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
+        "decimals": 6
+      },
+      {
+        "address": "So11111111111111111111111111111111111111112",
+        "decimals": 9
+      }
+    ],
+    "token_accounts": [
+      {
+        "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+        "mint": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
+        "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+        "amount": "1000000000000"
+      },
+      {
+        "address": "3Ht4jepC57ACjzu8jfCFU3sXtF6Ky74FXE6KE7EfyU9r",
+        "mint": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
+        "owner": "8Aq3wHQxKyq8CLNeLJNfrWiCzAwtq97JFpsmxh1e85di",
+        "amount": "0"
+      },
+      {
+        "address": "8fiuQHkjvg7f9kLrq712GrNQZ9a6LXZ7hns1vKfmsQEY",
+        "mint": "So11111111111111111111111111111111111111112",
+        "owner": "8Aq3wHQxKyq8CLNeLJNfrWiCzAwtq97JFpsmxh1e85di",
+        "amount": "100000000000"
+      }
+    ],
+    "lamports": [
+      {
+        "address": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+        "lamports": "10000000000"
+      },
+      {
+        "address": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+        "lamports": "10000000000"
+      },
+      {
+        "address": "FeeWa11et1111111111111111111111111111111111",
+        "lamports": "1000000000"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "name": "the user places a stop-loss: 100,000 coins for at least 0.9 SOL, and approves the delegate for them",
+      "order": "7k8sKCsxFa9Lrtdj8fD1LZPHNTP2MGbuNs54ashu6NQk",
+      "tx": "AZjT8RnVN4DlvWGo/RCYjxhEYJaD20F4EPXNrR5mRPK2v0blNJHBPn/4wV98UWiD3eauIfcKVrF1aNmu3FImmw+AAQAGCepKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsZDL9/LFeuZAWhNGsZo4bX8ZsIR+hyF+f2+4ZYBeSUl2lCTzr4werYOMnIPglLWYVoJcfxlsg28df1UoV+AbbHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZIVVLiJiQQ97STm3QQCF1ct6Z7orG2mWt90oyUPPSVFmvn4zLHpFMzK9nQp/fbBV9cXvGgatpm2Ys5+2gQxHOgMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqeMy2vkvq+zotj/3pEAF5f39mvoVh1a2HFqV+QSzuNCBAwYABQKghgEABwMAAQORATPCm69tgmBqAQAAAAAAAAD9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GGa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEBAOh2SBcAAAAA6aQ1AAAAAAAAAAAAAAAAgCNLawAAAAAIBAIFBAAKDQDodkgXAAAABgA=",
+      "bytes": 569,
+      "expect": "ok",
+      "checks": [
+        {
+          "order": "7k8sKCsxFa9Lrtdj8fD1LZPHNTP2MGbuNs54ashu6NQk",
+          "exists": true
+        },
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "delegated": "100000000000"
+        }
+      ]
+    },
+    {
+      "name": "a fill of half below the user's price is refused onchain",
+      "tx": "AfDeJd1ApBBihLr6xImerC2WNwIs9A+OltM5kvMArRnZgOAMjmJxi8amSLTemS3Ne/VhhU/VWYLPlaiNp00CZAeAAQAKFP0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDWQy/fyxXrmQFoTRrGaOG1/GbCEfochfn9vuGWAXklJdce1Cd7cBSg4LatLyrzz8IZDqZvXrrabvIJyK9AJ+Bp2jUddACwuJHifMm+r2bec4VQvJqP2r/SXr3iTuXpMSJKUJPOvjB6tg4ycg+CUtZhWglx/GWyDbx1/VShX4Btsf0cKzwpsuuMAqjA5LXD87Z9Qhrcg95E0C7z9rjOhDr/0DwLLYG2lZCm+GA2SNp3UWGiJmoMov2KbuRmW0AAAAAOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkhVUuImJBD3tJObdBAIXVy3pnuisbaZa33SjJQ89JUWa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6aoZd5O6qa33Z+k6O4H4MFoMya7HMZJeTueSFskV6TsmMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WQMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKnjMtr5L6vs6LY/96RABeX9/Zr6FYdWthxalfkEs7jQgQUPAAUCgBoGAA8ACQPoAwAAAAAAAA4GAAEFDAoTAQEOBgAHBRIKEwEBEBwAAwkLBQYMARMQBxATCBAQEQoFAQwCBBIHDRMTLqhgt6NcCiigAHQ7pAsAAAAAGQAAAOUXy5d6460qAAB0O6QLAAAAAITXFwAAAAAA",
+      "bytes": 861,
+      "expect": "BelowLimit",
+      "checks": [
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "0"
+        }
+      ]
+    },
+    {
+      "name": "the executor fills half: 0.5 SOL, 1% to the fee wallet, the rest to the user as SOL",
+      "tx": "AfmRIls0YieGuqIc+Xjw1CgsChRWO/e0Xh5e33WJJyaBZOmBtrTkLYlvFUL+/zRXvJfrq5GMwBP162549o1REweAAQAKFP0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDWQy/fyxXrmQFoTRrGaOG1/GbCEfochfn9vuGWAXklJdce1Cd7cBSg4LatLyrzz8IZDqZvXrrabvIJyK9AJ+Bp2jUddACwuJHifMm+r2bec4VQvJqP2r/SXr3iTuXpMSJKUJPOvjB6tg4ycg+CUtZhWglx/GWyDbx1/VShX4Btsf0cKzwpsuuMAqjA5LXD87Z9Qhrcg95E0C7z9rjOhDr/0DwLLYG2lZCm+GA2SNp3UWGiJmoMov2KbuRmW0AAAAAOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkhVUuImJBD3tJObdBAIXVy3pnuisbaZa33SjJQ89JUWa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6aoZd5O6qa33Z+k6O4H4MFoMya7HMZJeTueSFskV6TsmMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WQMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKnjMtr5L6vs6LY/96RABeX9/Zr6FYdWthxalfkEs7jQgQUPAAUCgBoGAA8ACQPoAwAAAAAAAA4GAAEFDAoTAQEOBgAHBRIKEwEBEBwAAwkLBQYMARMQBxATCBAQEQoFAQwCBBIHDRMTLqhgt6NcCiigAHQ7pAsAAAAAGQAAAOUXy5d6460qAAB0O6QLAAAAAGXNHQAAAAAA",
+      "bytes": 861,
+      "expect": "ok",
+      "checks": [
+        {
+          "address": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "lamports_delta": "495000000"
+        },
+        {
+          "address": "FeeWa11et1111111111111111111111111111111111",
+          "lamports_delta": "5000000"
+        },
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "-50000000000"
+        },
+        {
+          "address": "BzXqSX5xqFwSDzSVquo82jv25uytJP5s5N1BBA5kEpzf",
+          "lamports": "0"
+        },
+        {
+          "order": "7k8sKCsxFa9Lrtdj8fD1LZPHNTP2MGbuNs54ashu6NQk",
+          "filled_in": "50000000000"
+        }
+      ]
+    },
+    {
+      "name": "the executor fills the rest: the order closes and its rent goes back to the user",
+      "tx": "ATZv5ceKtbh2QDaiME7FNtZ/Egzo8xJIFdjYLoiTXEHpMhggn/q7eImcgslQZrdXBgcHHMcG/HPSC1izakVJ1gyAAQAKFP0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDWQy/fyxXrmQFoTRrGaOG1/GbCEfochfn9vuGWAXklJdce1Cd7cBSg4LatLyrzz8IZDqZvXrrabvIJyK9AJ+Bp2jUddACwuJHifMm+r2bec4VQvJqP2r/SXr3iTuXpMSJKUJPOvjB6tg4ycg+CUtZhWglx/GWyDbx1/VShX4Btsf0cKzwpsuuMAqjA5LXD87Z9Qhrcg95E0C7z9rjOhDr/0DwLLYG2lZCm+GA2SNp3UWGiJmoMov2KbuRmW0AAAAAOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkhVUuImJBD3tJObdBAIXVy3pnuisbaZa33SjJQ89JUWa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6aoZd5O6qa33Z+k6O4H4MFoMya7HMZJeTueSFskV6TsmMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WQMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKnjMtr5L6vs6LY/96RABeX9/Zr6FYdWthxalfkEs7jQgQUPAAUCgBoGAA8ACQPoAwAAAAAAAA4GAAEFDAoTAQEOBgAHBRIKEwEBEBwAAwkLBQYMARMQBxATCBAQEQoFAQwCBBIHDRMTLqhgt6NcCiigAHQ7pAsAAAAAGQAAAOUXy5d6460qAAB0O6QLAAAAAEbDIwAAAAAA",
+      "bytes": 861,
+      "expect": "ok",
+      "checks": [
+        {
+          "address": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "lamports_delta": "594000000",
+          "plus_order_rent": true
+        },
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "-50000000000"
+        },
+        {
+          "order": "7k8sKCsxFa9Lrtdj8fD1LZPHNTP2MGbuNs54ashu6NQk",
+          "exists": false
+        },
+        {
+          "address": "27jGMnSitT2erdpj1CM1YboYYiJ8cKSmVscRyUoU4x8D",
+          "exists": false
+        },
+        {
+          "address": "F7pQTWzuwoCAyMawqgE8fmTX3sERYn4GnrMeX8X4zdL8",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "a second order (its approval covers what is left of every open order)",
+      "order": "58ByjU9VREkWj6WnFnZFJra5QQsgjFyRsTHMykRshgvS",
+      "tx": "ATYN0UwCOy825erz6BH/JBtdi2Put3r0dEMvZ3xGDbytJvOa0t/iOec4d1maJN1z7tEi8cJBDAAf7UEPf5tRNgmAAQAGCepKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsPUY59OYsknCapHNHHSEtWdD9wczutQcZ+vaO2fJeW7elCTzr4werYOMnIPglLWYVoJcfxlsg28df1UoV+AbbHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZIVVLiJiQQ97STm3QQCF1ct6Z7orG2mWt90oyUPPSVFmvn4zLHpFMzK9nQp/fbBV9cXvGgatpm2Ys5+2gQxHOgMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqeMy2vkvq+zotj/3pEAF5f39mvoVh1a2HFqV+QSzuNCBAwYABQKghgEABwMAAQORATPCm69tgmBqAgAAAAAAAAD9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GGa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEBAOQLVAIAAAAA4fUFAAAAAAAAAAAAAAAAgCNLawAAAAAIBAIFBAAKDQDMgpwZAAAABgA=",
+      "bytes": 569,
+      "expect": "ok",
+      "checks": [
+        {
+          "order": "58ByjU9VREkWj6WnFnZFJra5QQsgjFyRsTHMykRshgvS",
+          "exists": true
+        },
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "delegated": "110000000000"
+        }
+      ]
+    },
+    {
+      "name": "the user cancels it: the order is gone and its rent is back (less the network fee)",
+      "tx": "Ae0WeZpZoytUk/1gHEf7fpwv5jIgIHp6u55YuWdeCYCfgvel/IDGiHAFM1OxjBBd08Xa6a6JTeRfB1NYyANLww2AAQABA+pKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsPUY59OYsknCapHNHHSEtWdD9wczutQcZ+vaO2fJeW7erkEW1cl9PbGZ6VBv7YCEmH2K2d+8/TCKDTDD+XVbcsOMy2vkvq+zotj/3pEAF5f39mvoVh1a2HFqV+QSzuNCBAQICAAEIX4Ht8Agx34QA",
+      "bytes": 213,
+      "expect": "ok",
+      "checks": [
+        {
+          "order": "58ByjU9VREkWj6WnFnZFJra5QQsgjFyRsTHMykRshgvS",
+          "exists": false
+        },
+        {
+          "address": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "lamports_delta": "-5000",
+          "plus_order_rent": true
+        }
+      ]
+    },
+    {
+      "name": "a cancelled order can't be filled",
+      "tx": "AR6dC9+MLEgWQzIXo3jAJReVTQ+8BY9J9qujQ/VpfTLSCP04K7E+z/aNS5fkj9t8+EBJ3mNo/jQ7QLArOlPS6wSAAQAKFP0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDT1GOfTmLJJwmqRzRx0hLVnQ/cHM7rUHGfr2jtnyXlu3ce1Cd7cBSg4LatLyrzz8IZDqZvXrrabvIJyK9AJ+Bp2jUddACwuJHifMm+r2bec4VQvJqP2r/SXr3iTuXpMSJKUJPOvjB6tg4ycg+CUtZhWglx/GWyDbx1/VShX4Btsf0cKzwpsuuMAqjA5LXD87Z9Qhrcg95E0C7z9rjOhDr/0DwLLYG2lZCm+GA2SNp3UWGiJmoMov2KbuRmW0AAAAAOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkhVUuImJBD3tJObdBAIXVy3pnuisbaZa33SjJQ89JUWa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6aoZd5O6qa33Z+k6O4H4MFoMya7HMZJeTueSFskV6TsmMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WQMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAq5BFtXJfT2xmelQb+2AhJh9itnfvP0wig0ww/l1W3LAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKnjMtr5L6vs6LY/96RABeX9/Zr6FYdWthxalfkEs7jQgQUPAAUCgBoGAA8ACQPoAwAAAAAAAA4GAAEFDAoTAQEOBgAHBRIKEwEBEBwAAwkLBQYMARMQBxATCBAQEQoFAQwCBBIHDRMTLqhgt6NcCiigAOQLVAIAAAAAGQAAAOUXy5d6460qAADkC1QCAAAAAMqaOwAAAAAA",
+      "bytes": 861,
+      "expect": "AccountNotInitialized",
+      "checks": [
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "0"
+        }
+      ]
+    }
+  ]
+}

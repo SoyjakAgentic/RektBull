@@ -121,6 +121,9 @@ async function record(tx, sales, { raise = require('./myAgents').raise } = {}) {
     const alerts = [{ kind: 'meme_watch', severity: 'high', dedupe: `meme:${key}:insiders:${g.funder}:first`, title: `${name} on solana: a launch-bundle wallet just sold`, detail }];
     if (gonePct !== null && gonePct >= STEP_PCT) {
       alerts.push({ kind: 'meme_watch', severity: 'critical', dedupe: `meme:${key}:insiders:${g.funder}:${Math.floor(gonePct / STEP_PCT)}`, title: `${name} on solana: launch-bundle wallets are selling (${gonePct}% of what they bought is gone)`, detail });
+      // Critical: Meme Watch exits on this coin fire (trade/solanaOrders.js), filled by the trade service within seconds.
+      await require('../trade/solanaOrders').memeWatchSignal(g.mint, { source: 'Meme Watch (the stream)', alert: alerts[alerts.length - 1].title, signature: tx.signature })
+        .catch(err => logger.warn('insider watch: exits not fired', { mint: g.mint, error: err.message }));
     }
     const { rows: accounts } = await db.query('SELECT id, wallet, solana_wallet FROM accounts WHERE id = ANY($1::bigint[])', [[...g.accounts]]);
     for (const a of accounts) raised += await raise(a.id, alerts.map(x => ({ ...x, wallet: a.solana_wallet || a.wallet })));

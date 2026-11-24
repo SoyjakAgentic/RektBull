@@ -68,6 +68,21 @@ const env = {
   // Unset, the Solana launch feed polls GeckoTerminal and RPC as before. The token is a secret.
   yellowstoneGrpcUrl: (process.env.YELLOWSTONE_GRPC_URL || '').trim(),
   yellowstoneGrpcToken: (process.env.YELLOWSTONE_GRPC_TOKEN || '').trim(),
+  // Solana orders (src/trade/solanaOrders.js, docs/SOLANA_ORDERS.md): stop-losses, take-profits and Meme Watch exits
+  // through the order program. Off until the program is audited and deployed. All public addresses; the executor's
+  // private key is in KMS (Ed25519), used only by the trade service.
+  solanaOrdersEnabled: process.env.SOLANA_ORDERS_ENABLED === 'true',
+  solanaOrdersProgramId: (process.env.SOLANA_ORDERS_PROGRAM_ID || '').trim(),
+  solanaOrdersExecutor: (process.env.SOLANA_ORDERS_EXECUTOR || '').trim(),
+  // The program's FEE_WALLET constant, which every fill names; a different one fails onchain.
+  solanaOrdersFeeWallet: (process.env.SOLANA_ORDERS_FEE_WALLET || '').trim(),
+  // RektBull's own address lookup table for fills' fixed accounts (deploy step 5); optional.
+  solanaOrdersLookupTable: (process.env.SOLANA_ORDERS_LOOKUP_TABLE || '').trim(),
+  // Off mainnet only, for a program whose upgrade authority is still set (devnet). Refused in production.
+  solanaOrdersAllowUpgradeable: process.env.SOLANA_ORDERS_ALLOW_UPGRADEABLE === 'true',
+  kmsSolanaExecutorKeyVersion: process.env.KMS_SOLANA_EXECUTOR_KEY_VERSION || '',
+  // Devnet or a local validator only, never mainnet or production: a throwaway seed instead of KMS.
+  devSolanaExecutorKey: process.env.DEV_SOLANA_EXECUTOR_KEY || '',
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
   sessionKeyAddress: (process.env.SESSION_KEY_ADDRESS || '').toLowerCase(),
   kmsSessionKeyVersion: process.env.KMS_SESSION_KEY_VERSION || '',

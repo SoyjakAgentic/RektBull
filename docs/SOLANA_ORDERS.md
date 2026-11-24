@@ -3,9 +3,10 @@
 *Status: the program and its tests are built
 (`solana/programs/rektbull-orders`, 28 break-it tests, a random-sequence
 invariant test, and checks against pump.fun's, PumpSwap's and Jupiter's real
-programs on copies of mainnet). **Not audited, not deployed, and the trade service doesn't use it
-yet.** Nothing may hold real funds through it until an external audit is done
-and every finding is fixed or explicitly accepted.*
+programs on copies of mainnet). **Not audited, not deployed.** The trade
+service that uses it is built (24 November 2026, "The trade service" below) and
+stays off until then. Nothing may hold real funds through it until an external
+audit is done and every finding is fixed or explicitly accepted.*
 
 It is the Solana twin of the EVM Meme Router ([MEME_ROUTER.md](MEME_ROUTER.md)):
 the same guarantee, built the way Solana works. Turnkey alone couldn't give
@@ -229,6 +230,129 @@ the trader, then copies every account and program they touch; then
   pools only (Orca, Raydium, Meteora). On mainnet, Jupiter may route through
   any of them; the order program's checks are the same whatever the route.
 
+## The trade service (built 24 November 2026)
+
+Asked for by the owner on 23 November 2026 ("start the order service on
+Solana"). Sell orders for SOL only, for now: a limit buy needs the user to wrap
+and approve SOL, and comes later.
+
+**The orders** (the Trade desk's "Orders on Solana" card, `public/solana-orders.js`):
+
+| Order | Fires | Sells at |
+|---|---|---|
+| Stop-loss | When the coins' value falls by the user's amount (DexScreener's price of the coin's most liquid pair, SOL's from DefiLlama), checked every trade-service pass | The market, but never below the user's floor (down 35% by default, 15 points under the stop) |
+| Take-profit | When it rises by the user's amount | The target less the user's slippage (3% by default), or better |
+| Meme Watch exit | When Meme Watch raises a critical alert for the coin: launch-bundle wallets selling (the stream, within seconds, or the 6-hour check), or liquidity pulled. Needs Meme Watch on | The market, but never below the user's floor (down 50% by default) |
+
+Each is one order account for a share of what the user holds (up to all of
+it), ending after at most 30 days. The floor is the order's `min_amount_out`,
+after RektBull's 1%, so the program refuses anything below it.
+
+**Placing** (`src/trade/solanaOrders.js` `prepare`, `src/trade/solanaOrderTx.js`):
+1. The checks: the coin is a mint, the wallet holds it, Jupiter has a route
+   to sell it for SOL (its quote is the value the trigger and floor are worked
+   from).
+2. One transaction for the user's wallet: `place_order` (naming RektBull's
+   executor), an SPL `ApproveChecked` of the program's delegate for this
+   order's coins plus what's left of the user's other open orders on the same
+   token account (an approval replaces the one before it), and, once per
+   user, pump.fun's and PumpSwap's volume accounts for their transit (for a
+   pump.fun coin only).
+3. It runs in a simulation, and the order account it would write is read back
+   and compared with what was asked, before the wallet sees it.
+4. **The worst case, in plain words, before the user signs:** "Worst case, even
+   if RektBull were hacked: your N coins are sold for X SOL after the 1% fee
+   (your floor), at a moment RektBull picks before the end date, even if the
+   market is higher then." Also: nothing else can be touched; a price falling
+   straight past the floor can't fill and the user keeps the coins; how to stop
+   it. The costs: the order's deposit (0.00218544 SOL, returned when it's
+   filled or cancelled), the volume accounts once (0.0018444 SOL each), and the
+   1% only on a fill.
+5. Once the wallet has sent it, the order is read from the chain and compared
+   with what was prepared before RektBull watches it (`confirm`; the trade
+   service also picks it up by itself). An order that doesn't match is never
+   filled.
+
+**Filling** (the trade service, `tick`, every `TRADE_TICK_MS`):
+1. Orders are read back from the chain: placed, partly filled, closed (filled
+   or cancelled), or past their end date (the user is told, and can cancel to
+   get the deposit back).
+2. Triggers are checked; a fired order is filled at once, at most 5 a pass.
+3. The size: what's left of the order, but no more than the user still holds
+   and still approves. Nothing left (sold by hand, or the approval revoked):
+   the user is told once, and it's tried again every 5 minutes.
+4. The route: Jupiter's `/build` with the user's transit as the taker, 5%
+   slippage (Jupiter's own check; the user's floor is the program's). Every
+   instruction is checked as for a trade the user signs (`trade/solana.js`):
+   Jupiter's swap only, for exactly this amount and these coins, no fee inside,
+   paying transit's own wrapped-SOL account; its lookup tables are checked
+   against the chain.
+5. **Below the floor, nothing is sent:** when the quote, less the 1%, is under
+   the user's price for this part, the user is told once and it's tried again
+   every 30 seconds while the order is open.
+6. The fill transaction (version 0, with Jupiter's lookup tables and RektBull's
+   own): transit's token and wrapped-SOL accounts opened by the executor when
+   missing (the program returns their rent to it), then `fill`, with Jupiter's
+   accounts passed unsigned. It must fit 1,232 bytes, runs in a simulation, and
+   gets a compute limit of what it used plus a fifth and a priority fee (the
+   75th percentile of what the swap's accounts paid lately, at most 0.001 SOL).
+7. The executor signs (KMS, `src/trade/solanaExecutor.js`), the signature is
+   logged in `key_signatures`, the fill is recorded, then sent.
+8. Next pass: confirmed or failed. A confirmed fill's numbers come from the
+   program's own `Filled` event (what reached the user, and the fee); the user
+   is told what was sold and for how much. A failed or expired one is tried
+   again after 30 seconds.
+
+**The executor** is an Ed25519 key in Google Cloud KMS (`EC_SIGN_ED25519`),
+used only by the trade service. KMS signs each transaction's message as given,
+and the signature is checked against the key before anything is sent. Off
+mainnet only, a throwaway seed (`DEV_SOLANA_EXECUTOR_KEY`) can stand in: it is
+refused in production and whenever the RPC's chain is mainnet (by its genesis
+hash). It must be the address orders name (`SOLANA_ORDERS_EXECUTOR`).
+
+**Off unless all of these hold:**
+- `SOLANA_ORDERS_ENABLED=true`, with the program's, the executor's and the fee
+  wallet's addresses set;
+- the program is deployed and **can't be upgraded** (its upgrade authority
+  removed), read from the chain. A program that can still be upgraded is
+  accepted only off mainnet, outside production, with
+  `SOLANA_ORDERS_ALLOW_UPGRADEABLE`.
+
+The admin panel's emergency stop for automatic trading stops every fill. Pausing
+the Trade desk stops new orders. Neither ever stops a user cancelling.
+"Delete my data" asks the user to cancel open orders first.
+
+**Tested:**
+- **Against the program itself** (`tests/js_client.rs`). The service's own
+  transaction code, run by `scripts/js_client_fixture.js` with test keys, builds
+  and signs:
+  - placing a stop-loss with its approval;
+  - a fill below the user's price, refused (`BelowLimit`);
+  - a half fill: 99% to the user as SOL, 1% to the fee wallet;
+  - the rest filled, with the order and transit's accounts closed;
+  - a second order, its approval covering both;
+  - a cancel;
+  - a fill of the cancelled order, refused.
+
+  LiteSVM runs them against the compiled program with signatures checked, through
+  a stand-in exchange that pays wrapped SOL as Jupiter does. `npm test` checks the
+  committed transactions are what today's code builds.
+- **The service** (`test/solanaOrders.test.js`), on a real database with a
+  stand-in chain and Jupiter:
+  - the layouts, maths and worst case, and the executor key's checks;
+  - a stop-loss prepared, its transaction decoded (only the user signs; the
+    approval is for exactly its coins, to the delegate), then confirmed;
+  - fired by its price, with the quote below the floor: nothing sent, the user
+    told;
+  - the market back: the fill built, signed by the executor alone (checked),
+    logged and sent;
+  - confirmed from the `Filled` event, filled, the user told;
+  - a Meme Watch exit refused without Meme Watch, then fired by its signal;
+  - the emergency stop holding every fill;
+  - cancelling, which revokes the approval with the last order.
+- **The page** (`test/browser/solanaOrders.js`): the reason it's off, the
+  worst case before anything is signed, placing from the wallet, cancelling.
+
 ## Checks before the audit
 
 - **Clippy** (Rust's linter) with every warning an error, in CI.
@@ -281,17 +405,31 @@ version is a choice to make at deployment.
    the deployed bytes match a reproducible build of the audited commit.
 4. Remove the upgrade authority (`solana program set-upgrade-authority
    --final`).
-5. One-time setup by the executor: RektBull's address lookup table for fills.
+5. One-time setup by the executor: RektBull's address lookup table for fills
+   (the program's delegate, the fee wallet, wrapped SOL, the token programs,
+   Jupiter's program and event authority), then `SOLANA_ORDERS_LOOKUP_TABLE`.
    (Each user's first order transaction creates pump.fun's and PumpSwap's
    volume accounts for their own transit.)
-6. No private key, seed phrase or program keypair ever goes into the
+6. The executor's key: an `EC_SIGN_ED25519` key in Cloud KMS, signing rights
+   for the trade service's account only. Its public address goes in
+   `SOLANA_ORDERS_EXECUTOR` and its version in `KMS_SOLANA_EXECUTOR_KEY_VERSION`.
+   Fund it with a little SOL for fills' network fees and transit's account
+   rent, which the program returns.
+7. Try it on devnet first: the program deployed there, a dev seed for the
+   executor, `SOLANA_ORDERS_ALLOW_UPGRADEABLE` while it can still be upgraded.
+   Then on mainnet, set `SOLANA_ORDERS_PROGRAM_ID`, `SOLANA_ORDERS_FEE_WALLET`
+   and `SOLANA_ORDERS_ENABLED=true`.
+8. No private key, seed phrase or program keypair ever goes into the
    repository, a chat or an issue.
 
 ## What's next
 
-1. **The trade service:** an `orders` table; an order screen that states the
-   worst case before the user signs; the place-and-approve transaction (with
-   the buy, for exits); a watcher that fills through the KMS trade key
-   (Ed25519), simulating each fill first and sizing pump.fun's headroom, and
-   sending fills as version-0 transactions with lookup tables.
-2. **The audit**, with the EVM contracts or on its own ([AUDIT_BRIEF.md](AUDIT_BRIEF.md)).
+1. **The audit**, with the EVM contracts or on its own ([AUDIT_BRIEF.md](AUDIT_BRIEF.md)).
+   The trade service is in the repository for the auditors to read; it isn't
+   trusted by the program.
+2. **Then, in the service:**
+   - limit buys (wrapping and approving SOL);
+   - exits placed in the same transaction as a buy (it may not fit in one
+     transaction with Jupiter's route);
+   - direct pump.fun curve fills, with headroom sized from a simulation
+     (Jupiter routes pump.fun coins today).

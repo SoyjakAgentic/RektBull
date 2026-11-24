@@ -28,6 +28,7 @@ const AGENT_LINKS = {
   meme_watch: { action: 'Review the sell', path: a => a.detail?.sell || '/trade' },
   perps_guard: { action: a => (a.detail?.has_fix ? 'Review the fix' : 'See your position'), path: () => '/perps#protect-card' },
   wallet_trade: { action: a => (a.detail?.side === 'buy' ? 'Review the buy' : 'See the token'), path: a => a.detail?.link || '/launches#follow-card' },
+  solana_order: { action: 'See your orders', path: () => '/trade?chain=solana#sol-orders-card' },
 };
 
 /** { subject, text, url } for an alert. */
