@@ -35,6 +35,7 @@ const guard = fn => async (req, res) => {
 
 router.get('/v1/trading/config', (_req, res) => res.json({
   enabled: env.tradingEnabled,
+  solana_orders: !require('../trade/solanaOrders').config().off, // exits with a Solana buy, and Orders on Solana
   fee_pct: Math.min(env.swapFeeBps, 100) / 100,
   chains: {
     ...Object.fromEntries(Object.entries(TRADE_CHAINS).map(([k, c]) => [k, { chain_id: c.chainId, label: c.label, bases: Object.keys(c.bases), default_base: c.defaultBase }])),

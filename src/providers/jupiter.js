@@ -51,9 +51,10 @@ async function call(path, params) {
 }
 
 /** The swap's instructions for `taker` to sign, with its lookup tables and a recent blockhash. */
-async function build({ inputMint, outputMint, amount, slippageBps, taker }) {
-  // At most 48 accounts in the route, so RektBull's own instructions still fit Solana's 1,232-byte limit.
-  const r = await call('/build', { inputMint, outputMint, amount: String(amount), slippageBps, taker, maxAccounts: MAX_ACCOUNTS });
+async function build({ inputMint, outputMint, amount, slippageBps, taker, maxAccounts = MAX_ACCOUNTS }) {
+  // At most 48 accounts in the route, so RektBull's own instructions still fit Solana's 1,232-byte limit
+  // (fewer when exits ride in the same transaction: trade/solana.js).
+  const r = await call('/build', { inputMint, outputMint, amount: String(amount), slippageBps, taker, maxAccounts });
   if (!r?.swapInstruction || !r.outAmount) throw new JupiterError('Jupiter found no route for this trade.');
   return r;
 }

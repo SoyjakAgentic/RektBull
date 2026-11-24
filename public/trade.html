@@ -52,6 +52,11 @@
         </label>
       </div>
       <p class="muted small">RektBull checks the trade as soon as you pick a token, so a click goes straight to your wallet. Every check runs again on a fresh price when you click.</p>
+      <div id="exits-wrap" class="row small" hidden>
+        <span>With this buy, in the same transaction:</span>
+        <label class="inline"><input type="checkbox" id="x-stop"> a stop-loss at down <input id="x-stop-pct" type="number" min="1" max="95" step="1" value="20" style="width:4.5em">%</label>
+        <label class="inline"><input type="checkbox" id="x-take"> a take-profit at up <input id="x-take-pct" type="number" min="1" max="10000" step="1" value="50" style="width:5.5em">%</label>
+      </div>
       <div id="presets" class="row presets" aria-label="One-click amounts"></div>
       <div id="plan" class="plan" hidden></div>
       <div class="row"><button id="go" class="primary" disabled>Buy</button></div>
@@ -72,6 +77,7 @@
       <h2>Orders on Solana <span class="tag">limit buy · stop-loss · take-profit · Meme Watch exit</span></h2>
       <p class="muted">Your wallet places the order and approves only what it trades: the coins it sells, or for a limit buy, the SOL it spends (wrapped, in your own wallet). RektBull's order program then lets RektBull trade them for you when the order fires: at your price or better, before its end date, with what they bring going only to your wallet. Nothing else of yours can be touched, and nobody holds your coins or your SOL. RektBull's fee is 1% of the SOL a fill brings or spends; nothing if it never fills.</p>
       <p id="so-off" class="msg bad" hidden></p>
+      <p id="so-setup" class="msg warn" hidden>An order is waiting on a one-time setup from your wallet: pump.fun's volume accounts for your order address (about 0.0037 SOL, once). <button class="btn" id="so-setup-btn">Set up</button></p>
       <div id="so-form">
         <div class="grid">
           <label class="wide-input">Coin (its mint address)<input id="so-token" placeholder="The coin's mint address" autocomplete="off" spellcheck="false"></label>

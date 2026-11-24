@@ -20,6 +20,7 @@
   async function afterSignIn() {
     if (!state.provider && !state.sol) return; // signed in on an earlier page: wait until a wallet is connected here
     state.config = await api('GET', '/v1/trading/config');
+    state.ordersOn = !!state.config.solana_orders; // exits with a Solana buy need the order program (off until it's deployed)
     for (const id of ['trade-card', 'protect-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
     showChains();
@@ -133,7 +134,10 @@
     chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
     ...(isSell() ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
     ...(tradeState.ack ? { acknowledge_risks: true } : {}),
+    ...(exitsAsked() ? { exits: { stop_loss: $('x-stop').checked, take_profit: $('x-take').checked, stop_pct: Number($('x-stop-pct').value), take_pct: Number($('x-take-pct').value) } } : {}),
   });
+  // Exits with a Solana buy (a stop-loss and/or a take-profit in RektBull's order program, in the same transaction).
+  const exitsAsked = () => isSolanaChain() && !isSell() && ($('x-stop').checked || $('x-take').checked);
   // Solana mints are case-sensitive.
   const sameToken = (a, b, chain) => (chain === 'solana' ? a === b : a.toLowerCase() === b.toLowerCase());
   const matches = (pv, i) => pv && pv.chain === i.chain && pv.side === i.side && pv.base === i.base && sameToken(pv.token, i.token, i.chain);
@@ -142,6 +146,7 @@
   function showSide() {
     const sell = isSell();
     $('amount-wrap').hidden = sell; $('fraction-wrap').hidden = !sell;
+    $('exits-wrap').hidden = sell || !isSolanaChain() || !state.ordersOn;
     showPresets(); labelGo();
   }
   function showPresets() {
@@ -172,7 +177,9 @@
   }
   $('side').addEventListener('change', () => { showSide(); changed(); });
   for (const id of ['token', 'amount', 'fraction']) $(id).addEventListener('input', () => changed({ keepAck: id !== 'token' }));
-  for (const id of ['chain', 'base']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+  for (const id of ['chain', 'base']) $(id).addEventListener('change', () => { showSide(); changed({ keepAck: true }); });
+  for (const id of ['x-stop', 'x-take']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+  for (const id of ['x-stop-pct', 'x-take-pct']) $(id).addEventListener('input', () => changed({ keepAck: true }));
 
   /** Runs every check on a firm price and shows it. Resolves to the preview, or null if the trade can't go ahead. */
   async function previewNow() {
@@ -218,9 +225,22 @@
       el('p', {}, el('strong', {}, s.text)),
       el('ul', {}, pv.plan.checks.map(c => el('li', { class: c.ok === false ? 'check-warn' : 'check-ok' }, c.detail))),
       el('p', {}, s.fee ? `RektBull fee: ${s.fee.amount} ${s.fee.asset} (${s.fee.pct}%), ${s.fee.taken_by || 'taken inside the swap'}.` : 'No RektBull fee on this trade.'),
+      ...exitsView(s.exits),
       el('p', { class: 'muted small', id: 'plan-age' }),
     );
     showAge();
+  }
+  /** The exits placed with the buy: what they are, their worst case, their costs; or why none were added. */
+  function exitsView(x) {
+    if (!x) return [];
+    if (x.none) return [el('p', { class: 'warn' }, x.none)];
+    return [el('div', { class: 'worst' },
+      el('strong', {}, `Exits, in the same transaction: ${x.orders.map(o => `${o.kind_name.toLowerCase()} (fires at ${o.trigger_sol} SOL, never below ${o.floor_sol} SOL)`).join('; ')}`),
+      el('p', { class: 'small' }, `For ${x.covers}.`),
+      ...x.worst_case.map(t => el('p', { class: 'small' }, t)),
+      el('p', { class: 'small muted' }, `Deposits: ${x.costs.order_deposits_sol} SOL, returned when they're filled or cancelled.${x.costs.volume_accounts_sol ? ` Once: ${x.costs.volume_accounts_sol} SOL for pump.fun's volume accounts.` : ''} ${x.costs.fee}`),
+      ...(x.setup_sol ? [el('p', { class: 'small' }, `Your wallet will ask twice: first a one-time setup (${x.setup_sol} SOL, your own pump.fun volume accounts, once per wallet), then the buy with its exits.`)] : []),
+      ...(x.note ? [el('p', { class: 'warn small' }, x.note)] : []))];
   }
   function showAge() {
     const pv = tradeState.preview;
@@ -307,10 +327,18 @@
     return confirm || last;
   }
 
-  /** The one Solana transaction, signed and sent by the wallet (Wallet Standard). Returns its signature. */
+  /**
+   * The Solana transaction, signed and sent by the wallet (Wallet Standard). Returns its signature. With exits on a
+   * first pump.fun buy, the wallet first signs a small one-time setup (its own volume accounts, paid by the user).
+   */
   async function sendSolana(calls) {
     const send = state.sol.wallet.features['solana:signAndSendTransaction'];
     if (!send) throw new Error('This wallet can\'t send Solana transactions from a web page. Try Phantom, Solflare or MetaMask.');
+    if (calls.setup) {
+      say('trade-msg', `First, a one-time setup for your exits (about ${calls.setup.sol} SOL, once per wallet): confirm it in your wallet, then the buy.`);
+      const setupTx = Uint8Array.from(atob(calls.setup.transaction), c => c.charCodeAt(0));
+      await send.signAndSendTransaction({ account: state.sol.account, chain: RB.SOL_CHAIN, transaction: setupTx, options: { preflightCommitment: 'confirmed' } });
+    }
     const transaction = Uint8Array.from(atob(calls.transaction), c => c.charCodeAt(0));
     const [out] = await send.signAndSendTransaction({ account: state.sol.account, chain: RB.SOL_CHAIN, transaction, options: { preflightCommitment: 'confirmed' } });
     return RB.base58(out.signature);
@@ -348,6 +376,7 @@
     const s = await api('GET', '/v1/trading/settings');
     $('s-max').value = s.max_trade_usd; $('s-tax').value = s.max_tax_bps / 100; $('s-loss').value = s.max_round_trip_loss_pct; $('s-slip').value = s.slippage_bps / 100;
     $('s-stop').value = s.stop_loss_pct; $('s-tp').value = s.take_profit_pct; $('s-auto').value = String(s.auto_exit);
+    $('x-stop-pct').value = s.stop_loss_pct; $('x-take-pct').value = s.take_profit_pct; // exits with a Solana buy start from your settings
     $('s-buys').value = s.buy_presets_usd.join(', '); $('s-sells').value = s.sell_presets_pct.join(', ');
     $('s-speed').value = s.send_speed || 'standard';
     tradeState.presets = { buy: s.buy_presets_usd, sell: s.sell_presets_pct };
