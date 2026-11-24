@@ -38,7 +38,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: contracts/package-lock.json
+          cache-dependency-path: |
+            contracts/package-lock.json
+            package-lock.json
+      # The root's packages too: memeOrdersService.test.js runs the order service's own code (src/trade/memeOrderTx.js) against the router.
+      - run: npm ci
+        working-directory: .
       - run: npm ci
       # Break-it tests (JavaScript) and the invariant fuzz tests (Solidity, test/*.t.sol).
       - run: npm test
