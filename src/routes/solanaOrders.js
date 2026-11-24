@@ -22,6 +22,8 @@ const handle = fn => async (req, res, next) => {
 
 router.get('/v1/solana/orders', requireAuth, handle(async (req, res) => res.json(await orders.list(req.account))));
 router.post('/v1/solana/orders', currentWallets, services.gate('trade'), handle(async (req, res) => res.status(201).json(await orders.prepare(req.account, req.body || {}))));
+// The one-time setup: pump.fun's and PumpSwap's volume accounts for the user's order address, signed and paid by them.
+router.post('/v1/solana/orders/setup', currentWallets, handle(async (req, res) => res.json(await orders.setup(req.account))));
 router.post('/v1/solana/orders/:id/confirm', requireAuth, handle(async (req, res) => res.json(await orders.confirm(req.account, req.params.id))));
 router.post('/v1/solana/orders/:id/cancel', requireAuth, handle(async (req, res) => res.json(await orders.cancel(req.account, req.params.id))));
 router.post('/v1/solana/orders/:id/refresh', requireAuth, handle(async (req, res) => res.json(await orders.refresh(req.account, req.params.id))));

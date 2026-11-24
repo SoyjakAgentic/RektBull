@@ -117,15 +117,12 @@ function cancelInstructions({ program, owner, order, revokeSource = null, tokenP
  *   - the fill itself. The swap's accounts go to the program unsigned: the
  *     program signs for transit, and nothing else.
  */
-async function fillInstructions({ program, executor, owner, order, token, tokenProgram, source, feeWallet, swap, amountIn, units, microLamports = 0, wrappedOut = true, side = 'sell', volumeVenues = [] }) {
+async function fillInstructions({ program, executor, owner, order, token, tokenProgram, source, feeWallet, swap, amountIn, units, microLamports = 0, wrappedOut = true, side = 'sell' }) {
   const [delegate, transit] = await Promise.all([op.delegateOf(program), op.transitOf(program, owner)]);
   const [transitCoin, transitWsol] = await Promise.all([op.ataOf(transit, tokenProgram, token), op.ataOf(transit, op.P.token, op.WSOL)]);
   const venueAccounts = swap.accounts.map(a => ({ address: a.pubkey, writable: !!a.isWritable }));
   const data = typeof swap.data === 'string' ? Buffer.from(swap.data, 'base64') : Buffer.from(swap.data);
-  // With a missing pump.fun or PumpSwap volume account for transit that the route uses, opened first, paid by the
-  // executor (once per wallet): an exit placed with a buy may have left it out to fit.
-  const budget = [...(units ? [op.cuLimit(units)] : []), ...(microLamports > 0 ? [op.cuPrice(microLamports)] : []),
-    ...await Promise.all(volumeVenues.map(venue => op.initVolume({ venue, payer: executor, user: transit })))];
+  const budget = [...(units ? [op.cuLimit(units)] : []), ...(microLamports > 0 ? [op.cuPrice(microLamports)] : [])];
   const open = (ata, mint, tp, who = transit) => op.createAtaIdempotent({ payer: executor, ata, owner: who, mint, tokenProgram: tp });
   if (side === 'buy') {
     const [ownerOut, feeIn] = await Promise.all([op.ataOf(owner, tokenProgram, token), op.ataOf(feeWallet, op.P.token, op.WSOL)]);

@@ -74,6 +74,7 @@ function stage(t, { orders = true, volumes = false, curve = true } = {}) {
       return { value: { err: null, unitsConsumed: 120000, accounts: [{ data: tokenData(349604509500) }, ...places.map(p => ({ data: b64(orderFromPlace(p.data, USER)) }))] } };
     }
     if (method === 'getRecentPrioritizationFees') return [];
+    if (method === 'getLatestBlockhash') return { value: { blockhash: 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi', lastValidBlockHeight: 500 } };
     throw new Error(`unexpected ${method}`);
   };
   const prices = require('../src/providers/prices');
@@ -139,6 +140,13 @@ test('too big for one transaction: the largest set that fits, saying what was le
   assert.match(p.summary.exits.note, /Only the stop-loss fitted/);
   assert.ok(p.solana.bytes <= 1232);
   assert.equal(decode(p.solana.transaction).ixs.filter(i => i.program === op.P.pumpFun || i.program === op.P.pumpAmm).length, 0, 'no volume accounts: they didn\'t fit');
+  // They come in a small setup transaction of their own, signed and paid by the user just before the buy.
+  const setup = decode(p.solana.setup.transaction);
+  assert.deepEqual(Object.keys(setup.t.signatures), [USER]);
+  assert.deepEqual(setup.ixs.map(i => i.program), [op.P.pumpFun, op.P.pumpAmm]);
+  assert.ok(setup.ixs.every(i => i.data.equals(op.DISC.initVolume)));
+  assert.equal(p.summary.exits.setup_sol, '0.0036888');
+  assert.match(p.summary.exits.costs.volume_accounts_note, /your wallet signs them first, in a small setup transaction of their own/);
   assert.ok(st.sims.length >= 1);
 });
 

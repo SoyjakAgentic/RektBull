@@ -56,6 +56,7 @@ const CU_MAX = 1_400_000;
 const PRIORITY_CAP_LAMPORTS = 1_000_000n; // the most the executor pays for priority on one fill: 0.001 SOL
 const TOKEN_ACCOUNT_RENT = rentOf(170); // a token account (Token-2022's carries a small extension): about 0.002 SOL
 const RETRY_MS = { below_floor: 30_000, failed: 30_000, nothing: 5 * 60_000 };
+const SETUP_ERROR = 'needs a one-time setup'; // an order waiting on the user's volume accounts (last_error starts with it)
 const FILLS_PER_TICK = 5;
 const PREPARED_TTL_MS = 10 * 60_000; // a prepared order never placed is forgotten after this
 
@@ -464,7 +465,7 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
   const [mint, curve, ...vols] = await accounts([token, await op.bondingCurveOf(token), await op.volumeOf(op.P.pumpFun, transit), await op.volumeOf(op.P.pumpAmm, transit)]);
   const decimals = dataOf(mint)[44];
   const missing = curve ? [op.P.pumpFun, op.P.pumpAmm].filter((_, i) => !vols[i]) : [];
-  const volumeVenues = volumes ? missing : []; // left out, the fill service opens them when a fill needs them
+  const volumeVenues = volumes ? missing : []; // left out to fit, they come in a setup transaction signed just before
   const { rows: others } = await db.query(
     `SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM solana_orders WHERE account_id = $1 AND source = $2 AND state IN ('prepared', 'open', 'triggered')`,
     [accountId, tokenAta]);
@@ -492,6 +493,8 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
     instructions,
     tables: await ownTable(cfg.lookupTable), // the delegate and the exchanges' fixed accounts, at a byte each
     volumesWanted: missing.length > 0,
+    // Left out to fit: the user's own one-time setup, a transaction of its own, signed just before the buy.
+    ...(!volumes && missing.length ? { setup: await setupTransaction(cfg.program, owner, missing) } : {}),
     addresses: orders.map(o => o.order),
     orders: orders.map(({ instruction, ...o }) => ({ ...o, token, symbol, tokenProgram, decimals, source: tokenAta, program: cfg.program, executor: cfg.executor, validUntil })),
     summary: {
@@ -505,11 +508,33 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
       ],
       costs: {
         order_deposits_sol: sol(ORDER_RENT * BigInt(orders.length)), order_deposits_note: 'Held by the order accounts and returned to you when they are filled or cancelled.',
-        ...(volumeVenues.length ? { volume_accounts_sol: sol(VOLUME_RENT * BigInt(volumeVenues.length)), volume_accounts_note: 'Once per wallet: the volume accounts pump.fun and PumpSwap need for your order address.' } : {}),
+        ...(missing.length ? { volume_accounts_sol: sol(VOLUME_RENT * BigInt(missing.length)), volume_accounts_note: volumes ? 'Once per wallet: the volume accounts pump.fun and PumpSwap need for your order address.' : 'Once per wallet: the volume accounts pump.fun and PumpSwap need for your order address. They don\'t fit in the buy\'s transaction, so your wallet signs them first, in a small setup transaction of their own.' } : {}),
         fee: 'RektBull\'s 1% of the SOL an exit brings, taken by the order program. Nothing if it never fills.',
       },
     },
   };
+}
+
+/** The user's one-time setup: pump.fun's and PumpSwap's volume accounts for their order address, paid by them. */
+async function setupTransaction(program, owner, venues) {
+  const transit = await op.transitOf(program, owner);
+  const instructions = await Promise.all(venues.map(venue => op.initVolume({ venue, payer: owner, user: transit })));
+  const bh = await latestBlockhash();
+  const c = otx.compile({ payer: owner, instructions, ...bh });
+  return { transaction: c.transaction, last_valid_block_height: bh.lastValidBlockHeight, bytes: c.bytes, sol: sol(VOLUME_RENT * BigInt(venues.length)) };
+}
+
+/** For the card: the one-time setup's transaction when the user's order address still lacks a volume account, else { needed: [] }. */
+async function setup(account) {
+  const cfg = await ready();
+  const owner = account.solana_wallet;
+  if (!owner) throw refuse('Link a Solana wallet to your account first.', 409);
+  const transit = await op.transitOf(cfg.program, owner);
+  const venues = [op.P.pumpFun, op.P.pumpAmm];
+  const there = await accounts(await Promise.all(venues.map(v => op.volumeOf(v, transit))));
+  const needed = venues.filter((_, i) => !there[i]);
+  if (!needed.length) return { needed: [] };
+  return { needed, solana: await setupTransaction(cfg.program, owner, needed) };
 }
 
 /** The trade was made with exits: their rows, prepared until the transaction lands (reconcile opens them). */
@@ -588,6 +613,7 @@ async function list(account) {
   const cfg = config();
   return {
     enabled: !cfg.off, ...(cfg.off ? { why: cfg.off } : {}),
+    setup_needed: rows.some(r => ['open', 'triggered'].includes(r.state) && String(r.last_error || '').startsWith(SETUP_ERROR)),
     orders: rows.map(r => ({ ...view(r), fills: fills.filter(f => f.order_id === r.id).map(f => ({
       signature: f.signature, state: f.state,
       ...(isBuy(r) ? { spent_sol: sol(f.amount_in), coins: f.delivered ? whole(f.delivered, r.decimals) : null } : { sold_whole: whole(f.amount_in, r.decimals), delivered_sol: f.delivered ? sol(f.delivered) : null }),
@@ -750,7 +776,7 @@ async function priority(swap, units) {
 /** One fill of a triggered order. Records what happened; throws only on a bug. */
 async function attempt(row, cfg, exec) {
   const buy = isBuy(row);
-  const TITLES = { below_floor: buy ? 'it can\'t fill at your limit' : 'it can\'t fill at your floor', nothing: buy ? 'it has no SOL to buy with' : 'it has nothing to sell', risk: 'RektBull\'s token check stopped it' };
+  const TITLES = { below_floor: buy ? 'it can\'t fill at your limit' : 'it can\'t fill at your floor', nothing: buy ? 'it has no SOL to buy with' : 'it has nothing to sell', risk: 'RektBull\'s token check stopped it', setup: 'it needs a one-time setup from your wallet' };
   const later = async (error, ms, alertId = null, alertText = null) => {
     await db.query(`UPDATE solana_orders SET last_error = $2, last_attempt_at = now(), next_attempt_at = now() + make_interval(secs => $3), attempts = attempts + 1, updated_at = now() WHERE id = $1`, [row.id, error.slice(0, 500), ms / 1000]);
     if (alertId) await alert(row, 'high', alertId, TITLES[alertId], alertText);
@@ -810,14 +836,19 @@ async function attempt(row, cfg, exec) {
   }
 
   const tables = { ...(b.addressesByLookupTableAddress || {}), ...(await ownTable(cfg.lookupTable)) };
-  // A pump.fun or PumpSwap volume account for transit that the route uses but that doesn't exist yet: opened in the fill.
+  // A pump.fun or PumpSwap volume account for the user's order address that the route uses but that doesn't exist
+  // yet: the user's to open, once (the owner decided on 24 November 2026 that users pay for theirs). Nothing is sent
+  // until they have; they're told, with the one-time setup on the Trade desk.
   const venues = [op.P.pumpFun, op.P.pumpAmm];
   const wanted = await Promise.all(venues.map(v => op.volumeOf(v, transit)));
   const used = wanted.map(a => b.swapInstruction.accounts.some(x => x.pubkey === a));
   const there = used.some(Boolean) ? await accounts(wanted) : [];
-  const volumeVenues = venues.filter((_, i) => used[i] && !there[i]);
+  if (venues.some((_, i) => used[i] && !there[i])) {
+    return later(`${SETUP_ERROR}: pump.fun's volume account for your order address`, RETRY_MS.nothing, 'setup',
+      `It fired, but this sale goes through pump.fun, which needs a volume account for your order address, opened once by your wallet (about ${sol(VOLUME_RENT)} SOL each). Open Orders on Solana on the Trade desk and press "Set up"; the order fills as soon as it's done.`);
+  }
   const make = async (units, microLamports) => {
-    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports, volumeVenues });
+    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports });
     const bh = await latestBlockhash();
     return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
   };
@@ -875,6 +906,6 @@ async function tick() {
 
 module.exports = {
   KINDS, ORDER_RENT, VOLUME_RENT, FILL_SLIPPAGE_BPS,
-  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, tick, terms, worstCase, tokenAccount, exitsForBuy, recordExits,
+  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, tick, terms, worstCase, tokenAccount, exitsForBuy, recordExits, setup,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills,
 };

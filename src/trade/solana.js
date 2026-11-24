@@ -367,8 +367,8 @@ async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFr
     // Exits asked for: placed in the same transaction, for what the buy is sure to bring. Solana's 1,232 bytes fit a
     // pump.fun route and one order (about 1,050 bytes on a recorded mainnet route), not always more. So, largest
     // first, until one fits: every order asked with pump.fun's volume accounts for the user's order address (once
-    // per wallet); without them (the fill service then opens them, at RektBull's cost); the stop-loss alone; and
-    // last, the buy alone. The plan says what was left out.
+    // per wallet); without them (then in a small setup transaction of their own, signed just before the buy, paid by
+    // the user); the stop-loss alone; and last, the buy alone. The plan says what was left out.
     let exitPlan = null;
     let exitNote = null;
     let built;
@@ -407,7 +407,11 @@ async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFr
       checks.push({ check: 'exits', ok: true, detail: `${exitPlan.orders.map(o => o.kind_name.toLowerCase()).join(' and ')} placed in the same transaction, for the ${terms.minOut} the buy is sure to bring`, source: 'Solana RPC simulateTransaction' });
     }
     const plan = planOf({ side, token, wallet, price, usd, total, swapIn, terms, fee, feeLamports, built, checks, b, slippageBps });
-    if (exitPlan) { plan.summary.exits = { ...exitPlan.summary, ...(exitNote ? { note: exitNote } : {}) }; plan.exits = exitPlan.orders; }
+    if (exitPlan) {
+      plan.summary.exits = { ...exitPlan.summary, ...(exitNote ? { note: exitNote } : {}), ...(exitPlan.setup ? { setup_sol: exitPlan.setup.sol } : {}) };
+      plan.exits = exitPlan.orders;
+      if (exitPlan.setup) plan.solana.setup = exitPlan.setup; // signed first, by the user's wallet
+    }
     else if (exitNote) plan.summary.exits = { none: exitNote };
     return plan;
   }

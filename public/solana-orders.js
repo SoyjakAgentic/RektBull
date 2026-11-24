@@ -19,6 +19,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     $('so-kind').addEventListener('change', showKind);
     $('so-prepare').addEventListener('click', prepare);
+    $('so-setup-btn').addEventListener('click', setupNow);
     $('so-sign').addEventListener('click', place);
     for (const id of ['so-token', 'so-share', 'so-spend', 'so-dip', 'so-stop', 'so-take', 'so-floor', 'so-slip', 'so-days']) $(id).addEventListener('input', () => { prepared = null; $('so-plan').hidden = true; $('so-sign').hidden = true; });
     const chain = $('chain');
@@ -52,6 +53,7 @@
   async function refresh() {
     const r = await api('GET', '/v1/solana/orders').catch(err => ({ error: err.message }));
     if (r.error) return say('so-msg', r.error, 'bad');
+    $('so-setup').hidden = !r.setup_needed;
     $('so-off').hidden = r.enabled;
     $('so-off').textContent = r.enabled ? '' : r.why;
     for (const b of [$('so-prepare'), $('so-sign')]) b.disabled = !r.enabled;
@@ -152,6 +154,19 @@
       prepared = null;
       $('so-plan').hidden = true; $('so-sign').hidden = true;
       await refresh();
+    } catch (err) { say('so-msg', err.message, 'bad'); }
+  }
+
+  /** The one-time setup an order is waiting on, signed and paid by the user's wallet. */
+  async function setupNow() {
+    try {
+      const s = await api('POST', '/v1/solana/orders/setup');
+      if (s.needed.length) {
+        say('so-msg', 'Waiting for your wallet: the one-time setup.');
+        await send(s.solana);
+      }
+      say('so-msg', 'Set up. Your orders fill as soon as they can.', 'ok');
+      $('so-setup').hidden = true;
     } catch (err) { say('so-msg', err.message, 'bad'); }
   }
 

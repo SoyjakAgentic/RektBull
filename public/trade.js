@@ -239,6 +239,7 @@
       el('p', { class: 'small' }, `For ${x.covers}.`),
       ...x.worst_case.map(t => el('p', { class: 'small' }, t)),
       el('p', { class: 'small muted' }, `Deposits: ${x.costs.order_deposits_sol} SOL, returned when they're filled or cancelled.${x.costs.volume_accounts_sol ? ` Once: ${x.costs.volume_accounts_sol} SOL for pump.fun's volume accounts.` : ''} ${x.costs.fee}`),
+      ...(x.setup_sol ? [el('p', { class: 'small' }, `Your wallet will ask twice: first a one-time setup (${x.setup_sol} SOL, your own pump.fun volume accounts, once per wallet), then the buy with its exits.`)] : []),
       ...(x.note ? [el('p', { class: 'warn small' }, x.note)] : []))];
   }
   function showAge() {
@@ -326,10 +327,18 @@
     return confirm || last;
   }
 
-  /** The one Solana transaction, signed and sent by the wallet (Wallet Standard). Returns its signature. */
+  /**
+   * The Solana transaction, signed and sent by the wallet (Wallet Standard). Returns its signature. With exits on a
+   * first pump.fun buy, the wallet first signs a small one-time setup (its own volume accounts, paid by the user).
+   */
   async function sendSolana(calls) {
     const send = state.sol.wallet.features['solana:signAndSendTransaction'];
     if (!send) throw new Error('This wallet can\'t send Solana transactions from a web page. Try Phantom, Solflare or MetaMask.');
+    if (calls.setup) {
+      say('trade-msg', `First, a one-time setup for your exits (about ${calls.setup.sol} SOL, once per wallet): confirm it in your wallet, then the buy.`);
+      const setupTx = Uint8Array.from(atob(calls.setup.transaction), c => c.charCodeAt(0));
+      await send.signAndSendTransaction({ account: state.sol.account, chain: RB.SOL_CHAIN, transaction: setupTx, options: { preflightCommitment: 'confirmed' } });
+    }
     const transaction = Uint8Array.from(atob(calls.transaction), c => c.charCodeAt(0));
     const [out] = await send.signAndSendTransaction({ account: state.sol.account, chain: RB.SOL_CHAIN, transaction, options: { preflightCommitment: 'confirmed' } });
     return RB.base58(out.signature);

@@ -35,6 +35,7 @@ const SIGNATURE = '5'.repeat(88);
       worst_case: ['Worst case, even if RektBull were hacked: your 346,108.46 PUMPY are sold for 0.0058 SOL after the 1% fee (your floor).'],
       costs: { order_deposits_sol: '0.00218544', fee: 'RektBull\'s 1% of the SOL an exit brings.' },
       note: input.exits.take_profit ? 'Only the stop-loss fitted in the buy\'s transaction: place the take-profit from Orders on Solana once the buy has landed.' : undefined,
+      setup_sol: input.exits.take_profit ? '0.0036888' : undefined,
     } : undefined;
     return { chain: 'solana', side: 'buy', token: PUMP, base: 'SOL', quoted_at: new Date().toISOString(), plan: { summary: { text: 'Buy $1.00 of PUMPY with SOL on Solana', fee: { amount: '0.0001', asset: 'SOL', pct: 1 }, exits }, checks: [{ ok: true, detail: 'every check (stand-in)' }] }, seen: {} };
   };
@@ -88,6 +89,7 @@ const SIGNATURE = '5'.repeat(88);
     assert.match(plan, /Worst case, even if RektBull were hacked/);
     await page.check('#x-take');
     await page.waitForFunction(() => /Only the stop-loss fitted/.test(document.getElementById('plan').textContent));
+    assert.match(await page.textContent('#plan'), /Your wallet will ask twice: first a one-time setup \(0\.0036888 SOL, your own pump\.fun volume accounts, once per wallet\), then the buy with its exits/);
     if (process.argv[2]) await page.locator('#trade-card').screenshot({ path: process.argv[2] });
     // A sale has no exits option.
     await page.selectOption('#side', 'sell');

@@ -351,10 +351,17 @@ saving. So the largest set that fits is used:
 The plan says what was left out ("only the stop-loss fitted…"); the rest can be
 placed from Orders on Solana once the buy has landed.
 
-**Volume accounts left out to fit:** when a fill's route uses pump.fun's or
-PumpSwap's volume account for the user's order address and it doesn't exist
-yet, the fill opens it first, **paid by the executor**. That is about 0.0018
-SOL each, once per wallet, and the rent can only be closed back to the user.
+**Volume accounts left out to fit: the user pays for them** (the owner's call,
+24 November 2026). When they don't fit in the buy's transaction:
+- they come in a small setup transaction of their own, signed and paid by the
+  user's wallet just before the buy;
+- the cost is about 0.0018 SOL each, once per wallet;
+- the page says the wallet will ask twice.
+
+RektBull's executor never pays for them. If a fill's route needs one that still
+doesn't exist, nothing is sent, and the user is told and shown "Set up" on the
+Orders card (`POST /v1/solana/orders/setup`, a transaction they sign). The order
+fills once it's done. So a stop-loss is never silently stuck.
 
 **Recorded only when the trade is made.** A preview shows the exits and their
 worst case but stores nothing. The trade (one click, or a proposal approved)
@@ -364,10 +371,13 @@ forgotten after 10 minutes if it never does.
 **Tested:**
 - **`test/buyWithExits.test.js`**, on the recorded route:
   - one stop-loss placed, with its approval for exactly the buy's minimum;
-  - both exits for a first-time wallet: the stop-loss alone, saying so;
+  - both exits for a first-time wallet: the stop-loss alone, saying so, with
+    the volume accounts in a setup transaction the user signs and pays for;
   - orders off: the buy alone, saying why;
   - the trade recording its order, while a preview records nothing.
-- **`test/solanaOrders.test.js`:** a fill opening a missing volume account.
+- **`test/solanaOrders.test.js`:** a fill whose route needs a missing volume
+  account isn't sent; the user is told, the setup transaction is theirs to sign,
+  and once it's done the fill goes (the executor never pays for one).
 - **`test/browser/buyWithExits.js`:** the option on the page.
 
 **Placing** (`src/trade/solanaOrders.js` `prepare`, `src/trade/solanaOrderTx.js`):

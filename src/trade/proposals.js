@@ -30,7 +30,7 @@ const isSolana = chain => String(chain || '').toLowerCase() === 'solana';
 const prepare = x => (isSolana(x.chain) ? solana.prepare(x) : rules.prepare(x));
 /** What the wallet signs: EVM calls, or one Solana transaction. */
 const walletCalls = p => (p.chain === 'solana'
-  ? { chain: 'solana', transaction: p.solana.transaction, last_valid_block_height: p.solana.last_valid_block_height, bytes: p.solana.bytes }
+  ? { chain: 'solana', transaction: p.solana.transaction, last_valid_block_height: p.solana.last_valid_block_height, bytes: p.solana.bytes, ...(p.solana.setup ? { setup: p.solana.setup } : {}) }
   : evmCalls(p));
 /** The wallet a trade on this chain is made from. */
 const walletFor = (account, chain) => (isSolana(chain) ? account.solana_wallet : account.wallet);
