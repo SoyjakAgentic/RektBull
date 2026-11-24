@@ -28,6 +28,12 @@
  *     buy is refused unless the user's token account would receive at least
  *     the minimum.
  *
+ * Exits with a buy (`exits`): a stop-loss and/or a take-profit in RektBull's
+ * order program (solanaOrders.js), placed in the same transaction as the buy
+ * for the coins it's sure to bring, with their approval. When they don't fit
+ * Solana's 1,232 bytes, Jupiter is asked for a shorter route; when they still
+ * don't, the buy goes alone and says so.
+ *
  * The buy checks are the EVM ones (rules.js): RektBull's token check
  * (critical stops a buy; no answer on whether it can be sold stops it too),
  * the bundle and insider check for a token under a week old, the per-trade
@@ -202,12 +208,13 @@ function transferIx(from, to, lamports) {
  * The unsigned version-0 transaction, base64: our compute budget, Jupiter's
  * setup, swap and cleanup (its own compute budget left out), then the fee.
  */
-function compose({ wallet, b, fee, units, microLamports }) {
+function compose({ wallet, b, fee, units, microLamports, extra = [], tables: ownTables = {} }) {
   const ixs = [cuLimitIx(units), ...(microLamports > 0 ? [cuPriceIx(microLamports)] : []),
     ...(b.setupInstructions || []).map(toIx), toIx(b.swapInstruction), ...(b.cleanupInstruction ? [toIx(b.cleanupInstruction)] : []), ...(b.otherInstructions || []).map(toIx),
-    ...(fee && fee.lamports > 0n ? [transferIx(wallet, fee.wallet, fee.lamports)] : [])];
+    ...(fee && fee.lamports > 0n ? [transferIx(wallet, fee.wallet, fee.lamports)] : []), ...extra];
   const blockhash = k.getBase58Decoder().decode(Uint8Array.from(b.blockhashWithMetadata.blockhash));
-  const tables = Object.fromEntries(Object.entries(b.addressesByLookupTableAddress || {}).map(([t, list]) => [k.address(t), list.map(x => k.address(x))]));
+  // Jupiter's lookup tables, and with exits, RektBull's own (the order program's fixed accounts: read from the chain).
+  const tables = Object.fromEntries(Object.entries({ ...(b.addressesByLookupTableAddress || {}), ...ownTables }).map(([t, list]) => [k.address(t), list.map(x => k.address(x))]));
   const msg = k.pipe(
     k.createTransactionMessage({ version: 0 }),
     m => k.setTransactionMessageFeePayer(k.address(wallet), m),
@@ -218,7 +225,7 @@ function compose({ wallet, b, fee, units, microLamports }) {
   const tx = k.compileTransaction(msg);
   const wire = k.getBase64EncodedWireTransaction(tx);
   const bytes = Buffer.from(wire, 'base64').length;
-  if (bytes > 1232) throw new TradeBlocked(`This route makes a transaction of ${bytes} bytes, over Solana's 1,232: try a smaller amount.`);
+  if (bytes > 1232) throw Object.assign(new TradeBlocked(`This route makes a transaction of ${bytes} bytes, over Solana's 1,232: try a smaller amount.`), { tooBig: true });
   return { transaction: wire, bytes, lastValidBlockHeight: Number(b.blockhashWithMetadata.lastValidBlockHeight) };
 }
 
@@ -257,14 +264,14 @@ async function simulate(transaction, addresses) {
 const tokenAmount = acct => (acct?.data?.[0] ? Buffer.from(acct.data[0], 'base64').readBigUInt64LE(64) : 0n);
 
 /** Builds, simulates and sizes the transaction. Returns the composed transaction and what the simulation saw. */
-async function assemble({ wallet, b, fee, speed, watch }) {
+async function assemble({ wallet, b, fee, speed, watch, extra = [], tables = {} }) {
   await checkLookupTables(b);
-  const first = compose({ wallet, b, fee, units: CU_MAX, microLamports: jupiterPrice(b) });
+  const first = compose({ wallet, b, fee, units: CU_MAX, microLamports: jupiterPrice(b), extra, tables });
   const sim = await simulate(first.transaction, watch);
   const units = Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 50_000) * CU_HEADROOM));
   const chosen = await priorityPrice(speed, b, units).catch(() => null);
   const microLamports = chosen === null ? jupiterPrice(b) : chosen;
-  const tx = compose({ wallet, b, fee, units, microLamports });
+  const tx = compose({ wallet, b, fee, units, microLamports, extra, tables });
   const priorityLamports = BigInt(Math.ceil(units * microLamports / 1e6));
   return { ...tx, sim, units, microLamports, priority: { speed, lamports: priorityLamports.toString(), sol: fmtSol(priorityLamports), source: chosen === null ? 'Jupiter\'s suggested priority fee' : `the ${SPEEDS[speed]}th percentile of what the swap's accounts paid in recent blocks (getRecentPrioritizationFees)` } };
 }
@@ -287,7 +294,7 @@ async function mintProgram(mint) {
  * Every check, a firm route, and the transaction for the wallet to sign.
  * Throws TradeBlocked saying which check failed.
  */
-async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFraction, acknowledgeRisks = false }) {
+async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFraction, acknowledgeRisks = false, exits = null }) {
   const rules = require('./rules');
   if (!env.tradingEnabled) throw new TradeBlocked('Trading is switched off (TRADING_ENABLED).');
   if (!wallet) throw new TradeBlocked('Link a Solana wallet to your account to trade on Solana.');
@@ -343,9 +350,10 @@ async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFr
         : { check: 'bundle', ok: true, detail: `launch check: ${launch.detail}`, flags: launch.flags || [] });
     }
 
-    const b = take(buildR);
-    const terms = await checkInstructions(b, { wallet, inputMint: WSOL, outputMint: token, amount: swapIn, slippageBps });
-    checks.push({ check: 'route', ok: true, detail: `${b.routePlan.map(p => p.swapInfo.label).join(' → ')}, through Jupiter's Router (no Jupiter fee); every instruction checked`, source: 'Jupiter Swap API v2' });
+    let b = take(buildR);
+    let terms = await checkInstructions(b, { wallet, inputMint: WSOL, outputMint: token, amount: swapIn, slippageBps });
+    const routeCheck = { check: 'route', ok: true, detail: `${b.routePlan.map(p => p.swapInfo.label).join(' → ')}, through Jupiter's Router (no Jupiter fee); every instruction checked`, source: 'Jupiter Swap API v2' };
+    checks.push(routeCheck);
 
     // Selling straight back what this buy gets, at Jupiter's price, against everything spent (fee included).
     const back = await jupiter.quote({ inputMint: token, outputMint: WSOL, amount: terms.quotedOut }).catch(err => { if (err.isJupiter) throw new TradeBlocked(err.message); throw err; });
@@ -356,11 +364,52 @@ async function prepare({ accountId, wallet, side, token, base, amountUsd, sellFr
 
     const feeView = fee && feeLamports > 0n ? { wallet: fee.wallet, lamports: feeLamports } : null;
     const [pre] = await accounts([tokenAta]);
-    const built = await assemble({ wallet, b, fee: feeView, speed: settings.send_speed, watch: [tokenAta] });
+    // Exits asked for: placed in the same transaction, for what the buy is sure to bring. Solana's 1,232 bytes fit a
+    // pump.fun route and one order (about 1,050 bytes on a recorded mainnet route), not always more. So, largest
+    // first, until one fits: every order asked with pump.fun's volume accounts for the user's order address (once
+    // per wallet); without them (the fill service then opens them, at RektBull's cost); the stop-loss alone; and
+    // last, the buy alone. The plan says what was left out.
+    let exitPlan = null;
+    let exitNote = null;
+    let built;
+    const asked = ['stop_loss', 'take_profit'].filter(kd => exits?.[kd]);
+    const tries = asked.length ? [
+      { kinds: asked, volumes: true }, { kinds: asked, volumes: false },
+      ...(asked.length > 1 ? [{ kinds: ['stop_loss'], volumes: false }] : []),
+    ] : [];
+    for (const v of tries) {
+      const plan = await require('./solanaOrders').exitsForBuy({ accountId, owner: wallet, token, tokenProgram: program, tokenAta, minOut: terms.minOut, quotedOut: terms.quotedOut, swapIn, exits, settings, kinds: v.kinds, volumes: v.volumes });
+      if (plan?.off) { exitNote = `No exits were added: ${plan.off}`; break; }
+      if (!v.volumes && !plan.volumesWanted && tries.indexOf(v) === 1) continue; // nothing to leave out: the same as the try before
+      try {
+        built = await assemble({ wallet, b, fee: feeView, speed: settings.send_speed, watch: [tokenAta, ...plan.addresses], extra: plan.instructions, tables: plan.tables });
+        exitPlan = plan;
+        if (v.kinds.length < asked.length) exitNote = 'Only the stop-loss fitted in the buy\'s transaction: place the take-profit from Orders on Solana once the buy has landed.';
+        break;
+      } catch (err) {
+        if (!err.tooBig) throw err;
+      }
+    }
+    if (!built) {
+      if (asked.length && !exitNote) exitNote = 'No exits were added: with them, this buy\'s transaction is over Solana\'s 1,232 bytes. Place them from Orders on Solana once the buy has landed.';
+      built = await assemble({ wallet, b, fee: feeView, speed: settings.send_speed, watch: [tokenAta] });
+    }
+    routeCheck.detail = `${b.routePlan.map(p => p.swapInfo.label).join(' → ')}, through Jupiter's Router (no Jupiter fee); every instruction checked`;
     const received = tokenAmount(built.sim.accounts[0]) - tokenAmount(pre);
     if (received < terms.minOut) throw new TradeBlocked('In a simulation this buy delivers less than its minimum. Nothing was sent.');
     checks.push({ check: 'simulation', ok: true, detail: `the whole transaction ran in a simulation and delivered ${received} of the token (at least ${terms.minOut} guaranteed)`, source: 'Solana RPC simulateTransaction' });
-    return planOf({ side, token, wallet, price, usd, total, swapIn, terms, fee, feeLamports, built, checks, b, slippageBps });
+    if (exitPlan) {
+      // The orders the simulation would write, read back and compared with what was asked.
+      const placed = built.sim.accounts.slice(1).map(a => require('./solanaOrderProgram').decodeOrder(a?.data?.[0] || ''));
+      if (!exitPlan.orders.every((o, i) => placed[i] && placed[i].owner === wallet && placed[i].inputMint === token && placed[i].amountIn === o.amountIn && placed[i].minAmountOut === o.minOut)) {
+        throw new TradeBlocked('In a simulation the exits didn\'t come out as prepared. Nothing was sent.');
+      }
+      checks.push({ check: 'exits', ok: true, detail: `${exitPlan.orders.map(o => o.kind_name.toLowerCase()).join(' and ')} placed in the same transaction, for the ${terms.minOut} the buy is sure to bring`, source: 'Solana RPC simulateTransaction' });
+    }
+    const plan = planOf({ side, token, wallet, price, usd, total, swapIn, terms, fee, feeLamports, built, checks, b, slippageBps });
+    if (exitPlan) { plan.summary.exits = { ...exitPlan.summary, ...(exitNote ? { note: exitNote } : {}) }; plan.exits = exitPlan.orders; }
+    else if (exitNote) plan.summary.exits = { none: exitNote };
+    return plan;
   }
 
   const fraction = Number(sellFraction ?? 1);

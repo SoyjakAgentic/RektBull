@@ -219,6 +219,8 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
       swapInstruction: { programId: op.P.jupiter, data: data.toString('base64'), accounts: [
         acc(taker, true, true), acc(await op.ataOf(taker, op.P.token, inputMint), false, true), acc(await op.ataOf(taker, op.P.token, outputMint), false, true),
         acc(inputMint), acc(outputMint), acc(op.P.token), acc(op.P.token), acc(op.P.jupiter), acc('D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf'), acc(op.P.jupiter),
+        // A sale routed through pump.fun: its volume account for the trader (transit), which doesn't exist yet.
+        ...(inputMint !== op.WSOL ? [acc(await op.volumeOf(op.P.pumpFun, taker), false, true)] : []),
       ] },
     };
   };
@@ -270,6 +272,10 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   assert.deepEqual(Object.keys(fill.t.signatures), [exec.address], 'the executor alone signs');
   assert.ok(crypto.verify(null, Buffer.from(fill.t.messageBytes), crypto.createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(k.getAddressEncoder().encode(exec.address))]), format: 'der', type: 'spki' }), Buffer.from(fill.t.signatures[exec.address])));
   const fillIx = fill.ixs.find(i => i.program === PROGRAM);
+  // The route uses pump.fun's volume account for transit, missing: opened first in the fill, paid by the executor.
+  const vol = fill.ixs.find(i => i.program === op.P.pumpFun);
+  assert.ok(vol && vol.data.equals(op.DISC.initVolume), 'init_user_volume_accumulator');
+  assert.deepEqual([vol.accounts[0], vol.accounts[1], vol.accounts[2]], [exec.address, transit, await op.volumeOf(op.P.pumpFun, transit)]);
   assert.ok(fillIx.data.subarray(0, 8).equals(op.DISC.fill));
   assert.equal(fillIx.data.readBigUInt64LE(8), 1_000_000_000n, 'all of it: what\'s left, held and approved');
   assert.deepEqual(fillIx.accounts.slice(0, 6), [exec.address, p.order.order_address, user.address, delegate, transit, source]);

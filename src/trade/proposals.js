@@ -55,7 +55,15 @@ const planView = p => ({ summary: p.summary, checks: p.checks, value_usd: p.valu
 const inputOf = (account, input) => ({
   accountId: account.id, wallet: walletFor(account, input.chain), chain: isSolana(input.chain) ? 'solana' : input.chain, side: input.side, token: input.token,
   base: input.base, amountUsd: input.amount_usd, sellFraction: input.sell_fraction, acknowledgeRisks: !!input.acknowledge_risks,
+  // Exits with a Solana buy (trade/solana.js): a stop-loss and/or a take-profit in the same transaction.
+  exits: isSolana(input.chain) && input.side === 'buy' && input.exits && typeof input.exits === 'object' ? exitsOf(input.exits) : null,
 });
+const exitsOf = e => ({
+  stop_loss: !!e.stop_loss, take_profit: !!e.take_profit,
+  ...Object.fromEntries(['stop_pct', 'floor_pct', 'take_pct', 'slippage_pct', 'days'].filter(k => e[k] !== undefined && e[k] !== null && e[k] !== '').map(k => [k, Number(e[k])])),
+});
+/** The exits placed with a trade, recorded once it's made (they open when the transaction lands). */
+const recordExits = (account, p) => (p.exits?.length ? require('./solanaOrders').recordExits(account.id, p.exits) : null);
 
 /**
  * Every check on a firm quote, for the page to show before the click. Nothing
@@ -122,6 +130,7 @@ async function trade(account, input) {
     [crypto.randomUUID(), account.id, p.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
       json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount, one_click: true, timing, fees }), json(calls)],
   );
+  await recordExits(account, p);
   return { ...present(rows[0]), fees };
 }
 
@@ -132,7 +141,7 @@ async function propose(account, input) {
     `INSERT INTO trade_proposals (id, account_id, wallet, chain, side, token, base, amount_usd, sell_fraction, plan)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [id, account.id, p.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
-      json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks })],
+      json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, ...(inputOf(account, input).exits ? { exits_asked: inputOf(account, input).exits } : {}) })],
   );
   return present(rows[0]);
 }
@@ -158,7 +167,7 @@ async function approve(account, id) {
   try {
     p = await prepare({
       accountId: account.id, wallet: row.wallet, chain: row.chain, side: row.side, token: row.token, base: row.base,
-      amountUsd: row.amount_usd, sellFraction: row.sell_fraction, acknowledgeRisks: !!row.plan?.acknowledge_risks,
+      amountUsd: row.amount_usd, sellFraction: row.sell_fraction, acknowledgeRisks: !!row.plan?.acknowledge_risks, exits: row.plan?.exits_asked || null,
     });
   } catch (err) {
     if (err.isTradeBlocked) await db.query(`UPDATE trade_proposals SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [id, `on approval: ${err.message}`]);
@@ -170,6 +179,7 @@ async function approve(account, id) {
     [id, json({ ...planView(p), acknowledge_risks: !!row.plan?.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount }), json(calls)],
   );
   if (!rows.length) throw Object.assign(new Error('this proposal changed while it was being approved'), { status: 409 });
+  await recordExits(account, p);
   return present(rows[0]);
 }
 

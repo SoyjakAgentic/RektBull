@@ -314,6 +314,62 @@ code:
 - the fill's accounts, confirmed from `Filled`, the user told what they bought;
 - cancelling, which revokes and unwraps.
 
+### Exits with a buy (built 24 November 2026)
+
+Asked for by the owner on 24 November 2026: on the Trade desk, a Solana buy
+can carry a stop-loss and/or a take-profit in the same transaction, so the coins
+are protected from the moment the buy lands (`trade/solana.js`,
+`solanaOrders.exitsForBuy`). The orders are for the coins the buy is sure to
+bring (Jupiter's minimum): anything it brings above that isn't covered. Their
+value is worked out at the buy's own price.
+
+**The transaction.** After the buy and RektBull's fee, the transaction carries:
+- `place_order` for each exit;
+- one `ApproveChecked` of the delegate on the user's token account for the
+  coin, created by the buy itself;
+- once per wallet, pump.fun's and PumpSwap's volume accounts for the user's
+  order address.
+
+The simulation runs the whole transaction and reads the orders back.
+
+**Solana's 1,232 bytes.** Measured on a pump.fun route recorded from mainnet:
+
+| The buy carries | Size |
+|---|---|
+| Nothing else | 754 bytes |
+| One order | 1,050 bytes |
+| Two orders | 1,234 bytes |
+| One order, plus a first order's volume accounts | 1,275 bytes |
+
+RektBull's own lookup table doesn't help here: its overhead cancels the
+saving. So the largest set that fits is used:
+1. every order asked, with the volume accounts;
+2. without them;
+3. the stop-loss alone;
+4. the buy alone.
+
+The plan says what was left out ("only the stop-loss fitted…"); the rest can be
+placed from Orders on Solana once the buy has landed.
+
+**Volume accounts left out to fit:** when a fill's route uses pump.fun's or
+PumpSwap's volume account for the user's order address and it doesn't exist
+yet, the fill opens it first, **paid by the executor**. That is about 0.0018
+SOL each, once per wallet, and the rent can only be closed back to the user.
+
+**Recorded only when the trade is made.** A preview shows the exits and their
+worst case but stores nothing. The trade (one click, or a proposal approved)
+records the orders as prepared. They open once the transaction lands, and are
+forgotten after 10 minutes if it never does.
+
+**Tested:**
+- **`test/buyWithExits.test.js`**, on the recorded route:
+  - one stop-loss placed, with its approval for exactly the buy's minimum;
+  - both exits for a first-time wallet: the stop-loss alone, saying so;
+  - orders off: the buy alone, saying why;
+  - the trade recording its order, while a preview records nothing.
+- **`test/solanaOrders.test.js`:** a fill opening a missing volume account.
+- **`test/browser/buyWithExits.js`:** the option on the page.
+
 **Placing** (`src/trade/solanaOrders.js` `prepare`, `src/trade/solanaOrderTx.js`):
 1. The checks: the coin is a mint, the wallet holds it, Jupiter has a route
    to sell it for SOL (its quote is the value the trigger and floor are worked
@@ -494,7 +550,5 @@ version is a choice to make at deployment.
    The trade service is in the repository for the auditors to read; it isn't
    trusted by the program.
 2. **Then, in the service:**
-   - exits placed in the same transaction as a buy (it may not fit in one
-     transaction with Jupiter's route);
    - direct pump.fun curve fills, with headroom sized from a simulation
      (Jupiter routes pump.fun coins today).

@@ -438,6 +438,91 @@ async function prepareBuy(account, body, { cfg, owner, token, days, settings }) 
   };
 }
 
+/* ── Exits with a buy (trade/solana.js) ── */
+
+/**
+ * A stop-loss and/or a take-profit placed in the same transaction as a buy on
+ * the Trade desk, for the coins the buy is sure to bring (`minOut`, Jupiter's
+ * minimum), so the buy is protected from the moment it lands. Their value is
+ * worked out at the buy's own price: what `minOut` of what it gets cost.
+ *
+ * Returns { off: why } when orders can't be used, or { instructions, addresses,
+ * orders, summary }. Nothing is stored here: the trade records the orders
+ * (recordExits) only when it's made, and a prepared order never placed is
+ * forgotten after 10 minutes.
+ */
+async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, minOut, quotedOut, swapIn, exits, settings, kinds = ['stop_loss', 'take_profit'].filter(kd => exits[kd]), volumes = true }) {
+  const cfg = config();
+  if (cfg.off) return { off: cfg.off };
+  const p = await programCheck(cfg.program);
+  if (!p.ok) return { off: p.why };
+  if (!kinds.length) return null;
+  const days = num(exits.days, 1, MAX_DAYS, MAX_DAYS, 'days');
+  const amountIn = BigInt(minOut);
+  const refOut = BigInt(swapIn) * amountIn / BigInt(quotedOut); // at this buy's price
+  const [delegate, transit] = await Promise.all([op.delegateOf(cfg.program), op.transitOf(cfg.program, owner)]);
+  const [mint, curve, ...vols] = await accounts([token, await op.bondingCurveOf(token), await op.volumeOf(op.P.pumpFun, transit), await op.volumeOf(op.P.pumpAmm, transit)]);
+  const decimals = dataOf(mint)[44];
+  const missing = curve ? [op.P.pumpFun, op.P.pumpAmm].filter((_, i) => !vols[i]) : [];
+  const volumeVenues = volumes ? missing : []; // left out, the fill service opens them when a fill needs them
+  const { rows: others } = await db.query(
+    `SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM solana_orders WHERE account_id = $1 AND source = $2 AND state IN ('prepared', 'open', 'triggered')`,
+    [accountId, tokenAta]);
+  const MAX_U64 = (1n << 64n) - 1n;
+  let approveAmount = amountIn * BigInt(kinds.length) + BigInt(others[0].left);
+  if (approveAmount > MAX_U64) approveAmount = MAX_U64;
+  const validUntil = Date.now() + days * 86400_000;
+  const orders = [];
+  for (const kind of kinds) {
+    const t = terms(kind, refOut, exits, settings);
+    if (t.minOut <= 0n) throw refuse('That exit\'s floor rounds to nothing; choose another.', 400);
+    const nonce = crypto.randomBytes(8).readBigUInt64LE() >> 1n;
+    const placed = await op.placeOrder({ program: cfg.program, owner, nonce, executor: cfg.executor, inputMint: token, outputMint: op.WSOL, outputNative: true, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000) });
+    orders.push({ kind, kind_name: KINDS[kind], nonce, order: placed.order, instruction: placed.instruction, amountIn, minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said });
+  }
+  const instructions = [
+    ...await Promise.all(volumeVenues.map(venue => op.initVolume({ venue, payer: owner, user: transit }))),
+    ...orders.map(o => o.instruction),
+    op.approveChecked({ tokenProgram, source: tokenAta, mint: token, delegate, owner, amount: approveAmount, decimals }),
+  ];
+  const symbol = (await require('../providers/dexscreener').pairs('solana', [token]).catch(() => ({})))[token]?.symbol || short(token);
+  const amountWhole = whole(amountIn, decimals);
+  const first = o => worstCase({ kind: o.kind, amountWhole, symbol, minOut: o.minOut, validUntil })[0];
+  return {
+    instructions,
+    tables: await ownTable(cfg.lookupTable), // the delegate and the exchanges' fixed accounts, at a byte each
+    volumesWanted: missing.length > 0,
+    addresses: orders.map(o => o.order),
+    orders: orders.map(({ instruction, ...o }) => ({ ...o, token, symbol, tokenProgram, decimals, source: tokenAta, program: cfg.program, executor: cfg.executor, validUntil })),
+    summary: {
+      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_sol: sol(o.triggerOut), floor_sol: sol(o.minOut), ...o.said })),
+      covers: `the ${fmt(amountWhole)} ${symbol} this buy is sure to bring (its minimum); anything it brings above that isn't covered`,
+      worst_case: [
+        ...orders.map(first),
+        'Nothing else of yours can be touched: the approval covers only these coins, and the order program sends what they sell for only to your wallet. RektBull never holds them.',
+        ...(orders.length > 1 ? ['The two orders sell the same coins: once one has sold them, cancel the other on the Trade desk to get its deposit back.'] : []),
+        'To stop them: cancel them on the Trade desk (their deposits come back), or revoke the approval in your wallet.',
+      ],
+      costs: {
+        order_deposits_sol: sol(ORDER_RENT * BigInt(orders.length)), order_deposits_note: 'Held by the order accounts and returned to you when they are filled or cancelled.',
+        ...(volumeVenues.length ? { volume_accounts_sol: sol(VOLUME_RENT * BigInt(volumeVenues.length)), volume_accounts_note: 'Once per wallet: the volume accounts pump.fun and PumpSwap need for your order address.' } : {}),
+        fee: 'RektBull\'s 1% of the SOL an exit brings, taken by the order program. Nothing if it never fills.',
+      },
+    },
+  };
+}
+
+/** The trade was made with exits: their rows, prepared until the transaction lands (reconcile opens them). */
+async function recordExits(accountId, orders = []) {
+  for (const o of orders || []) {
+    await db.query(
+      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until)
+       SELECT $1, owner, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16 FROM (SELECT solana_wallet AS owner FROM accounts WHERE id = $1) a
+       ON CONFLICT (order_address) DO NOTHING`,
+      [accountId, o.order, o.program, String(o.nonce), o.kind, o.token, o.symbol, o.tokenProgram, o.decimals, o.source, String(o.amountIn), String(o.minOut), o.triggerOut === null ? null : String(o.triggerOut), String(o.refOut), o.executor, new Date(o.validUntil)]);
+  }
+}
+
 /** The user's wallet sent it: the order, read from the chain and compared with what was prepared. */
 async function confirm(account, id) {
   const row = await own(account, id);
@@ -725,8 +810,14 @@ async function attempt(row, cfg, exec) {
   }
 
   const tables = { ...(b.addressesByLookupTableAddress || {}), ...(await ownTable(cfg.lookupTable)) };
+  // A pump.fun or PumpSwap volume account for transit that the route uses but that doesn't exist yet: opened in the fill.
+  const venues = [op.P.pumpFun, op.P.pumpAmm];
+  const wanted = await Promise.all(venues.map(v => op.volumeOf(v, transit)));
+  const used = wanted.map(a => b.swapInstruction.accounts.some(x => x.pubkey === a));
+  const there = used.some(Boolean) ? await accounts(wanted) : [];
+  const volumeVenues = venues.filter((_, i) => used[i] && !there[i]);
   const make = async (units, microLamports) => {
-    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports });
+    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports, volumeVenues });
     const bh = await latestBlockhash();
     return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
   };
@@ -784,6 +875,6 @@ async function tick() {
 
 module.exports = {
   KINDS, ORDER_RENT, VOLUME_RENT, FILL_SLIPPAGE_BPS,
-  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, tick, terms, worstCase, tokenAccount,
+  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, tick, terms, worstCase, tokenAccount, exitsForBuy, recordExits,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills,
 };
