@@ -697,6 +697,11 @@ const trackerCall = fn => async (req, res) => {
 router.get('/v1/wallet-tracker', requireAuth, trackerCall(req => walletTracker.list(req.account.id)));
 router.post('/v1/wallet-tracker/wallets', requireAuth, trackerCall(req => walletTracker.follow(req.account.id, req.body || {})));
 router.delete('/v1/wallet-tracker/wallets/:id', requireAuth, trackerCall(req => walletTracker.unfollow(req.account.id, req.params.id)));
+// Wallets ranked by realised profit on pump.fun (services/walletRankings.js): public, kept five minutes.
+router.get('/v1/wallet-tracker/top', async (req, res) => {
+  if (!env.databaseUrl) return res.status(503).json({ error: 'unavailable', message: 'The ranking needs the database.' });
+  res.json(await require('../services/walletRankings').top(String(req.query.window || '7d')));
+});
 
 // ── Where alerts go: Telegram, email, browser push ──
 const alertChannels = require('../alerts/channels');

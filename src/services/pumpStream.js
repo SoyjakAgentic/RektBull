@@ -80,7 +80,9 @@ function decodeTrade(r) {
   // On to quote_mint: fee_recipient, fee_bps, fee, creator, creator_fee_bps, creator_fee, track_volume, two totals,
   // current_sol_volume, last_update_timestamp, ix_name, mayhem_mode, cashback bps and amount, buyback bps and amount, shareholders.
   r.maybe(() => {
-    r.pubkey(); r.u64(); r.u64(); r.pubkey(); r.u64(); r.u64(); r.bool(); r.u64(); r.u64(); r.u64(); r.i64(); r.string(); r.bool(); r.u64(); r.u64(); r.u64(); r.u64();
+    // The fees and the coin's creator are kept as read (the wallet rankings count what a trade cost, and leave out a coin's creator).
+    r.pubkey(); r.u64(); e.fee = r.u64(); e.creator = r.pubkey(); r.u64(); e.creator_fee = r.u64();
+    r.bool(); r.u64(); r.u64(); r.u64(); r.i64(); r.string(); r.bool(); r.u64(); r.u64(); r.u64(); r.u64();
     const n = r.take(4).readUInt32LE(0);
     if (n > 100) throw new RangeError('long');
     for (let i = 0; i < n; i++) { r.pubkey(); r.u16(); }
@@ -185,6 +187,7 @@ const HEARTBEAT_MS = 15000;
 let stop = null;
 let flusher = null;
 let watcher = null;
+let ranker = null;
 let written = 0;
 let lock = null; // { client, heartbeat } while this worker holds the lock
 let standby = null;
@@ -252,9 +255,11 @@ async function lead() {
   const insiders = require('./insiderWatch');
   const pumpFilter = { pumpfun: { accountInclude: [PUMP] } };
   const tracker = require('./solanaTracker');
+  const rankings = require('./walletRankings'); // realised profit per wallet, from every trade on pump.fun's curves
+  rankings.reset();
   stop = await yellowstone.subscribe('pumpfun', pumpFilter, t => {
     const tx = yellowstone.readTransaction(t);
-    for (const e of eventsOf(tx)) apply(e);
+    for (const e of eventsOf(tx)) { apply(e); rankings.onEvent(e); }
     insiders.onTransaction(tx);
     tracker.onTransaction(tx);
   });
@@ -277,6 +282,8 @@ async function lead() {
     cache.set(STATE_KEY, { ...snapshot(), worker: WORKER }, 300).catch(err => logger.warn('pump stream state not written', { error: err.message }));
   }, FLUSH_MS);
   flusher.unref();
+  ranker = setInterval(() => rankings.flush().catch(err => logger.warn('wallet rankings not written', { error: err.message })), rankings.FLUSH_MS);
+  ranker.unref();
   logger.info('pump.fun stream started (Yellowstone gRPC)', { worker: WORKER });
   return true;
 }
@@ -286,7 +293,7 @@ async function start() {
   if (!yellowstone.configured() || leading || standby) return leading;
   return lead();
 }
-function stopStream() { clearInterval(flusher); flusher = null; clearInterval(watcher); watcher = null; if (stop) stop(); stop = null; }
+function stopStream() { clearInterval(flusher); flusher = null; clearInterval(watcher); watcher = null; clearInterval(ranker); ranker = null; if (stop) stop(); stop = null; }
 /** Stops streaming and gives the lock back (a standby elsewhere takes over). */
 function halt() {
   clearTimeout(standby); standby = null;
