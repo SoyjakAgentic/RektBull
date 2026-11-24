@@ -72,6 +72,7 @@ async function main() {
     setInterval(() => jobs.run('trade', async () => {
       await tradePositions.tick(); // approve-each trades the user's wallet sent
       await require('./trade/exits').tick(); // stop-loss / take-profit on automatic positions
+      await require('./trade/solanaOrders').tick(); // Solana orders: triggers and fills through the order program (off until it's deployed)
       await require('./trade/autonomous').tick(); // send and confirm automatic trades
       await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
       await require('./hyperliquid/auto').tick(); // automatic perps orders (does nothing unless HL_AUTO_ENABLED)

@@ -429,6 +429,11 @@ const RUNNERS = {
         notChecked.push(`${name()}: ${err.message}`);
       }
     }
+    // A critical alert on a Solana coin (liquidity pulled, launch-bundle wallets selling) fires Meme Watch exits on it.
+    for (const a of alerts.filter(x => x.severity === 'critical' && x.detail?.token?.chain === 'solana')) {
+      await require('../trade/solanaOrders').memeWatchSignal(a.detail.token.token, { source: 'Meme Watch (its 6-hour check)', alert: a.title })
+        .catch(err => logger.warn('meme watch: exits not fired', { error: err.message }));
+    }
     return {
       alerts, snapshot: { positions: now },
       result: { text: held.length ? `${held.length} token${held.length === 1 ? '' : 's'} watched` : 'No tokens bought through RektBull to watch yet', not_checked: notChecked.slice(0, 10) },

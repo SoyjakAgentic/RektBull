@@ -225,6 +225,12 @@ while the page is open (`src/services/liveLaunches.js`, `GET /v1/launches/live?c
   rest: liquidity, the stop-loss and take-profit, launch-bundle wallets
   selling; the mint's authorities in place of GoPlus's flags (GoPlus doesn't
   cover Solana here); one alert when the coin's pump.fun curve completes.
+- **Meme Watch exits (built 24 November 2026, off until the order program is
+  deployed):** a holder can place a sell order that fires on Meme Watch's
+  critical alerts for the coin (launch-bundle wallets selling, liquidity
+  pulled), filled by RektBull at the user's floor or better through the order
+  program, with the SOL going only to them ([SOLANA_ORDERS.md](SOLANA_ORDERS.md),
+  "The trade service").
 - **Seen on 15 November 2026:** pump.fun coins reach GeckoTerminal's new
   pools within seconds; a live read built the three columns in about 2
   seconds (22 new coins, 10 curves, 7 graduations in the day).
