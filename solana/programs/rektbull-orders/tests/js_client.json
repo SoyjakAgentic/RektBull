@@ -30,7 +30,7 @@
         "address": "3Ht4jepC57ACjzu8jfCFU3sXtF6Ky74FXE6KE7EfyU9r",
         "mint": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
         "owner": "8Aq3wHQxKyq8CLNeLJNfrWiCzAwtq97JFpsmxh1e85di",
-        "amount": "0"
+        "amount": "10000000000"
       },
       {
         "address": "8fiuQHkjvg7f9kLrq712GrNQZ9a6LXZ7hns1vKfmsQEY",
@@ -184,6 +184,76 @@
         {
           "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
           "token_delta": "0"
+        }
+      ]
+    },
+    {
+      "name": "a limit buy: 1 SOL wrapped and approved, for at least 900 coins",
+      "order": "AcPEDP4dmuADtVGpRCSWT4vgbKgxZwcqhN1DNYbzmbGV",
+      "tx": "AacjfsSQ4COktk5DotWYH6tPw5GPBY1nZimGbPH89i39NIxd8jIAlCpCZfTQrV4EZ/5Ia1Z/NRh9jVLu+yplggeAAQAIDOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsPaLXOxB16kQVVCj/4Sa0rRfHENAhBxESBz5RQGeDj8GOyaTLa6ZmJ+rFFEbLFNNH9qfd1SSTcW5OIafz4XWnOqUJPOvjB6tg4ycg+CUtZhWglx/GWyDbx1/VShX4BtsfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkhVUuImJBD3tJObdBAIXVy3pnuisbaZa33SjJQ89JUWa+fjMsekUzMr2dCn99sFX1xe8aBq2mbZizn7aBDEc6jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FkDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAKuQRbVyX09sZnpUG/tgISYfYrZ37z9MIoNMMP5dVtywBpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqeMy2vkvq+zotj/3pEAF5f39mvoVh1a2HFqV+QSzuNCBBwgABQLwSQIABwYAAQAKBAsBAQQCAAEMAgAAAADKmjsAAAAACwEBAREHBgADAAYECwEBCQMAAgSRATPCm69tgmBqAwAAAAAAAAD9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GAabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABZr5+Myx6RTMyvZ0Kf32wVfXF7xoGraZtmLOftoEMRzoAAMqaOwAAAAAA6aQ1AAAAAAAAAAAAAAAAgCNLawAAAAALBAEKBQAKDQDKmjsAAAAACQA=",
+      "bytes": 707,
+      "expect": "ok",
+      "checks": [
+        {
+          "order": "AcPEDP4dmuADtVGpRCSWT4vgbKgxZwcqhN1DNYbzmbGV",
+          "exists": true
+        },
+        {
+          "address": "59btS1MqkxUBx9sHGorTuLAHMbCzzJmjagXiEac3Mtb2",
+          "token_delta": "1000000000",
+          "delegated": "1000000000"
+        }
+      ]
+    },
+    {
+      "name": "a buy that brings fewer coins than the user's limit is refused onchain",
+      "tx": "Ae1TFV+dPyikeCgrXtFBLFZxwowCoiExJ+OafQRK8M1Xy1RcNhyQ248DRHG/aX1dFuAtyBKLiRfrdr89pKdfEQWAAQAKFv0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDT2i1zsQdepEFVQo/+EmtK0XxxDQIQcREgc+UUBng4/BTGcOuT9vMsSQ0Yp8i0JSCHUzPrPRu3XA8fnpRilHzuVx7UJ3twFKDgtq0vKvPPwhkOpm9eutpu8gnIr0An4GnY7JpMtrpmYn6sUURssU00f2p93VJJNxbk4hp/Phdac6o1HXQAsLiR4nzJvq9m3nOFULyaj9q/0l694k7l6TEiSlCTzr4werYOMnIPglLWYVoJcfxlsg28df1UoV+AbbH9HCs8KbLrjAKowOS1w/O2fUIa3IPeRNAu8/a4zoQ6/9A8Cy2BtpWQpvhgNkjad1FhoiZqDKL9im7kZltAAAAADqSmxj4pxSCr71UHsTLsX5lUd2rr6+e5JCHuppFEbSLAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZIVVLiJiQQ97STm3QQCF1ct6Z7orG2mWt90oyUPPSVFmvn4zLHpFMzK9nQp/fbBV9cXvGgatpm2Ys5+2gQxHOmqGXeTuqmt92fpOjuB+DBaDMmuxzGSXk7nkhbJFek7JjJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FkDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAKuQRbVyX09sZnpUG/tgISYfYrZ37z9MIoNMMP5dVtywBHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48Gm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCp4zLa+S+r7Oi2P/ekQAXl/f2a+hWHVrYcWpX5BLO40IEGEQAFAoAaBgARAAkD6AMAAAAAAAAQBgAJBxQMFQEBEAYAAQcODBUBARAGAAQKFAwVAQESHAAGCw0HAxQJFQ4BCBUKBBITDAcJFAUCDgEPFRUuqGC3o1wKKKAAypo7AAAAAAAZAAAA5RfLl3rjrSoAgDMCOwAAAAAACK8vAAAAAAA=",
+      "bytes": 935,
+      "expect": "BelowLimit",
+      "checks": [
+        {
+          "address": "59btS1MqkxUBx9sHGorTuLAHMbCzzJmjagXiEac3Mtb2",
+          "token_delta": "0"
+        },
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "0"
+        }
+      ]
+    },
+    {
+      "name": "the executor fills the buy: the coins to the user, 1% of the SOL the exchange used to the fee wallet in wrapped SOL",
+      "tx": "Af4IQJb0XUGFvKMWQoJg/VBi1GJIlRjDqVov2NtUeo967e4leybqGnIwqQWheC8d+4hEHcLh5d/fZKTsNLfJ2A+AAQAKFv0XJDhaoMdbZPt4zWAvodmR/ev3axPFjtcC6sg16fYYEJT18yPmMwJs+obKfYh0jZ9jrUJyhwHfAzc6wAJPiQYiCmfPA7l453fknVyXrqQsd9UiCyIo1S8EpTs/PRYNDT2i1zsQdepEFVQo/+EmtK0XxxDQIQcREgc+UUBng4/BTGcOuT9vMsSQ0Yp8i0JSCHUzPrPRu3XA8fnpRilHzuVx7UJ3twFKDgtq0vKvPPwhkOpm9eutpu8gnIr0An4GnY7JpMtrpmYn6sUURssU00f2p93VJJNxbk4hp/Phdac6o1HXQAsLiR4nzJvq9m3nOFULyaj9q/0l694k7l6TEiSlCTzr4werYOMnIPglLWYVoJcfxlsg28df1UoV+AbbH9HCs8KbLrjAKowOS1w/O2fUIa3IPeRNAu8/a4zoQ6/9A8Cy2BtpWQpvhgNkjad1FhoiZqDKL9im7kZltAAAAADqSmxj4pxSCr71UHsTLsX5lUd2rr6+e5JCHuppFEbSLAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZIVVLiJiQQ97STm3QQCF1ct6Z7orG2mWt90oyUPPSVFmvn4zLHpFMzK9nQp/fbBV9cXvGgatpm2Ys5+2gQxHOmqGXeTuqmt92fpOjuB+DBaDMmuxzGSXk7nkhbJFek7JjJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FkDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAKuQRbVyX09sZnpUG/tgISYfYrZ37z9MIoNMMP5dVtywBHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48Gm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCp4zLa+S+r7Oi2P/ekQAXl/f2a+hWHVrYcWpX5BLO40IEGEQAFAoAaBgARAAkD6AMAAAAAAAAQBgAJBxQMFQEBEAYAAQcODBUBARAGAAQKFAwVAQESHAAGCw0HAxQJFQ4BCBUKBBITDAcJFAUCDgEPFRUuqGC3o1wKKKAAypo7AAAAAAAZAAAA5RfLl3rjrSoAgDMCOwAAAAAAypo7AAAAAAA=",
+      "bytes": 935,
+      "expect": "ok",
+      "checks": [
+        {
+          "address": "C7ESXyVGDeyZSc7wxKSXpccbtv3My9M9ptQaJbqxJdXk",
+          "token_delta": "1000000000"
+        },
+        {
+          "address": "59btS1MqkxUBx9sHGorTuLAHMbCzzJmjagXiEac3Mtb2",
+          "token_delta": "-1000000000"
+        },
+        {
+          "address": "69F8X2zTo9XAFRJ7pWePwB4jTKYRxvN2ag5jT3h1EEsv",
+          "token_delta": "10000000"
+        },
+        {
+          "address": "BzXqSX5xqFwSDzSVquo82jv25uytJP5s5N1BBA5kEpzf",
+          "lamports": "0"
+        },
+        {
+          "order": "AcPEDP4dmuADtVGpRCSWT4vgbKgxZwcqhN1DNYbzmbGV",
+          "exists": false
+        },
+        {
+          "address": "27jGMnSitT2erdpj1CM1YboYYiJ8cKSmVscRyUoU4x8D",
+          "exists": false
+        },
+        {
+          "address": "F7pQTWzuwoCAyMawqgE8fmTX3sERYn4GnrMeX8X4zdL8",
+          "exists": false
         }
       ]
     }

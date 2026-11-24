@@ -15,7 +15,7 @@ const router = express.Router();
 /** A refusal answers with its status and the reason. */
 const handle = fn => async (req, res, next) => {
   try { await fn(req, res); } catch (err) {
-    if (err.isTradeBlocked) return res.status(err.status || 422).json({ error: 'order_refused', message: err.message });
+    if (err.isTradeBlocked) return res.status(err.status || 422).json({ error: 'order_refused', message: err.message, ...(err.needsAcknowledgement ? { needs_acknowledgement: true, risks: err.risks } : {}) });
     next(err);
   }
 };

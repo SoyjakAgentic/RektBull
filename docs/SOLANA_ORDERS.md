@@ -233,20 +233,86 @@ the trader, then copies every account and program they touch; then
 ## The trade service (built 24 November 2026)
 
 Asked for by the owner on 23 November 2026 ("start the order service on
-Solana"). Sell orders for SOL only, for now: a limit buy needs the user to wrap
-and approve SOL, and comes later.
+Solana"). Sell orders for SOL first; limit buys followed the same day ("start
+limit buys on Solana"), below.
 
 **The orders** (the Trade desk's "Orders on Solana" card, `public/solana-orders.js`):
 
-| Order | Fires | Sells at |
+| Order | Fires | Trades at |
 |---|---|---|
 | Stop-loss | When the coins' value falls by the user's amount (DexScreener's price of the coin's most liquid pair, SOL's from DefiLlama), checked every trade-service pass | The market, but never below the user's floor (down 35% by default, 15 points under the stop) |
 | Take-profit | When it rises by the user's amount | The target less the user's slippage (3% by default), or better |
 | Meme Watch exit | When Meme Watch raises a critical alert for the coin: launch-bundle wallets selling (the stream, within seconds, or the 6-hour check), or liquidity pulled. Needs Meme Watch on | The market, but never below the user's floor (down 50% by default) |
 
+| Limit buy | When the coin's price falls by the user's amount (DexScreener's price) | The user's limit less their slippage (3% by default), or more coins |
+
 Each is one order account for a share of what the user holds (up to all of
-it), ending after at most 30 days. The floor is the order's `min_amount_out`,
-after RektBull's 1%, so the program refuses anything below it.
+it), or for a limit buy the SOL they choose to spend, ending after at most 30
+days. The floor is the order's `min_amount_out`, after RektBull's 1%, so the
+program refuses anything below it.
+
+### Limit buys (built 24 November 2026)
+
+**Placing.** The checks are the Trade desk's for a buy (`trade/solana.js`):
+- the per-trade amount;
+- RektBull's token check: a critical risk refuses, an unanswered "can it be
+  sold?" refuses, and high risks are shown and must be confirmed;
+- the bundle check for a coin under a week old;
+- selling straight back (Jupiter's quote);
+- the wallet's SOL, covering the order, the deposit, new accounts' rent and the
+  network fee.
+
+The terms come from what the SOL (less room for the 1%) would buy now: the
+trigger is that many coins over (1 − the user's dip), and the limit is the
+trigger less their slippage. One transaction for the wallet
+(`placeBuyInstructions`):
+- the SOL wrapped into the user's own wrapped-SOL account (created when
+  missing). The delegate can only be approved on a token account, and wrapped
+  SOL is one; the SOL stays in the user's wallet;
+- their token account for the coin, created when missing (the program
+  delivers only there);
+- the volume accounts, once;
+- `place_order` (wrapped SOL in, the coin out, the limit as the least);
+- `ApproveChecked` of the delegate on the wrapped-SOL account, for this buy
+  plus what's left of their other open buys.
+
+The worst case, before signing: "your X SOL buys N coins (your limit less your
+slippage), the 1% fee included, at a moment RektBull picks before <date>, even
+if the price is lower then". It also says: nothing is bought if the price never
+comes down, the SOL stays wrapped until then, and the token check runs again
+before each fill.
+
+**Filling.**
+1. The token check runs again first: a coin can turn bad after the order was
+   placed. A critical risk stops it, and the user is told; a check that can't
+   run waits.
+2. Jupiter is asked to swap 99% of the part being filled; the program takes
+   the 1% in wrapped SOL from what the exchange didn't use (`fee_on_used`),
+   and returns anything left to the user's wrapped-SOL account.
+3. Nothing is sent when the quote is fewer coins than the user's price for
+   this part.
+4. The executor opens transit's wrapped-SOL and coin accounts and the fee
+   wallet's wrapped-SOL account when missing. The coins go only to the user's
+   own account for the coin.
+
+**Cancelling** the last buy on the wrapped-SOL account also revokes the
+approval and closes that account, so the SOL is unwrapped back to the user.
+
+**Tested against the program** (`tests/js_client.rs`), from the service's own
+code:
+- the wrap, approve and place transaction;
+- a fill of fewer coins than the limit, refused (`BelowLimit`);
+- a fill: the coins to the user, 1% of the SOL the exchange used to the fee
+  wallet in wrapped SOL, the order closed and transit left with nothing.
+
+**In `test/solanaOrders.test.js`:**
+- the per-trade amount, and high risks needing confirmation;
+- the terms, and the transaction decoded (only the user signs; the wrap goes
+  into their own account; the approval is only that SOL, to the delegate);
+- fired by the price, and stopped by a critical risk found at fill time;
+- a quote below the limit not sent;
+- the fill's accounts, confirmed from `Filled`, the user told what they bought;
+- cancelling, which revokes and unwraps.
 
 **Placing** (`src/trade/solanaOrders.js` `prepare`, `src/trade/solanaOrderTx.js`):
 1. The checks: the coin is a mint, the wallet holds it, Jupiter has a route
@@ -428,7 +494,6 @@ version is a choice to make at deployment.
    The trade service is in the repository for the auditors to read; it isn't
    trusted by the program.
 2. **Then, in the service:**
-   - limit buys (wrapping and approving SOL);
    - exits placed in the same transaction as a buy (it may not fit in one
      transaction with Jupiter's route);
    - direct pump.fun curve fills, with headroom sized from a simulation

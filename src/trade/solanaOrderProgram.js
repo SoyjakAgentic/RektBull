@@ -117,6 +117,16 @@ function approveChecked({ tokenProgram, source, mint, delegate, owner, amount, d
 /** SPL Revoke (5): the owner takes back the approval on `source`. */
 const revoke = ({ tokenProgram, source, owner }) => ix(tokenProgram, [w(source), { address: k.address(owner), role: R.READONLY_SIGNER }], [5]);
 
+/** SPL SyncNative (17): a wrapped-SOL account's token amount brought up to the SOL it holds. */
+const syncNative = account => ix(P.token, [w(account)], [17]);
+/** SPL CloseAccount (9): the owner closes their token account; its SOL (for wrapped SOL, all of it) goes to `to`. */
+const closeAccount = ({ tokenProgram = P.token, account, to, owner }) => ix(tokenProgram, [w(account), w(to), { address: k.address(owner), role: R.READONLY_SIGNER }], [9]);
+/** A plain SOL transfer (the System program's Transfer, 2). */
+function transfer({ from, to, lamports }) {
+  const b = Buffer.alloc(12); b.writeUInt32LE(2, 0); b.writeBigUInt64LE(BigInt(lamports), 4);
+  return ix(P.system, [ws(from), w(to)], b);
+}
+
 /** The Associated Token Account program's create_idempotent (1), paid by `payer`. */
 function createAtaIdempotent({ payer, ata, owner, mint, tokenProgram }) {
   return ix(P.ata, [ws(payer), w(ata), r(owner), r(mint), r(P.system), r(tokenProgram)], [1]);
@@ -170,6 +180,6 @@ const feeOf = (amount, bps = 100n) => BigInt(amount) * BigInt(bps) / 10000n;
 module.exports = {
   P, WSOL, TOKEN_PROGRAMS, ORDER_SPACE, DISC,
   delegateOf, transitOf, orderOf, volumeOf, eventAuthorityOf, bondingCurveOf, ataOf,
-  placeOrder, cancelOrder, fill, approveChecked, revoke, createAtaIdempotent, initVolume, cuLimit, cuPrice,
+  placeOrder, cancelOrder, fill, approveChecked, revoke, createAtaIdempotent, initVolume, cuLimit, cuPrice, syncNative, closeAccount, transfer,
   decodeOrder, filledEvents, minimumFor, feeOf,
 };
