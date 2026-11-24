@@ -69,8 +69,8 @@
     </section>
 
     <section class="card" id="sol-orders-card" hidden>
-      <h2>Orders on Solana <span class="tag">stop-loss · take-profit · Meme Watch exit</span></h2>
-      <p class="muted">Your wallet places the order and approves only the coins it sells. RektBull's order program then lets RektBull sell them for you when the order fires: at your floor or better, before its end date, with the SOL going only to your wallet. Nothing else of yours can be touched, and nobody holds your coins. RektBull's fee is 1% of what a fill brings; nothing if it never fills.</p>
+      <h2>Orders on Solana <span class="tag">limit buy · stop-loss · take-profit · Meme Watch exit</span></h2>
+      <p class="muted">Your wallet places the order and approves only what it trades: the coins it sells, or for a limit buy, the SOL it spends (wrapped, in your own wallet). RektBull's order program then lets RektBull trade them for you when the order fires: at your price or better, before its end date, with what they bring going only to your wallet. Nothing else of yours can be touched, and nobody holds your coins or your SOL. RektBull's fee is 1% of the SOL a fill brings or spends; nothing if it never fills.</p>
       <p id="so-off" class="msg bad" hidden></p>
       <div id="so-form">
         <div class="grid">
@@ -79,12 +79,15 @@
             <option value="stop_loss">Stop-loss: sell if it falls</option>
             <option value="take_profit">Take-profit: sell if it rises</option>
             <option value="meme_watch_exit">Meme Watch exit: sell on a critical alert</option>
+            <option value="limit_buy">Limit buy: buy if it falls</option>
           </select></label>
-          <label>Share of your holding (%)<input id="so-share" type="number" min="1" max="100" step="1" value="100"></label>
+          <label id="so-share-wrap">Share of your holding (%)<input id="so-share" type="number" min="1" max="100" step="1" value="100"></label>
+          <label id="so-spend-wrap" hidden>SOL to spend<input id="so-spend" type="number" min="0.01" step="0.01" value="0.5"></label>
+          <label id="so-dip-wrap" hidden>Buy if its price falls by (%)<input id="so-dip" type="number" min="1" max="95" step="1" value="20"></label>
           <label id="so-stop-wrap">Sell if its value falls by (%)<input id="so-stop" type="number" min="1" max="95" step="1" value="20"></label>
           <label id="so-take-wrap" hidden>Sell if its value rises by (%)<input id="so-take" type="number" min="1" max="10000" step="1" value="50"></label>
           <label id="so-floor-wrap">But never for less than: down (%)<input id="so-floor" type="number" min="1" max="99" step="1" value="35"></label>
-          <label id="so-slip-wrap" hidden>Slippage below the target (%)<input id="so-slip" type="number" min="0.5" max="20" step="0.5" value="3"></label>
+          <label id="so-slip-wrap" hidden>Slippage (%)<input id="so-slip" type="number" min="0.5" max="20" step="0.5" value="3"></label>
           <label>Ends after (days)<input id="so-days" type="number" min="1" max="30" step="1" value="30"></label>
         </div>
         <p id="so-explain" class="small muted"></p>
@@ -93,7 +96,7 @@
       <div id="so-plan" class="worst" hidden></div>
       <button id="so-sign" class="primary" hidden>Place it from my wallet</button>
       <p id="so-msg" class="msg"></p>
-      <table><thead><tr><th>Order</th><th>Coin</th><th>Fires at</th><th>Floor</th><th>Status</th><th></th></tr></thead><tbody id="so-list"></tbody></table>
+      <table><thead><tr><th>Order</th><th>What</th><th>Fires at</th><th>Your price</th><th>Status</th><th></th></tr></thead><tbody id="so-list"></tbody></table>
     </section>
 
     <section class="card" id="history-card" hidden>

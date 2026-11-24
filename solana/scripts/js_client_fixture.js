@@ -72,6 +72,31 @@ async function build() {
     return signed(exec.address, f.instructions, ['exec']);
   };
   const net = out => out - op.feeOf(out);
+  // A limit buy: the user's SOL wrapped and approved; the stand-in exchange takes wrapped SOL and pays the coin to transit.
+  const userWsol = await op.ataOf(user.address, op.P.token, op.WSOL);
+  const feeWsol = await op.ataOf(FEE_WALLET, op.P.token, op.WSOL);
+  const placeBuy = async (nonce, amountIn, minOut) => {
+    const p = await tx.placeBuyInstructions({ program: PROGRAM, owner: user.address, executor: exec.address, nonce, token: meme, tokenProgram: op.P.token, amountIn, minOut, validUntil: NOW + 86400, wrapLamports: amountIn, approveAmount: amountIn, units: 150_000 });
+    return { order: p.order, ...(await signed(user.address, p.instructions, ['user'])) };
+  };
+  const buy = async (order, amountIn, memeOut) => {
+    const swapIn = tx.buySwapAmount(amountIn);
+    const data = Buffer.concat([ROUTE, Buffer.from([0]), (() => { const b = Buffer.alloc(16); b.writeBigUInt64LE(swapIn, 0); b.writeBigUInt64LE(memeOut, 8); return b; })()]);
+    const swap = {
+      programId: op.P.jupiter, data: data.toString('base64'),
+      accounts: [
+        { pubkey: transit, isSigner: true, isWritable: true }, { pubkey: transitWsol, isSigner: false, isWritable: true }, { pubkey: op.WSOL, isSigner: false, isWritable: false },
+        { pubkey: vaultWsol, isSigner: false, isWritable: true }, { pubkey: vaultMeme, isSigner: false, isWritable: true }, { pubkey: meme, isSigner: false, isWritable: false },
+        { pubkey: transitMeme, isSigner: false, isWritable: true }, { pubkey: vault, isSigner: false, isWritable: false },
+        { pubkey: op.P.token, isSigner: false, isWritable: false }, { pubkey: op.P.token, isSigner: false, isWritable: false },
+      ],
+    };
+    const f = await tx.fillInstructions({ side: 'buy', program: PROGRAM, executor: exec.address, owner: user.address, order, token: meme, tokenProgram: op.P.token, source: userWsol, feeWallet: FEE_WALLET, swap, amountIn, units: 400_000, microLamports: 1000 });
+    return signed(exec.address, f.instructions, ['exec']);
+  };
+  const third = await placeBuy(3n, SOL, 900n * MEME);
+  const usedForFee = tx.buySwapAmount(SOL);
+  const buyFee = usedForFee * 100n / 9900n;
 
   const first = await place(1n, 100_000n * MEME, 9n * SOL / 10n, 100_000n * MEME);
   const second = await place(2n, 10_000n * MEME, SOL / 10n, 110_000n * MEME);
@@ -83,7 +108,7 @@ async function build() {
       mints: [{ address: meme, decimals: 6 }, { address: op.WSOL, decimals: 9 }],
       token_accounts: [
         { address: userMeme, mint: meme, owner: user.address, amount: String(1_000_000n * MEME) },
-        { address: vaultMeme, mint: meme, owner: vault, amount: '0' },
+        { address: vaultMeme, mint: meme, owner: vault, amount: String(10_000n * MEME) },
         { address: vaultWsol, mint: op.WSOL, owner: vault, amount: String(100n * SOL) },
       ],
       lamports: [{ address: user.address, lamports: String(10n * SOL) }, { address: exec.address, lamports: String(10n * SOL) }, { address: FEE_WALLET, lamports: String(SOL) }],
@@ -102,6 +127,12 @@ async function build() {
       { name: 'a second order (its approval covers what is left of every open order)', ...second, expect: 'ok', checks: [{ order: second.order, exists: true }, { address: userMeme, delegated: String(110_000n * MEME) }] },
       { name: 'the user cancels it: the order is gone and its rent is back (less the network fee)', ...cancel, expect: 'ok', checks: [{ order: second.order, exists: false }, { address: user.address, lamports_delta: '-5000', plus_order_rent: true }] },
       { name: 'a cancelled order can\'t be filled', ...(await sale(second.order, 10_000n * MEME, SOL)), expect: 'AccountNotInitialized', checks: [{ address: userMeme, token_delta: '0' }] },
+      { name: 'a limit buy: 1 SOL wrapped and approved, for at least 900 coins', ...third, expect: 'ok', checks: [{ order: third.order, exists: true }, { address: userWsol, token_delta: String(SOL), delegated: String(SOL) }] },
+      { name: 'a buy that brings fewer coins than the user\'s limit is refused onchain', ...(await buy(third.order, SOL, 800n * MEME)), expect: 'BelowLimit', checks: [{ address: userWsol, token_delta: '0' }, { address: userMeme, token_delta: '0' }] },
+      {
+        name: 'the executor fills the buy: the coins to the user, 1% of the SOL the exchange used to the fee wallet in wrapped SOL', ...(await buy(third.order, SOL, 1000n * MEME)), expect: 'ok',
+        checks: [{ address: userMeme, token_delta: String(1000n * MEME) }, { address: userWsol, token_delta: String(-(usedForFee + buyFee)) }, { address: feeWsol, token_delta: String(buyFee) }, { address: transit, lamports: '0' }, { order: third.order, exists: false }, { address: transitMeme, exists: false }, { address: transitWsol, exists: false }],
+      },
     ],
   };
 }

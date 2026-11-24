@@ -31,6 +31,16 @@ const SIGNATURE = '5'.repeat(88);
   orders.list = async () => ({ enabled, ...(enabled ? {} : { why: 'Orders on Solana open once RektBull\'s order program has been audited and deployed. Until then, sell from your own wallet on the Trade desk.' }), orders: listed });
   orders.prepare = async (_a, body) => {
     calls.push(['prepare', body]);
+    if (body.kind === 'limit_buy') {
+      if (!body.acknowledge_risks) throw Object.assign(new Error('RektBull\'s checks found 1 high risk: Its supply can still be increased. Read them, then confirm to go ahead.'), { isTradeBlocked: true, status: 422, needsAcknowledgement: true, risks: [{ title: 'Its supply can still be increased', source: 'RektBull\'s token check' }] });
+      return {
+        order: { ...open, id: 9, kind: 'limit_buy', kind_name: 'Limit buy', side: 'buy', spend_sol: '0.5', min_coins: 600.19, trigger_coins: 618.75, coins_when_placed: 495, bought_coins: 0 },
+        worst_case: ['Worst case, even if RektBull were hacked: your 0.5 SOL buys 600.19 BULL (your limit less your slippage), the 1% fee included.'],
+        notes: ['Your 0.5 SOL is wrapped (as wrapped SOL, in your own wallet) so the order can be approved to spend it; cancelling unwraps it.'],
+        costs: { order_deposit_sol: '0.00218544', order_deposit_note: 'Returned.', new_accounts_sol: '0.00203928', new_accounts_note: 'Rent for your own wrapped-SOL account.', fee: '1% of the SOL a fill spends.' },
+        checks: [], solana: { transaction: Buffer.from([7]).toString('base64') },
+      };
+    }
     return {
       order: { ...open, id: 8, state: 'prepared' }, terms: { stop_pct: body.stop_pct, floor_pct: body.floor_pct },
       worst_case: ['Worst case, even if RektBull were hacked: your 1,000 BULL are sold for 0.594 SOL after the 1% fee (your floor), at a moment RektBull picks before 2026-12-24, even if the market is higher then.', 'Nothing else of yours can be touched.'],
@@ -114,8 +124,25 @@ const SIGNATURE = '5'.repeat(88);
     await page.waitForFunction(() => /Cancelled\./.test(document.getElementById('so-msg').textContent), null, { timeout: 15000 });
     assert.deepEqual((await page.evaluate(() => window.signed)).at(-1), [4, 5]);
     assert.match(await page.textContent('#so-list'), /Cancelled/);
+    // A limit buy: its own fields; the buy checks' high risks shown first, then the worst case once the user has read them.
+    await page.selectOption('#so-kind', 'limit_buy');
+    assert.equal(await page.isVisible('#so-spend-wrap'), true);
+    assert.equal(await page.isVisible('#so-dip-wrap'), true);
+    assert.equal(await page.isVisible('#so-share-wrap'), false);
+    await page.fill('#so-spend', '0.5');
+    await page.click('#so-prepare');
+    await page.locator('#so-plan button:has-text("I\'ve read them")').waitFor();
+    assert.match(await page.textContent('#so-plan'), /Its supply can still be increased/);
+    assert.equal(await page.isVisible('#so-sign'), false, 'nothing to sign before the risks are read');
+    await page.click('#so-plan button');
+    await page.waitForFunction(() => /Limit buy: 0\.5 SOL of BULL/.test(document.getElementById('so-plan').textContent));
+    assert.match(await page.textContent('#so-plan'), /your 0\.5 SOL buys 600\.19 BULL/);
+    assert.match(await page.textContent('#so-plan'), /wrapped/);
+    const buys = calls.filter(c => c[0] === 'prepare' && c[1].kind === 'limit_buy');
+    assert.deepEqual(buys.map(c => c[1].acknowledge_risks || false), [false, true]);
+    assert.deepEqual(Object.keys(buys[0][1]).sort(), ['days', 'dip_pct', 'kind', 'slippage_pct', 'spend_sol', 'token']);
     assert.deepEqual(errors, []);
-    console.log('ok: the Solana orders card: off with its reason; the worst case before signing; placed from the wallet; cancelled');
+    console.log('ok: the Solana orders card: off with its reason; the worst case before signing; placed from the wallet; cancelled; a limit buy with its risks read first');
   } finally {
     await browser.close();
     app.close();

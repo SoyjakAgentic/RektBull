@@ -10,7 +10,10 @@
  *   stop_loss        fires when the coins' value falls to the trigger (DexScreener's price);
  *   take_profit      fires when it rises to the trigger;
  *   meme_watch_exit  fires when Meme Watch raises a critical alert for the coin (launch-bundle
- *                    wallets selling, liquidity pulled), from the stream or its 6-hour check.
+ *                    wallets selling, liquidity pulled), from the stream or its 6-hour check;
+ *   limit_buy        buys the coin with the user's SOL (wrapped in their own wallet, and
+ *                    approved) when its price falls to their limit, after the Trade desk's buy
+ *                    checks, run again before each fill.
  *
  * A fill: Jupiter's route for transit (the user's own program address) as the
  * trader, checked instruction by instruction (trade/solana.js), sized to what
@@ -40,7 +43,9 @@ const KINDS = {
   stop_loss: 'Stop-loss',
   take_profit: 'Take-profit',
   meme_watch_exit: 'Meme Watch exit',
+  limit_buy: 'Limit buy',
 };
+const isBuy = row => row.kind === 'limit_buy';
 const MAX_DAYS = 30;
 const LAMPORTS_PER_BYTE_YEAR = 3480n; // Solana's rent: an account holds two years' worth to be rent-exempt
 const rentOf = space => (BigInt(space) + 128n) * LAMPORTS_PER_BYTE_YEAR * 2n;
@@ -49,6 +54,7 @@ const VOLUME_RENT = rentOf(137); // 1,844,400: pump.fun's and PumpSwap's volume 
 const FILL_SLIPPAGE_BPS = 500; // Jupiter's own check on a fill; the user's floor, checked by the program, is what protects them
 const CU_MAX = 1_400_000;
 const PRIORITY_CAP_LAMPORTS = 1_000_000n; // the most the executor pays for priority on one fill: 0.001 SOL
+const TOKEN_ACCOUNT_RENT = rentOf(170); // a token account (Token-2022's carries a small extension): about 0.002 SOL
 const RETRY_MS = { below_floor: 30_000, failed: 30_000, nothing: 5 * 60_000 };
 const FILLS_PER_TICK = 5;
 const PREPARED_TTL_MS = 10 * 60_000; // a prepared order never placed is forgotten after this
@@ -241,6 +247,7 @@ async function prepare(account, body = {}) {
     throw refuse('A Meme Watch exit sells when Meme Watch raises a critical alert for the coin. Switch on Meme Watch in My agents first.', 409);
   }
   const settings = await require('./rules').settingsFor(account.id);
+  if (kind === 'limit_buy') return prepareBuy(account, body, { cfg, owner, token, days, settings });
 
   const { tokenProgram, decimals } = await mintInfo(token);
   const source = await op.ataOf(owner, tokenProgram, token);
@@ -311,6 +318,126 @@ async function prepare(account, body = {}) {
   };
 }
 
+/** A limit buy's worst case, in plain words, shown before the user signs. */
+function worstCaseBuy({ spendSol, minCoins, symbol, validUntil }) {
+  const date = new Date(validUntil).toISOString().slice(0, 10);
+  return [
+    `Worst case, even if RektBull were hacked: your ${spendSol} SOL buys ${fmt(minCoins)} ${symbol} (your limit less your slippage), the 1% fee included, at a moment RektBull picks before ${date}, even if the price is lower then.`,
+    'Nothing else of yours can be touched: the approval covers only this SOL, wrapped in your own wallet, and the order program sends the coins only to your wallet. RektBull never holds them.',
+    'If the price never comes down to your limit, nothing is bought, and your SOL stays in your wallet, wrapped, until you cancel (which unwraps it).',
+    'Before each fill, RektBull runs its token check again: a critical risk stops the buy, and you are told.',
+    'To stop it: cancel it here (its deposit comes back and your SOL is unwrapped), or revoke the approval in your wallet.',
+  ];
+}
+
+/**
+ * A limit buy: the Trade desk's buy checks (the per-trade amount, the token
+ * check, the bundle check for a young coin, selling straight back), the terms
+ * from Jupiter's quote now, and the transaction that wraps the SOL, places the
+ * order and approves only that SOL.
+ */
+async function prepareBuy(account, body, { cfg, owner, token, days, settings }) {
+  const spend = num(body.spend_sol, 0.01, 1000, NaN, 'spend_sol');
+  const dip = num(body.dip_pct, 1, 95, 20, 'dip_pct');
+  const slip = num(body.slippage_pct, 0.5, 20, 3, 'slippage_pct');
+  const amountIn = BigInt(Math.round(spend * 1e9));
+  const solUsd = await require('../providers/prices').usdPrice('coingecko:solana');
+  const spendUsd = Math.round(spend * solUsd * 100) / 100;
+  if (spendUsd > settings.max_trade_usd) throw refuse(`$${spendUsd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
+  const checks = [{ check: 'per_trade_amount', ok: true, detail: `$${spendUsd} of your $${settings.max_trade_usd} per trade`, source: 'your trading settings; SOL\'s price from DefiLlama' }];
+
+  const { tokenProgram, decimals } = await mintInfo(token);
+  const [delegate, transit] = await Promise.all([op.delegateOf(cfg.program), op.transitOf(cfg.program, owner)]);
+  const [wsol, ownerOut] = await Promise.all([op.ataOf(owner, op.P.token, op.WSOL), op.ataOf(owner, tokenProgram, token)]);
+  const [wallet, wsolAcct, outAcct, curve, ...volumes] = await accounts([owner, wsol, ownerOut, await op.bondingCurveOf(token), await op.volumeOf(op.P.pumpFun, transit), await op.volumeOf(op.P.pumpAmm, transit)]);
+  const volumeVenues = curve ? [op.P.pumpFun, op.P.pumpAmm].filter((_, i) => !volumes[i]) : [];
+  const newAccounts = (wsolAcct ? 0n : TOKEN_ACCOUNT_RENT) + (outAcct ? 0n : TOKEN_ACCOUNT_RENT);
+  const needs = amountIn + ORDER_RENT + newAccounts + VOLUME_RENT * BigInt(volumeVenues.length) + 1_000_000n; // and 0.001 SOL for the network fee
+  const have = BigInt(wallet?.lamports || 0);
+  if (have < needs) throw refuse(`Your wallet holds ${sol(have)} SOL of the ${sol(needs)} SOL this order needs: the ${spend} SOL to wrap, the order's deposit, new accounts' rent and the network fee.`);
+
+  // The Trade desk's buy checks (trade/solana.js).
+  const dd = require('../services/dueDiligence');
+  const [risk, launch] = await Promise.all([dd.quickCheck({ chain: 'solana', token }), require('../services/launches').forTrade({ chain: 'solana', token })]);
+  if (risk.incomplete) throw refuse(`RektBull couldn't check whether this token can be sold (${risk.incomplete}) Not placing a buy.`);
+  if (risk.verdict === 'critical') throw refuse(`RektBull's token check found a critical risk: ${risk.flags.find(f => f.severity === 'critical')?.title}. Not placing a buy.`);
+  if (launch.risk === 'block') throw refuse(`RektBull's bundle check found a critical risk: ${launch.flags.find(f => f.severity === 'critical').title}. Not placing a buy.`);
+  const high = [
+    ...risk.flags.filter(f => f.severity === 'high'),
+    ...(launch.risk === 'confirm' ? launch.flags.filter(f => f.severity === 'high').map(f => ({ id: 'bundle', ...f })) : []),
+    ...(launch.risk === 'unknown' ? [{ id: 'bundle_unchecked', severity: 'high', title: 'This token is under a week old and RektBull couldn\'t check it for a bundled launch', evidence: launch.detail, source: 'Launch Safety' }] : []),
+  ];
+  if (high.length && !body.acknowledge_risks) {
+    const err = refuse(`RektBull's checks found ${high.length} high risk${high.length > 1 ? 's' : ''}: ${high.map(f => f.title).join('; ')}. Read them, then confirm to go ahead.`);
+    err.needsAcknowledgement = true;
+    err.risks = high;
+    throw err;
+  }
+  checks.push({ check: 'token_risk', ok: true, detail: `verdict ${risk.verdict}${high.length ? ` (you confirmed ${high.length} high risk${high.length > 1 ? 's' : ''})` : ''}`, source: 'RektBull\'s token check' });
+  if (launch.young) checks.push({ check: 'bundle', ok: launch.risk !== 'unknown', detail: launch.risk === 'unknown' ? `the bundle check couldn't run (${launch.detail}); you confirmed going ahead without it` : `launch check: ${launch.detail}`, source: 'Launch Safety' });
+
+  // The terms, from what the SOL (less room for the 1%) would buy now.
+  const swapIn = otx.buySwapAmount(amountIn);
+  const quote = async (inputMint, outputMint, amount) => jupiter.quote({ inputMint, outputMint, amount }).catch(err => { if (err.isJupiter) throw refuse(err.message, 503); throw err; });
+  const refOut = await quote(op.WSOL, token, swapIn);
+  if (!refOut) throw refuse('There is no route to buy this coin with SOL just now (Jupiter).');
+  const back = await quote(token, op.WSOL, refOut);
+  if (back === null) throw refuse('There is no route to sell this coin back: it may be a honeypot. Not placing a buy.');
+  const lossPct = Number((amountIn - back) * 10000n / amountIn) / 100;
+  if (lossPct > settings.max_round_trip_loss_pct) throw refuse(`Selling straight back would lose ${lossPct.toFixed(1)}%, above your ${settings.max_round_trip_loss_pct}% limit: the token may tax transfers, or its pool is thin.`);
+  checks.push({ check: 'sell_back', ok: true, detail: `selling straight back loses ${lossPct.toFixed(1)}% (fees included; limit ${settings.max_round_trip_loss_pct}%)`, source: 'Jupiter quote' });
+  const trigger = refOut * 10000n / BigInt(Math.round((100 - dip) * 100));
+  const minOut = pctOf(trigger, 100 - slip);
+  if (minOut <= 0n) throw refuse('That limit rounds to no coins; spend more.', 400);
+
+  const { rows: others } = await db.query(
+    `SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM solana_orders WHERE account_id = $1 AND source = $2 AND state IN ('prepared', 'open', 'triggered')`,
+    [account.id, wsol]);
+  const MAX_U64 = (1n << 64n) - 1n;
+  let approveAmount = amountIn + BigInt(others[0].left);
+  if (approveAmount > MAX_U64) approveAmount = MAX_U64;
+  const held = tokenAccount(wsolAcct);
+  const notes = [`Your ${spend} SOL is wrapped (as wrapped SOL, in your own wallet) so the order can be approved to spend it; cancelling unwraps it.`];
+  if (held?.delegate && held.delegate !== delegate) notes.push(`This replaces the approval your wrapped-SOL account gives ${short(held.delegate)} (a token account has one approval at a time).`);
+
+  const nonce = crypto.randomBytes(8).readBigUInt64LE() >> 1n;
+  const validUntil = Date.now() + days * 86400_000;
+  const build = async units => {
+    const p = await otx.placeBuyInstructions({ program: cfg.program, owner, executor: cfg.executor, nonce, token, tokenProgram, amountIn, minOut, validUntil: Math.floor(validUntil / 1000), wrapLamports: amountIn, approveAmount, volumeVenues, units });
+    const bh = await latestBlockhash();
+    return { ...p, ...bh, ...otx.compile({ payer: owner, instructions: p.instructions, ...bh }) };
+  };
+  const first = await build(null);
+  const sim = await simulate(first.transaction, [first.order]);
+  if (sim.err) throw refuse(`In a simulation this order fails${why(sim.logs) ? `: ${why(sim.logs)}` : ` (${JSON.stringify(sim.err)})`}. Nothing was sent.`);
+  const placed = op.decodeOrder(sim.accounts[0]?.data?.[0] || '');
+  if (!placed || placed.owner !== owner || placed.executor !== cfg.executor || placed.inputMint !== op.WSOL || placed.outputMint !== token || placed.outputNative || placed.amountIn !== amountIn || placed.minAmountOut !== minOut) {
+    throw refuse('In a simulation the order didn\'t come out as prepared. Nothing was sent.');
+  }
+  checks.push({ check: 'simulation', ok: true, detail: 'the whole transaction ran in a simulation and placed this order', source: 'Solana RPC simulateTransaction' });
+  const built = await build(Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 20_000) * 1.3)));
+
+  const symbol = (await require('../providers/dexscreener').pairs('solana', [token]).catch(() => ({})))[token]?.symbol || short(token);
+  const { rows: [row] } = await db.query(
+    `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until, spend_usd)
+     VALUES ($1, $2, $3, $4, $5, 'limit_buy', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
+    [account.id, owner, built.order, cfg.program, nonce.toString(), token, symbol, tokenProgram, decimals, wsol, amountIn.toString(), minOut.toString(), trigger.toString(), refOut.toString(), cfg.executor, new Date(validUntil), spendUsd]);
+  return {
+    order: view(row),
+    terms: { spend_sol: spend, dip_pct: dip, slippage_pct: slip },
+    worst_case: worstCaseBuy({ spendSol: spend, minCoins: whole(minOut, decimals), symbol, validUntil }),
+    notes,
+    costs: {
+      order_deposit_sol: sol(ORDER_RENT), order_deposit_note: 'Held by the order account and returned to you when it is filled or cancelled.',
+      ...(newAccounts ? { new_accounts_sol: sol(newAccounts), new_accounts_note: 'Rent for your own wrapped-SOL and coin accounts, which this creates; they stay yours.' } : {}),
+      ...(volumeVenues.length ? { volume_accounts_sol: sol(VOLUME_RENT * BigInt(volumeVenues.length)), volume_accounts_note: `Once per wallet: ${volumeVenues.length === 2 ? 'pump.fun\'s and PumpSwap\'s' : volumeVenues[0] === op.P.pumpFun ? 'pump.fun\'s' : 'PumpSwap\'s'} volume account for your order address, which they need for every trade.` } : {}),
+      fee: 'RektBull\'s 1% of the SOL a fill spends, taken by the order program. Nothing if it never fills. RektBull pays each fill\'s network fee.',
+    },
+    checks,
+    solana: { transaction: built.transaction, last_valid_block_height: built.lastValidBlockHeight, bytes: built.bytes },
+  };
+}
+
 /** The user's wallet sent it: the order, read from the chain and compared with what was prepared. */
 async function confirm(account, id) {
   const row = await own(account, id);
@@ -323,7 +450,8 @@ async function confirm(account, id) {
   return view(done || row);
 }
 
-const matches = (o, row) => !!o && o.owner === row.owner && o.executor === row.executor && o.inputMint === row.token && o.outputMint === op.WSOL && o.outputNative
+const matches = (o, row) => !!o && o.owner === row.owner && o.executor === row.executor
+  && (isBuy(row) ? o.inputMint === op.WSOL && o.outputMint === row.token && !o.outputNative : o.inputMint === row.token && o.outputMint === op.WSOL && o.outputNative)
   && o.amountIn === BigInt(row.amount_in) && o.minAmountOut === BigInt(row.min_out) && o.nonce === BigInt(row.nonce);
 
 /** The transaction for the user's wallet to cancel: the order closed, and the approval revoked when it was the last on that account. */
@@ -336,10 +464,12 @@ async function cancel(account, id) {
     return { order: view(await settle(row)), done: true };
   }
   const { rows: others } = await db.query(`SELECT count(*)::int AS n FROM solana_orders WHERE account_id = $1 AND source = $2 AND id <> $3 AND state IN ('open', 'triggered')`, [account.id, row.source, row.id]);
-  const instructions = otx.cancelInstructions({ program: row.program, owner: row.owner, order: row.order_address, revokeSource: others[0].n ? null : row.source, tokenProgram: row.token_program });
+  const last = !others[0].n;
+  // A buy's approval is on the wrapped-SOL account; with the last buy cancelled, that account is closed back into SOL too.
+  const instructions = otx.cancelInstructions({ program: row.program, owner: row.owner, order: row.order_address, revokeSource: last ? row.source : null, tokenProgram: isBuy(row) ? op.P.token : row.token_program, unwrap: isBuy(row) && last ? row.source : null });
   const bh = await latestBlockhash();
   const c = otx.compile({ payer: row.owner, instructions, ...bh });
-  return { order: view(row), revokes_approval: !others[0].n, solana: { transaction: c.transaction, last_valid_block_height: bh.lastValidBlockHeight, bytes: c.bytes } };
+  return { order: view(row), revokes_approval: last, unwraps_sol: isBuy(row) && last, solana: { transaction: c.transaction, last_valid_block_height: bh.lastValidBlockHeight, bytes: c.bytes } };
 }
 
 /** After the wallet sent a cancel (or any time): the order's state from the chain. */
@@ -373,17 +503,30 @@ async function list(account) {
   const cfg = config();
   return {
     enabled: !cfg.off, ...(cfg.off ? { why: cfg.off } : {}),
-    orders: rows.map(r => ({ ...view(r), fills: fills.filter(f => f.order_id === r.id).map(f => ({ signature: f.signature, state: f.state, sold_whole: whole(f.amount_in, r.decimals), delivered_sol: f.delivered ? sol(f.delivered) : null, fee_sol: f.fee ? sol(f.fee) : null, error: f.error, at: f.created_at, tx_url: `https://solscan.io/tx/${f.signature}` })) })),
+    orders: rows.map(r => ({ ...view(r), fills: fills.filter(f => f.order_id === r.id).map(f => ({
+      signature: f.signature, state: f.state,
+      ...(isBuy(r) ? { spent_sol: sol(f.amount_in), coins: f.delivered ? whole(f.delivered, r.decimals) : null } : { sold_whole: whole(f.amount_in, r.decimals), delivered_sol: f.delivered ? sol(f.delivered) : null }),
+      fee_sol: f.fee ? sol(f.fee) : null, error: f.error, at: f.created_at, tx_url: `https://solscan.io/tx/${f.signature}`,
+    })) })),
   };
 }
 
 function view(r) {
-  return {
-    id: Number(r.id), kind: r.kind, kind_name: KINDS[r.kind], state: r.state, token: r.token, symbol: r.symbol,
-    amount_whole: whole(r.amount_in, r.decimals), sold_whole: whole(r.filled_in, r.decimals),
-    floor_sol: sol(r.min_out), trigger_sol: r.trigger_out ? sol(r.trigger_out) : null, value_when_placed_sol: sol(r.ref_out),
-    delivered_sol: sol(r.delivered), valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
+  const common = {
+    id: Number(r.id), kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state, token: r.token, symbol: r.symbol,
+    valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
     last_error: r.last_error, order_address: r.order_address, order_url: `https://solscan.io/account/${r.order_address}`, created_at: r.created_at,
+  };
+  if (isBuy(r)) {
+    return {
+      ...common, spend_sol: sol(r.amount_in), spent_sol: sol(r.filled_in), spend_usd: r.spend_usd === null || r.spend_usd === undefined ? null : Number(r.spend_usd),
+      min_coins: whole(r.min_out, r.decimals), trigger_coins: r.trigger_out ? whole(r.trigger_out, r.decimals) : null,
+      coins_when_placed: whole(r.ref_out, r.decimals), bought_coins: whole(r.delivered, r.decimals),
+    };
+  }
+  return {
+    ...common, amount_whole: whole(r.amount_in, r.decimals), sold_whole: whole(r.filled_in, r.decimals),
+    floor_sol: sol(r.min_out), trigger_sol: r.trigger_out ? sol(r.trigger_out) : null, value_when_placed_sol: sol(r.ref_out), delivered_sol: sol(r.delivered),
   };
 }
 
@@ -435,9 +578,9 @@ async function reconcile() {
   }
 }
 
-/** Stop-losses and take-profits whose trigger is reached, by DexScreener's price, marked to fill. */
+/** Stop-losses, take-profits and limit buys whose trigger is reached, by DexScreener's price, marked to fill. */
 async function triggers() {
-  const { rows } = await db.query(`SELECT * FROM solana_orders WHERE state = 'open' AND kind IN ('stop_loss', 'take_profit') AND valid_until > now()`);
+  const { rows } = await db.query(`SELECT * FROM solana_orders WHERE state = 'open' AND kind IN ('stop_loss', 'take_profit', 'limit_buy') AND valid_until > now()`);
   if (!rows.length) return;
   const tokens = [...new Set(rows.map(r => r.token))];
   const [pairs, solUsd] = await Promise.all([
@@ -449,8 +592,16 @@ async function triggers() {
     if (!(p > 0) || !(solUsd > 0)) continue;
     const left = BigInt(row.amount_in) - BigInt(row.filled_in);
     if (left <= 0n) continue;
-    const value = BigInt(Math.floor(whole(left, row.decimals) * p / solUsd * 1e9));
     const trigger = BigInt(row.trigger_out) * left / BigInt(row.amount_in);
+    if (isBuy(row)) {
+      // What the SOL left would buy now (less the 1%), against the coins at the user's limit.
+      const coins = BigInt(Math.floor(Number(otx.buySwapAmount(left)) / 1e9 * solUsd / p * 10 ** row.decimals));
+      if (coins < trigger) continue;
+      const reason = { price_usd: p, sol_usd: solUsd, coins_now: whole(coins, row.decimals), coins_at_limit: whole(trigger, row.decimals), source: 'DexScreener (the coin\'s most liquid pair) and DefiLlama (SOL)' };
+      await db.query(`UPDATE solana_orders SET state = 'triggered', triggered_at = now(), trigger_reason = $2, next_attempt_at = now(), updated_at = now() WHERE id = $1 AND state = 'open'`, [row.id, JSON.stringify(reason)]);
+      continue;
+    }
+    const value = BigInt(Math.floor(whole(left, row.decimals) * p / solUsd * 1e9));
     const fire = row.kind === 'stop_loss' ? value <= trigger : value >= trigger;
     if (!fire) continue;
     const reason = { price_usd: p, sol_usd: solUsd, value_sol: sol(value), trigger_sol: sol(trigger), source: 'DexScreener (the coin\'s most liquid pair) and DefiLlama (SOL)' };
@@ -489,9 +640,14 @@ async function confirmFills() {
       `UPDATE solana_orders SET filled_in = LEAST(amount_in, filled_in + $2), delivered = delivered + $3, last_error = NULL, attempts = 0,
          state = CASE WHEN filled_in + $2 >= amount_in THEN 'filled' ELSE state END, updated_at = now() WHERE id = $1 RETURNING *`,
       [f.order_id, amount.toString(), (ev?.delivered ?? 0n).toString()]);
-    await alert(o, 'high', `fill:${f.signature}`, o.state === 'filled' ? 'sold' : 'sold in part',
-      `Sold ${fmt(whole(amount, o.decimals))} ${o.symbol || 'coins'} for ${ev ? sol(ev.delivered) : 'the'} SOL, sent to your wallet${ev ? ` (RektBull's fee: ${sol(ev.fee)} SOL)` : ''}.`,
-      `Solana transaction ${f.signature.slice(0, 8)}…, the order program's Filled event`);
+    const source = `Solana transaction ${f.signature.slice(0, 8)}…, the order program's Filled event`;
+    if (isBuy(o)) {
+      await alert(o, 'high', `fill:${f.signature}`, o.state === 'filled' ? 'bought' : 'bought in part',
+        `Bought ${ev ? fmt(whole(ev.delivered, o.decimals)) : 'the'} ${o.symbol || 'coins'}, sent to your wallet, for about ${sol(otx.buySwapAmount(amount) + (ev?.fee ?? 0n))} SOL of your wrapped SOL${ev ? ` (RektBull's fee: ${sol(ev.fee)} SOL)` : ''}. What wasn't used stays in your wallet.`, source);
+    } else {
+      await alert(o, 'high', `fill:${f.signature}`, o.state === 'filled' ? 'sold' : 'sold in part',
+        `Sold ${fmt(whole(amount, o.decimals))} ${o.symbol || 'coins'} for ${ev ? sol(ev.delivered) : 'the'} SOL, sent to your wallet${ev ? ` (RektBull's fee: ${sol(ev.fee)} SOL)` : ''}.`, source);
+    }
   }
 }
 
@@ -508,9 +664,11 @@ async function priority(swap, units) {
 
 /** One fill of a triggered order. Records what happened; throws only on a bug. */
 async function attempt(row, cfg, exec) {
+  const buy = isBuy(row);
+  const TITLES = { below_floor: buy ? 'it can\'t fill at your limit' : 'it can\'t fill at your floor', nothing: buy ? 'it has no SOL to buy with' : 'it has nothing to sell', risk: 'RektBull\'s token check stopped it' };
   const later = async (error, ms, alertId = null, alertText = null) => {
     await db.query(`UPDATE solana_orders SET last_error = $2, last_attempt_at = now(), next_attempt_at = now() + make_interval(secs => $3), attempts = attempts + 1, updated_at = now() WHERE id = $1`, [row.id, error.slice(0, 500), ms / 1000]);
-    if (alertId) await alert(row, 'high', alertId, alertId === 'below_floor' ? 'it can\'t fill at your floor' : 'it has nothing to sell', alertText);
+    if (alertId) await alert(row, 'high', alertId, TITLES[alertId], alertText);
   };
   const [delegate, transit] = await Promise.all([op.delegateOf(row.program), op.transitOf(row.program, row.owner)]);
   const [orderAcct, srcAcct] = await accounts([row.order_address, row.source]);
@@ -523,14 +681,27 @@ async function attempt(row, cfg, exec) {
   if (src && src.amount < amount) amount = src.amount;
   if (approved < amount) amount = approved;
   if (!src || amount <= 0n) {
-    const text = !src || src.amount === 0n ? 'Your wallet no longer holds these coins.' : 'The approval for these coins was revoked or used up.';
-    return later(`nothing to sell: ${text}`, RETRY_MS.nothing, 'nothing', `${text} The order stays open until its end date; cancel it on the Trade desk to get its ${sol(ORDER_RENT)} SOL deposit back.`);
+    const text = buy
+      ? (!src || src.amount === 0n ? 'Your wallet\'s wrapped SOL for this buy is gone (unwrapped or spent).' : 'The approval for your wrapped SOL was revoked or used up.')
+      : (!src || src.amount === 0n ? 'Your wallet no longer holds these coins.' : 'The approval for these coins was revoked or used up.');
+    return later(`nothing to ${buy ? 'buy with' : 'sell'}: ${text}`, RETRY_MS.nothing, 'nothing', `${text} The order stays open until its end date; cancel it on the Trade desk to get its ${sol(ORDER_RENT)} SOL deposit back.`);
   }
   const minimum = op.minimumFor(o.minAmountOut, amount, o.amountIn);
+  if (buy) {
+    // The Trade desk's token check, run again before buying: a coin can turn bad after the order was placed.
+    const risk = await require('../services/dueDiligence').quickCheck({ chain: 'solana', token: row.token }).catch(err => ({ incomplete: err.message }));
+    if (risk.incomplete) return later(`the token check couldn't run (${risk.incomplete}): not buying until it can`, RETRY_MS.failed);
+    if (risk.verdict === 'critical') {
+      const flag = risk.flags.find(f => f.severity === 'critical');
+      return later(`the token check found a critical risk: ${flag?.title}`, RETRY_MS.nothing, 'risk', `It fired, but RektBull's token check now finds a critical risk in ${row.symbol || 'this coin'}: ${flag?.title}. Nothing was bought. Cancel the order on the Trade desk to unwrap your SOL and get its deposit back.`);
+    }
+  }
+  const swapAmount = buy ? otx.buySwapAmount(amount) : amount;
+  const [inMint, outMint] = buy ? [op.WSOL, row.token] : [row.token, op.WSOL];
 
   let b;
   try {
-    b = await jupiter.build({ inputMint: row.token, outputMint: op.WSOL, amount, slippageBps: FILL_SLIPPAGE_BPS, taker: transit });
+    b = await jupiter.build({ inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS, taker: transit });
   } catch (err) {
     if (!err.isJupiter) throw err;
     return later(`no route: ${err.message}`, RETRY_MS.failed);
@@ -538,20 +709,24 @@ async function attempt(row, cfg, exec) {
   const solana = require('./solana');
   let route;
   try {
-    route = await solana.checkInstructions(swapOnly(b), { wallet: transit, inputMint: row.token, outputMint: op.WSOL, amount, slippageBps: FILL_SLIPPAGE_BPS });
+    route = await solana.checkInstructions(swapOnly(b), { wallet: transit, inputMint: inMint, outputMint: outMint, amount: swapAmount, slippageBps: FILL_SLIPPAGE_BPS });
     await solana.checkLookupTables(b);
   } catch (err) {
     if (!err.isTradeBlocked) throw err;
     return later(err.message, RETRY_MS.failed);
   }
-  if (net(route.quotedOut) < minimum) {
+  if (buy && route.quotedOut < minimum) {
+    return later(`below the limit: ${fmt(whole(route.quotedOut, row.decimals))} coins quoted, ${fmt(whole(minimum, row.decimals))} needed`, RETRY_MS.below_floor, 'below_floor',
+      `It fired, but ${sol(amount)} SOL would buy ${fmt(whole(route.quotedOut, row.decimals))} ${row.symbol || 'coins'}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the order program won't let it fill. It keeps trying while it's open.`);
+  }
+  if (!buy && net(route.quotedOut) < minimum) {
     return later(`below the floor: ${sol(net(route.quotedOut))} SOL quoted after the fee, ${sol(minimum)} SOL needed`, RETRY_MS.below_floor, 'below_floor',
       `It fired, but ${fmt(whole(amount, row.decimals))} ${row.symbol || 'coins'} would sell for ${sol(net(route.quotedOut))} SOL after the fee, below your floor of ${sol(minimum)} SOL, so the order program won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
   }
 
   const tables = { ...(b.addressesByLookupTableAddress || {}), ...(await ownTable(cfg.lookupTable)) };
   const make = async (units, microLamports) => {
-    const f = await otx.fillInstructions({ program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports });
+    const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: b.swapInstruction, amountIn: amount, units, microLamports });
     const bh = await latestBlockhash();
     return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
   };

@@ -205,9 +205,12 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
       default: throw new Error(`unexpected RPC ${method}`);
     }
   };
-  jupiter.quote = async ({ amount }) => quoteNow * BigInt(amount) / 1_000_000_000n;
+  // Selling 1,000 coins brings quoteNow lamports; buying, a lamport of SOL brings buyRate raw units of the coin.
+  let buyRate = 1;
+  const quoted = (inputMint, amount) => (inputMint === op.WSOL ? BigInt(Math.floor(Number(amount) * buyRate)) : quoteNow * BigInt(amount) / 1_000_000_000n);
+  jupiter.quote = async ({ inputMint, amount }) => quoted(inputMint, amount);
   jupiter.build = async ({ inputMint, outputMint, amount, slippageBps, taker }) => {
-    const out = quoteNow * BigInt(amount) / 1_000_000_000n;
+    const out = quoted(inputMint, amount);
     const data = Buffer.alloc(8 + 22); require('../src/trade/solana').ROUTE_V2.copy(data, 0);
     data.writeBigUInt64LE(BigInt(amount), 8); data.writeBigUInt64LE(out, 16); data.writeUInt16LE(slippageBps, 24);
     const acc = (pubkey, isSigner = false, isWritable = false) => ({ pubkey, isSigner, isWritable });
@@ -317,4 +320,85 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   // Download my data includes them.
   const data = await require('../src/privacy/myData').exportAll(account);
   assert.equal(data.solana_orders.length, 2);
+
+  // 7. A limit buy: the Trade desk's buy checks, then the user's SOL wrapped and approved, for at least their limit in coins.
+  const dd = require('../src/services/dueDiligence');
+  const launches = require('../src/services/launches');
+  let verdict = { verdict: 'low', flags: [] };
+  dd.quickCheck = async () => verdict;
+  launches.forTrade = async () => ({ young: false, risk: 'ok', detail: 'its first pool opened 30 days ago (test)', flags: [] });
+  quoteNow = SOL; // selling straight back: 1,000 coins for 1 SOL
+  chain.set(user.address, { lamports: 5_000_000_000, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false });
+  await assert.rejects(orders.prepare(account, { kind: 'limit_buy', token: TOKEN, spend_sol: 5 }), /\$750 is over your per-trade amount of \$500/);
+  verdict = { verdict: 'high', flags: [{ id: 'mint', severity: 'high', title: 'Its supply can still be increased' }] };
+  await assert.rejects(orders.prepare(account, { kind: 'limit_buy', token: TOKEN, spend_sol: 1 }), err => err.needsAcknowledgement && /Its supply can still be increased/.test(err.message));
+  const lb = await orders.prepare(account, { kind: 'limit_buy', token: TOKEN, spend_sol: 1, dip_pct: 20, slippage_pct: 3, acknowledge_risks: true });
+  verdict = { verdict: 'low', flags: [] };
+  assert.equal(lb.order.side, 'buy');
+  assert.equal(lb.order.spend_sol, '1');
+  assert.equal(lb.order.coins_when_placed, 990, '0.99 SOL of coins now (the rest is room for the 1%)');
+  assert.equal(lb.order.trigger_coins, 1237.5, 'the price down 20%');
+  assert.equal(lb.order.min_coins, 1200.375, 'less 3% slippage');
+  assert.match(lb.worst_case[0], /^Worst case, even if RektBull were hacked: your 1 SOL buys 1,200\.38 BULL \(your limit less your slippage\), the 1% fee included/);
+  assert.match(lb.worst_case[2], /nothing is bought, and your SOL stays in your wallet, wrapped, until you cancel/);
+  const wsol = await op.ataOf(user.address, op.P.token, op.WSOL);
+  const lbTx = decodeTx(lb.solana.transaction);
+  assert.deepEqual(Object.keys(lbTx.t.signatures), [user.address]);
+  const wrap = lbTx.ixs.find(i => i.program === '11111111111111111111111111111111');
+  assert.deepEqual([wrap.accounts[1], wrap.data.readBigUInt64LE(4)], [wsol, SOL], 'the SOL wrapped into the user\'s own account');
+  assert.ok(lbTx.ixs.some(i => i.program === op.P.token && i.data[0] === 17), 'SyncNative');
+  const lbApprove = lbTx.ixs.find(i => i.program === op.P.token && i.data[0] === 13);
+  assert.deepEqual([lbApprove.accounts[0], lbApprove.accounts[2], lbApprove.data.readBigUInt64LE(1)], [wsol, delegate, SOL], 'only that SOL, to the delegate');
+  const lbPlace = lbTx.ixs.find(i => i.program === PROGRAM);
+  put(lb.order.order_address, orderFromPlace(lbPlace), PROGRAM);
+  put(wsol, tokenAccountData({ mint: op.WSOL, owner: user.address, amount: SOL, delegate, delegated: SOL }));
+  assert.equal((await orders.confirm(account, lb.order.id)).state, 'open');
+
+  // The price falls to the limit: it fires. A critical risk found now stops it; a quote below the limit sends nothing.
+  priceUsd = 0.1;
+  verdict = { verdict: 'critical', flags: [{ severity: 'critical', title: 'It can no longer be sold (a honeypot)' }] };
+  await orders.tick();
+  [row] = (await db.query('SELECT * FROM solana_orders WHERE id = $1', [lb.order.id])).rows;
+  assert.equal(row.state, 'triggered');
+  assert.match(row.last_error, /critical risk: It can no longer be sold/);
+  assert.equal(sent.length, 1, 'nothing bought');
+  verdict = { verdict: 'low', flags: [] };
+  buyRate = 1; // 990 coins: below the 1,200.375 limit
+  await db.query('UPDATE solana_orders SET next_attempt_at = now() WHERE id = $1', [lb.order.id]);
+  await orders.tick();
+  assert.match((await db.query('SELECT last_error FROM solana_orders WHERE id = $1', [lb.order.id])).rows[0].last_error, /below the limit/);
+  assert.equal(sent.length, 1);
+  const { rows: buyAlerts } = await db.query(`SELECT title FROM monitor_alerts WHERE kind = 'solana_order' AND title LIKE 'Limit buy%' ORDER BY id`);
+  assert.deepEqual(buyAlerts.map(a => a.title), ['Limit buy on BULL: RektBull\'s token check stopped it', 'Limit buy on BULL: it can\'t fill at your limit']);
+
+  // The price is there: the buy is filled, the coins going only to the user's own account, the 1% in wrapped SOL.
+  buyRate = 1.3;
+  await db.query('UPDATE solana_orders SET next_attempt_at = now() WHERE id = $1', [lb.order.id]);
+  await orders.tick();
+  assert.equal(sent.length, 2);
+  const bf = decodeTx(sent[1]).ixs.find(i => i.program === PROGRAM);
+  assert.equal(bf.data.readBigUInt64LE(8), SOL);
+  assert.deepEqual([bf.accounts[5], bf.accounts[6], bf.accounts[9], bf.accounts[11], bf.accounts[14]],
+    [wsol, op.WSOL, TOKEN, source, await op.ataOf(FEE_WALLET, op.P.token, op.WSOL)], 'from the user\'s wrapped SOL, the coins to their own account, the fee to the fee wallet\'s');
+  landed = Buffer.concat([op.DISC.filled, Buffer.from(e.encode(lb.order.order_address)), Buffer.from(e.encode(user.address)), ...[SOL, 9_900_000n, 1_287_000_000n, 1_200_375_000n].map(n => { const b = Buffer.alloc(8); b.writeBigUInt64LE(n); return b; })]);
+  chain.delete(lb.order.order_address);
+  await orders.tick();
+  [row] = (await db.query('SELECT * FROM solana_orders WHERE id = $1', [lb.order.id])).rows;
+  assert.equal(row.state, 'filled');
+  const bought = (await orders.list(account)).orders.find(o => o.id === lb.order.id);
+  assert.equal(bought.bought_coins, 1287);
+  assert.equal(bought.fills[0].coins, 1287);
+  const { rows: [boughtAlert] } = await db.query(`SELECT title, detail FROM monitor_alerts WHERE kind = 'solana_order' ORDER BY id DESC LIMIT 1`);
+  assert.equal(boughtAlert.title, 'Limit buy on BULL: bought');
+  assert.match(boughtAlert.detail.reasons[0].text, /^Bought 1,287 BULL, sent to your wallet, for about 0\.9999 SOL of your wrapped SOL \(RektBull's fee: 0\.0099 SOL\)/);
+
+  // Cancelling the last buy closes the order, revokes the approval and unwraps the SOL.
+  const lb2 = await orders.prepare(account, { kind: 'limit_buy', token: TOKEN, spend_sol: 0.5 });
+  put(lb2.order.order_address, orderFromPlace(decodeTx(lb2.solana.transaction).ixs.find(i => i.program === PROGRAM)), PROGRAM);
+  await orders.confirm(account, lb2.order.id);
+  const c2 = await orders.cancel(account, lb2.order.id);
+  assert.deepEqual([c2.revokes_approval, c2.unwraps_sol], [true, true]);
+  const c2ixs = decodeTx(c2.solana.transaction).ixs;
+  assert.deepEqual(c2ixs.map(i => [i.program, i.data[0]]).slice(1), [[op.P.token, 5], [op.P.token, 9]], 'Revoke, then CloseAccount');
+  assert.deepEqual([c2ixs[2].accounts[0], c2ixs[2].accounts[1]], [wsol, user.address], 'the wrapped SOL back to the user as SOL');
 });
