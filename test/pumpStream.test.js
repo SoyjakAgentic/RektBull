@@ -51,6 +51,7 @@ test('pump.fun\'s events, read with its IDL\'s layouts; later fields it adds don
   assert.deepEqual([c.type, c.name, c.symbol, c.mint, c.bonding_curve, c.creator, c.timestamp, c.quote_mint], ['create', 'Bull Coin', 'BULL', MINT, CURVE, USER, T, SOL]);
   const t = ps.decodeEvent(tradeEvent());
   assert.deepEqual([t.type, t.mint, t.is_buy, t.real_token_reserves, t.real_sol_reserves, t.quote_mint], ['trade', MINT, true, 400000000000000n, 42000000000n, SOL], 'read past the shareholders list to quote_mint');
+  assert.deepEqual([t.fee, t.creator, t.creator_fee], [9500000n, USER, 3000000n], 'pump.fun\'s fee, the coin\'s creator and the creator\'s fee (for the wallet rankings)');
   const older = ps.decodeEvent(tradeEvent({ full: false }));
   assert.deepEqual([older.real_token_reserves, older.quote_mint], [400000000000000n, undefined], 'a shorter event still gives the reserves; no quote means SOL');
   assert.deepEqual(Object.values(ps.decodeEvent(completeEvent())).slice(0, 4), ['complete', USER, MINT, CURVE]);

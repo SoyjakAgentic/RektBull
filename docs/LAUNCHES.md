@@ -326,6 +326,10 @@ provider; switching is two settings.
     stream started watching the group.
   - **The fallback:** the 6-hour balance check carries on whatever the stream
     does, and covers any gap while it's down.
+- **Top wallets on pump.fun: built** (`src/services/walletRankings.js`,
+  [WALLET_TRACKER.md](WALLET_TRACKER.md#top-wallets-on-pumpfun-built-24-november-2026)).
+  Every curve trade on the stream feeds a ranking of wallets by realised profit,
+  by stated rules, with no extra filter or data.
 - **The Wallet Tracker on Solana: built** (`src/services/solanaTracker.js`,
   [WALLET_TRACKER.md](WALLET_TRACKER.md#solana-built-23-november-2026-with-the-yellowstone-stream)).
   Followed Solana wallets ride the same subscription, ahead of Meme Watch's

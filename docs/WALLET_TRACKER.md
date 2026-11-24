@@ -112,4 +112,54 @@ alerted, and its wallets aren't read unless someone else follows them. At most
 `followed_wallets` is the user's own (in "Download my data", deleted with
 "Delete my data"). `wallet_trades` are public onchain facts, stored without an
 account and deleted after 35 days (`src/privacy/retention.js`); they're kept that
-long for the next part of stage 3, wallets ranked by realised profit.
+long so a followed wallet's recent trades can be shown and checked. (The top
+wallets below come from the pump.fun stream instead: they're found among
+everyone, not just wallets someone already follows.)
+
+## Top wallets on pump.fun (built 24 November 2026)
+
+Asked for by the owner on 24 November 2026: wallets worth following, found by
+stated rules instead of brought by the user. `src/services/walletRankings.js`,
+the "Top wallets on pump.fun" card on `/launches`, `GET /v1/wallet-tracker/top?window=7d|30d`.
+
+**The source:** every buy and sell on pump.fun's bonding curves, from the
+Yellowstone stream RektBull already reads for the launch feed
+([LAUNCHES.md](LAUNCHES.md)). It needs no extra data plan, and it is empty until
+the stream is switched on. Each trade event gives:
+- the wallet and the coin;
+- the SOL and tokens moved;
+- pump.fun's fee and the creator's fee;
+- the coin's creator.
+
+**The rules** (shown with the ranking):
+- **Realised profit only:** the SOL a wallet got back from selling a coin, less
+  what that part cost at its average cost, after pump.fun's and the creator's
+  fees. Coins still held don't count.
+- **Only what RektBull saw:** trades on the curve while the stream ran. A coin
+  bought before, or sold after it moved to PumpSwap, isn't counted. PumpSwap
+  isn't on the stream: adding it would be one more filter, but much more data.
+- **A coin counts as closed** once 99% of what was bought is sold: a win if
+  the position made money. A position still open after 7 days is dropped.
+- **Left out:**
+  - a coin's creator trading it;
+  - positions that started with a buy under 0.05 SOL;
+  - buys within 2 seconds of a coin's creation (snipes, counted apart).
+- **Ranked:** wallets with at least 5 coins closed in the window and a profit,
+  by realised SOL. Each shows its return, coins and win rate, its best coin
+  and its share of the total, and when it was last active.
+- **Not ranked:** a wallet with over 500 trades in any day (a bot), or with
+  more snipes than counted coins.
+
+**Kept:**
+- Per wallet and UTC day, the sums in `wallet_pnl_daily`, written once a minute
+  by the worker that streams. These are public onchain facts, not tied to an
+  account, deleted after 35 days.
+- Open positions stay in that worker's memory: at most 400,000, the least
+  recently traded dropped first. A restart starts them afresh, so sales of coins
+  bought before it aren't counted.
+
+**Follow** fills in the Wallet Tracker's form for the wallet, so the user gets
+an alert within seconds of its next trade. Past profit says nothing sure about
+the next trade: copying a wallet buys after it, at a worse price, and some
+wallets trade to be copied. The card says so.
+
