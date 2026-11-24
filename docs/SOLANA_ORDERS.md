@@ -314,6 +314,55 @@ code:
 - the fill's accounts, confirmed from `Filled`, the user told what they bought;
 - cancelling, which revokes and unwraps.
 
+### Direct curve fills (built 24 November 2026)
+
+Asked for by the owner on 24 November 2026. While a coin is on a SOL-priced
+pump.fun curve, fills go straight to it (`src/trade/pumpCurve.js`):
+- a sale with pump.fun's `sell_v3`, its own minimum set so the user keeps their
+  floor after the 1%;
+- a buy with `buy_exact_quote_in_v3`. The program unwraps the SOL for the curve
+  and takes the 1% in SOL. pump.fun is offered 99% of the part, less 0.001 SOL
+  of headroom for the small fixed amount it takes from the trader;
+- transit is the trader. Jupiter isn't in the path, so its keyless limit (one
+  request every two seconds) doesn't hold fills back when many orders fire at
+  once, as on a rug. Fills also need fewer accounts: no lookup tables, 1,080
+  bytes for a buy and 1,037 for a sale.
+
+**The accounts** are pump.fun's published IDL's (`idl/pump.json`, read 24
+November 2026), in its order, and derived as it says:
+- the Global account, the coin's curve and its token accounts;
+- the fee program's config;
+- the event authority;
+- transit's volume account (the user's one-time setup).
+
+All of them matched a live mainnet trade. The buyback fee recipient isn't
+derived: it is one of the eight in Global's `buyback_fee_recipients`, read from
+the chain (kept 10 minutes) and picked at random.
+
+**Pricing** is the simulation's: the whole fill runs first. A floor the curve
+can't meet fails there, on pump.fun's own slippage check (`TooLittleSolReceived`)
+or the program's (`BelowLimit`). Nothing is sent, and the user is told "about"
+what the curve would give. A direct fill that fails for any other reason falls
+back to Jupiter in the same attempt. So does a coin whose curve has completed
+(moved to PumpSwap), or one priced in something other than SOL.
+
+**Tested against pump.fun's real program** (`tests/pump_js.rs`, by hand:
+`python3 -I scripts/pump_fixtures.py && node scripts/pump_js_fixture.js`, then
+`cargo test -p rektbull-orders --test pump_js -- --ignored`). With a curve
+copied from mainnet on 24 November 2026, the service's own code built:
+- the one-time setup: transit's volume account, paid by the user;
+- a 0.1 SOL limit buy filled straight on the curve: 913,531,011,902 units to
+  the user, 995,482 lamports to the fee wallet;
+- a stop-loss filled straight on the curve: 50,127,273 lamports to the user,
+  484,260 to the fee wallet;
+- a floor of 50 SOL, refused by pump.fun's `TooLittleSolReceived`.
+
+Transit was left with nothing after each. `test/pumpDirect.test.js` checks:
+- the addresses against mainnet's;
+- the data layouts;
+- the service's routing: direct; below the floor, nothing sent; Jupiter on
+  another failure or a completed curve.
+
 ### Exits with a buy (built 24 November 2026)
 
 Asked for by the owner on 24 November 2026: on the Trade desk, a Solana buy
@@ -560,5 +609,4 @@ version is a choice to make at deployment.
    The trade service is in the repository for the auditors to read; it isn't
    trusted by the program.
 2. **Then, in the service:**
-   - direct pump.fun curve fills, with headroom sized from a simulation
-     (Jupiter routes pump.fun coins today).
+
