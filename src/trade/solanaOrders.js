@@ -189,23 +189,24 @@ const net = gross => gross - op.feeOf(gross);
 
 /**
  * The order's terms from what the user asked: { triggerOut, minOut, said }.
- * Amounts in lamports for all of the order; minOut is after RektBull's 1%.
+ * Amounts in lamports for all of the order; minOut is after RektBull's 1%
+ * (or after `netOf`, for orders on BNB Chain and Base: trade/memeOrders.js).
  */
-function terms(kind, refOut, body, settings) {
+function terms(kind, refOut, body, settings, netOf = net) {
   if (kind === 'stop_loss') {
     const stop = num(body.stop_pct, 1, 95, settings.stop_loss_pct, 'stop_pct');
     const floor = num(body.floor_pct, 2, 99, Math.min(99, stop + 15), 'floor_pct');
     if (floor <= stop) throw refuse('Your floor must be below your stop: floor_pct more than stop_pct.', 400);
-    return { triggerOut: pctOf(refOut, 100 - stop), minOut: net(pctOf(refOut, 100 - floor)), said: { stop_pct: stop, floor_pct: floor } };
+    return { triggerOut: pctOf(refOut, 100 - stop), minOut: netOf(pctOf(refOut, 100 - floor)), said: { stop_pct: stop, floor_pct: floor } };
   }
   if (kind === 'take_profit') {
     const take = num(body.take_pct, 1, 10000, settings.take_profit_pct, 'take_pct');
     const slip = num(body.slippage_pct, 0.5, 20, 3, 'slippage_pct');
     const trigger = pctOf(refOut, 100 + take);
-    return { triggerOut: trigger, minOut: net(pctOf(trigger, 100 - slip)), said: { take_pct: take, slippage_pct: slip } };
+    return { triggerOut: trigger, minOut: netOf(pctOf(trigger, 100 - slip)), said: { take_pct: take, slippage_pct: slip } };
   }
   const floor = num(body.floor_pct, 1, 99, 50, 'floor_pct');
-  return { triggerOut: null, minOut: net(pctOf(refOut, 100 - floor)), said: { floor_pct: floor } };
+  return { triggerOut: null, minOut: netOf(pctOf(refOut, 100 - floor)), said: { floor_pct: floor } };
 }
 
 /** The worst case, in plain words, shown before the user signs. */

@@ -3,8 +3,9 @@
 *Status: the contract and its break-it tests are built
 (`contracts/contracts/RektBullMemeRouter.sol`, tests in
 `contracts/test/memeRouter.test.js` and `memeRouterAudit.test.js`, plus the fuzz tests and Slither below), and checked against four.meme's real
-contracts on a copy of BNB Chain. **Not audited, not deployed, and the trade
-service doesn't use it yet.** Nothing may hold real funds through it until an
+contracts on a copy of BNB Chain. The trade service that fills its orders is
+built (below, `src/trade/memeOrders.js`), and off. **Not audited and not
+deployed.** Nothing may hold real funds through it until an
 external audit is done and every finding is fixed or explicitly accepted.*
 
 ## Why a second router
@@ -180,18 +181,105 @@ trader):
 - These are not an audit. They catch the common and mechanical bugs so the
   auditor's time goes to the design.
 
+## The trade service (built 24 November 2026)
+
+Asked for by the owner on 24 November 2026 ("start BNB Chain and Base
+orders"), after the same service on Solana (docs/SOLANA_ORDERS.md). Off until
+the router is audited and deployed: `MEME_ORDERS_ENABLED`, `MEME_ROUTERS` (JSON,
+`{"base":"0x…","bsc":"0x…"}`) and `MEME_ORDERS_EXECUTOR`, the executor's public
+address. Its key is a secp256k1 key in Cloud KMS (`KMS_MEME_EXECUTOR_KEY_VERSION`),
+used only by the trade service. It is its own key, not the session key, and
+there is no stand-in key: these orders exist only on mainnets, and the tests
+inject a signer. It pays every fill's network fee, so the owner keeps it
+funded with a little ETH on Base and BNB on BNB Chain.
+
+**The orders** (the Trade desk's "Orders on BNB Chain and Base" card,
+`public/evm-orders.js`; `/v1/evm/orders`):
+
+| Order | Order fields | Fires | Trades at |
+|---|---|---|---|
+| Stop-loss | the coin in, `0xEeee…` (ETH, BNB) out | The coins' value falls by the user's amount (DexScreener, the native coin from DefiLlama) | The market, never below the floor |
+| Take-profit | the same | It rises by the user's amount | The target less the slippage, or better |
+| Meme Watch exit | the same | Meme Watch raises a critical alert for the coin (its check in `myAgents`) | The market, never below the floor |
+| Limit buy | WETH or WBNB in, the coin out | The coin's price falls by the user's amount | The limit less the slippage, or more coins |
+
+The terms are worked out as on Solana (`solanaOrders.terms`, with the router's
+own `FEE_BPS`). Each order is at most 30 days, and at least $5: RektBull
+pays each fill's network fee out of its 1%.
+
+**Placing** is a signature, nothing else: no transaction and no deposit.
+1. The checks: the coin's balance, or for a buy the Trade desk's buy checks
+   (the per-trade amount, the token check, the bundle check, selling straight
+   back). A coin that taxes transfers (0x reports it) is refused, since the
+   router's fill must trade exactly what it pulls.
+2. The price now: four.meme's helper contract for a coin still on its BNB
+   curve, otherwise 0x's price (with no 0x fee: the router takes the 1%).
+3. The order: the account's current epoch, a random 256-bit salt, and the
+   executor. The router's own `hashOrder` is called on it before the user is
+   asked to sign, so a layout that drifted from the contract's is caught here.
+4. The worst case in plain words, as on Solana, then `eth_signTypedData_v4`.
+
+**Signing** (`POST /v1/evm/orders/:id/sign`): the signature is checked as the
+router checks it, the key's own first, then EIP-1271 for a contract wallet,
+and the epoch must still be the one signed. The order is then open, and the
+user's wallet is given the calls it still needs, sized to every live order on
+the same input (an approval replaces the one before it):
+- for a buy, wrapping the native coin into WETH or WBNB, when the wallet holds
+  too little of it;
+- `approve(router, what the live orders still trade)`, when the allowance is
+  short.
+
+**Filling** (the trade service's pass, one sender at a time under a Postgres
+advisory lock, so the executor's nonces never collide):
+1. The size: what's left of the order, capped by the user's balance and
+   allowance. For a coin on a four.meme curve, a sale is rounded down to
+   four.meme's sell unit (10^9).
+2. For a buy, the token check runs again.
+3. The route, with the router as the trader:
+   - a coin on its four.meme curve, priced in BNB, on BNB Chain:
+     TokenManager2 itself. A buy is `buyTokenAMAP(token, 99%, the user's
+     limit)` paid in BNB the router unwraps (`unwrapIn`). A sale is
+     `sellToken(0, token, amount, the floor grossed up for the fee)`;
+   - anything else: 0x's quote, with the router as taker. It must name
+     AllowanceHolder, send no native coin, and quote exactly the amount the
+     router passes on: all of a sale (the fee is on the output), or 99% of a
+     buy (the fee is on the input). The quote's own minimum, net of the fee,
+     goes in as the executor's `minAmountOut`, on top of the user's price.
+4. Nothing is sent when the quote is under the user's price for this part.
+5. The whole fill runs as a call first (`eth_call` from the executor). A
+   `BelowLimit` from the router tells the user it can't fill at their price;
+   any other failure waits and tries again.
+6. Signed by the KMS key (logged to `key_signatures` first), recorded, then
+   broadcast. The receipt's `Filled` event confirms what reached the user and
+   the fee; the user is told.
+
+**Cancelling** is the user's own call to the router, never blocked:
+`cancel(order)`, with the router's approval revoked when it was the last live
+order on that input; or "Cancel every order on this chain", `cancelAll()` (a
+new epoch) with every approval revoked. The order is then read back from the
+router: `cancelled`, `epochOf` and `filled` are read for every live order once
+a minute, so a cancel or a fill made anywhere else is seen too.
+
+**Tests:** `test/memeOrders.test.js` runs the whole path on the real database
+against a stand-in chain, 0x and four.meme: placed, signed (another key
+refused), approved, fired, filled through AllowanceHolder and on the four.meme
+curve, confirmed. It also covers below the floor (by the quote, and by the
+router's `BelowLimit`), Meme Watch exits, the emergency stop, and cancelling
+one order or all of them. `contracts/test/memeOrdersService.test.js` runs the
+service's own order, hash, signature, fill, approval, cancel, cancel-all,
+wrap and `Filled` decoding against the router itself.
+
+**Not yet:** coins on a Virtuals curve on Base (0x can't route them; the
+router has no Virtuals venue until the check on a copy of Base below), and
+exits placed in the same step as a buy on the Trade desk, as on Solana.
+
 ## What's next
 
 1. **The audit.** Add `RektBullMemeRouter.sol` to `docs/AUDIT_BRIEF.md`'s
    scope, ideally in one engagement with the Trade Router (about 190 lines of
    code).
-2. **The trade service.**
-   - An `orders` table, and an order screen showing the worst case in plain
-     words before the user signs.
-   - The approval to the router, for exactly the amount being sold.
-   - A watcher that fills take-profits, stop-losses and Meme Watch exits
-     through the KMS trade key, simulating each fill first.
-   - The 1% covers the gas RektBull pays, as on the Trade Router.
+2. **The trade service**: built (above). At launch: the executor's KMS key,
+   funded with a little ETH and BNB, and migration 041.
 3. **A Virtuals check on a copy of Base**, like the four.meme one.
 4. **Deployment** from the owner's hardware wallet, per chain, with the
    pre-flight and verify steps of `docs/ROUTER_DEPLOYMENT.md`.

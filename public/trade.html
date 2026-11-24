@@ -105,6 +105,39 @@
       <table><thead><tr><th>Order</th><th>What</th><th>Fires at</th><th>Your price</th><th>Status</th><th></th></tr></thead><tbody id="so-list"></tbody></table>
     </section>
 
+    <section class="card" id="evm-orders-card" hidden>
+      <h2>Orders on BNB Chain and Base <span class="tag">limit buy · stop-loss · take-profit · Meme Watch exit</span></h2>
+      <p class="muted">Your wallet signs the order (a signature, nothing is sent) and approves RektBull's Meme Router for only what your orders trade: the coins they sell, or for a limit buy, the WETH or WBNB they spend, in your own wallet. The router then lets RektBull trade them for you when the order fires: at your price or better, before its end date, with what they bring going only to your wallet, in the same transaction. Nothing else of yours can be touched, and nobody holds your coins. RektBull's fee is 1% of what a fill brings or spends, and RektBull pays the network fee; nothing if it never fills.</p>
+      <p id="eo-off" class="msg bad" hidden></p>
+      <div id="eo-form">
+        <div class="grid">
+          <label>Chain<select id="eo-chain"><option value="bsc">BNB Chain</option><option value="base">Base</option></select></label>
+          <label class="wide-input">Coin (its contract address)<input id="eo-token" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+          <label>Order<select id="eo-kind">
+            <option value="stop_loss">Stop-loss: sell if it falls</option>
+            <option value="take_profit">Take-profit: sell if it rises</option>
+            <option value="meme_watch_exit">Meme Watch exit: sell on a critical alert</option>
+            <option value="limit_buy">Limit buy: buy if it falls</option>
+          </select></label>
+          <label id="eo-share-wrap">Share of your holding (%)<input id="eo-share" type="number" min="1" max="100" step="1" value="100"></label>
+          <label id="eo-spend-wrap" hidden><span id="eo-spend-label">BNB to spend</span><input id="eo-spend" type="number" min="0.001" step="0.001" value="0.05"></label>
+          <label id="eo-dip-wrap" hidden>Buy if its price falls by (%)<input id="eo-dip" type="number" min="1" max="95" step="1" value="20"></label>
+          <label id="eo-stop-wrap">Sell if its value falls by (%)<input id="eo-stop" type="number" min="1" max="95" step="1" value="20"></label>
+          <label id="eo-take-wrap" hidden>Sell if its value rises by (%)<input id="eo-take" type="number" min="1" max="10000" step="1" value="50"></label>
+          <label id="eo-floor-wrap">But never for less than: down (%)<input id="eo-floor" type="number" min="1" max="99" step="1" value="35"></label>
+          <label id="eo-slip-wrap" hidden>Slippage (%)<input id="eo-slip" type="number" min="0.5" max="20" step="0.5" value="3"></label>
+          <label>Ends after (days)<input id="eo-days" type="number" min="1" max="30" step="1" value="30"></label>
+        </div>
+        <p id="eo-explain" class="small muted"></p>
+        <button id="eo-prepare">Show the worst case first</button>
+      </div>
+      <div id="eo-plan" class="worst" hidden></div>
+      <button id="eo-sign" class="primary" hidden>Sign it in my wallet</button>
+      <p id="eo-msg" class="msg"></p>
+      <table><thead><tr><th>Order</th><th>What</th><th>Fires at</th><th>Your price</th><th>Status</th><th></th></tr></thead><tbody id="eo-list"></tbody></table>
+      <p class="small"><button class="link" id="eo-cancel-all">Cancel every order on this chain</button> (one call to the router from your wallet, and your approvals revoked)</p>
+    </section>
+
     <section class="card" id="history-card" hidden>
       <h2>Your trades</h2>
       <table><thead><tr><th>When</th><th>Trade</th><th>Status</th></tr></thead><tbody id="history"></tbody></table>
@@ -204,5 +237,6 @@
   <script src="/common.js"></script>
   <script src="/trade.js"></script>
   <script src="/solana-orders.js"></script>
+  <script src="/evm-orders.js"></script>
 </body>
 </html>

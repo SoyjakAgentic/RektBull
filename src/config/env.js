@@ -83,6 +83,15 @@ const env = {
   kmsSolanaExecutorKeyVersion: process.env.KMS_SOLANA_EXECUTOR_KEY_VERSION || '',
   // Devnet or a local validator only, never mainnet or production: a throwaway seed instead of KMS.
   devSolanaExecutorKey: process.env.DEV_SOLANA_EXECUTOR_KEY || '',
+  // Orders on BNB Chain and Base (src/trade/memeOrders.js, docs/MEME_ROUTER.md): limit buys, stop-losses,
+  // take-profits and Meme Watch exits the user signs, filled through the Meme Router. Off until it's audited and
+  // deployed. MEME_ROUTERS is JSON, chain to router address ({"base":"0x…","bsc":"0x…"}). The executor's PUBLIC
+  // address is what users' orders name; its private key is in KMS (secp256k1), used only by the trade service.
+  memeOrdersEnabled: process.env.MEME_ORDERS_ENABLED === 'true',
+  memeRouters: (() => { try { return JSON.parse(process.env.MEME_ROUTERS || '{}'); } catch { return {}; } })(),
+  memeOrdersExecutor: (process.env.MEME_ORDERS_EXECUTOR || '').trim().toLowerCase(),
+  // KMS only: these orders run on mainnets, so there is no stand-in key (tests inject a signer).
+  kmsMemeExecutorKeyVersion: process.env.KMS_MEME_EXECUTOR_KEY_VERSION || '',
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
   sessionKeyAddress: (process.env.SESSION_KEY_ADDRESS || '').toLowerCase(),
   kmsSessionKeyVersion: process.env.KMS_SESSION_KEY_VERSION || '',

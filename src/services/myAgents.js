@@ -429,10 +429,13 @@ const RUNNERS = {
         notChecked.push(`${name()}: ${err.message}`);
       }
     }
-    // A critical alert on a Solana coin (liquidity pulled, launch-bundle wallets selling) fires Meme Watch exits on it.
-    for (const a of alerts.filter(x => x.severity === 'critical' && x.detail?.token?.chain === 'solana')) {
-      await require('../trade/solanaOrders').memeWatchSignal(a.detail.token.token, { source: 'Meme Watch (its 6-hour check)', alert: a.title })
-        .catch(err => logger.warn('meme watch: exits not fired', { error: err.message }));
+    // A critical alert on a coin (liquidity pulled, launch-bundle wallets selling) fires Meme Watch exits on it:
+    // the order program's on Solana, the Meme Router's on BNB Chain and Base.
+    for (const a of alerts.filter(x => x.severity === 'critical' && x.detail?.token?.chain)) {
+      const { chain, token } = a.detail.token;
+      const fire = chain === 'solana' ? require('../trade/solanaOrders').memeWatchSignal(token, { source: 'Meme Watch (its 6-hour check)', alert: a.title })
+        : require('../trade/memeOrders').memeWatchSignal(chain, token, { source: 'Meme Watch (its 6-hour check)', alert: a.title });
+      await fire.catch(err => logger.warn('meme watch: exits not fired', { error: err.message }));
     }
     return {
       alerts, snapshot: { positions: now },

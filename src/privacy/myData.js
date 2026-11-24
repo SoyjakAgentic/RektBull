@@ -30,6 +30,7 @@ const TABLES = {
   trade_permissions: 'SELECT id, wallet, chain_id, wallet_type, router, delegate, expires_at, status, created_at, revoked_at FROM trade_permissions WHERE account_id = $1',
   trade_intents: 'SELECT * FROM trade_intents WHERE account_id = $1 ORDER BY created_at',
   solana_orders: 'SELECT o.*, (SELECT json_agg(f ORDER BY f.created_at) FROM solana_order_fills f WHERE f.order_id = o.id) AS fills FROM solana_orders o WHERE account_id = $1 ORDER BY created_at',
+  evm_orders: 'SELECT o.*, (SELECT json_agg(f ORDER BY f.created_at) FROM meme_order_fills f WHERE f.order_id = o.id) AS fills FROM meme_orders o WHERE account_id = $1 ORDER BY created_at',
   monitored_wallets: 'SELECT wallet, label, created_at, last_checked_at FROM monitored_wallets WHERE account_id = $1',
   followed_wallets: 'SELECT address, family, label, created_at FROM followed_wallets WHERE account_id = $1 ORDER BY created_at',
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
@@ -67,6 +68,8 @@ async function deleteMine(account, { confirm } = {}) {
   if (yieldActive[0].n) throw new DataRefused('Stop automatic yield rebalancing first, so no permission is left running.', 409);
   const { rows: solOrders } = await db.query(`SELECT count(*)::int AS n FROM solana_orders WHERE account_id = $1 AND state IN ('open', 'triggered')`, [account.id]);
   if (solOrders[0].n) throw new DataRefused('Cancel your Solana orders first (on the Trade page), so none is left for RektBull to fill.', 409);
+  const { rows: evmOrders } = await db.query(`SELECT count(*)::int AS n FROM meme_orders WHERE account_id = $1 AND state IN ('open', 'triggered')`, [account.id]);
+  if (evmOrders[0].n) throw new DataRefused('Cancel your orders on BNB Chain and Base first (on the Trade page), so none is left for RektBull to fill.', 409);
   return db.tx(async c => {
     const removed = {};
     const run = async (name, sql) => { removed[name] = (await c.query(sql, [account.id])).rowCount; };
@@ -81,6 +84,7 @@ async function deleteMine(account, { confirm } = {}) {
     require('../auth/extensionTokens').forget(links.map(l => l.jti)); // stop them working at once
     await run('trade_settings', 'DELETE FROM trade_settings WHERE account_id = $1');
     await run('solana_orders', 'DELETE FROM solana_orders WHERE account_id = $1'); // with their fills
+    await run('evm_orders', 'DELETE FROM meme_orders WHERE account_id = $1'); // with their fills
     await run('governance_spaces', 'DELETE FROM governance_spaces WHERE account_id = $1');
     await run('governance_governors', 'DELETE FROM governance_governors WHERE account_id = $1');
     await run('governance_votes', 'DELETE FROM governance_votes WHERE account_id = $1'); // the votes themselves are public on Snapshot
