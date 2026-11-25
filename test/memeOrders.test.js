@@ -30,6 +30,8 @@ const BULL = '0x' + 'b0'.repeat(20); // a meme coin on Base
 const FOUR = '0x' + 'f4'.repeat(20); // a coin on its four.meme curve
 const FEE_WALLET = '0x' + 'fe'.repeat(20);
 const net = x => x - x / 100n;
+const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11';
+const MC = new ethers.Interface(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
 
 test('off until set up: a plain reason, and nothing runs', async () => {
   const saved = { ...env };
@@ -55,7 +57,7 @@ function standIn() {
     allowances: new Map(), // `${token}:${owner}:${spender}` -> amount
     native: new Map(),
     epoch: new Map(), cancelled: new Set(), filled: new Map(),
-    receipts: new Map(), sent: [],
+    receipts: new Map(), sent: [], calls: [],
     onFill: null, // (order, fill) => throws a revert, or returns
   };
   const routers = { [ROUTER_BASE]: { chainId: 8453, wrapped: WETH, venues: [AH] }, [ROUTER_BSC]: { chainId: 56, wrapped: WBNB, venues: [AH, TM2] } };
@@ -66,7 +68,22 @@ function standIn() {
     getFeeData: async () => ({ maxFeePerGas: 1_000_000_000n, gasPrice: 1_000_000_000n }),
     getTransactionReceipt: async h => s.receipts.get(h) || null,
     broadcastTransaction: async raw => { s.sent.push({ chainId, raw }); },
+    // Every eth_call the service makes, recorded; Multicall3's batch answered call by call, as the contract does.
     async call({ to, data }) {
+      s.calls.push({ to: to.toLowerCase() });
+      if (to.toLowerCase() === MULTICALL3) {
+        const [calls] = MC.decodeFunctionData('aggregate3', data);
+        const results = [];
+        for (const c of calls) {
+          try { results.push([true, await answer(c.target, c.callData)]); } catch { if (!c.allowFailure) throw new Error('reverted'); results.push([false, '0x']); }
+        }
+        return MC.encodeFunctionResult('aggregate3', [results]);
+      }
+      return answer(to, data);
+    },
+  });
+  const answer = async (to, data) => {
+    {
       to = to.toLowerCase();
       if (routers[to]) {
         const r = routers[to];
@@ -102,8 +119,8 @@ function standIn() {
         }
       }
       throw new Error(`unexpected call to ${to}`);
-    },
-  });
+    }
+  };
   s.hold = (token, owner, amount) => { if (!s.tokens.has(token)) s.tokens.set(token, new Map()); s.tokens.get(token).set(owner.toLowerCase(), amount); };
   s.approve = (token, owner, spender, amount) => s.allowances.set(`${token}:${owner.toLowerCase()}:${spender.toLowerCase()}`, amount);
   s.revert = revert;
@@ -300,6 +317,13 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   assert.equal(c1.revokes_approval, false);
   assert.equal(tx.ROUTER.parseTransaction({ data: c1.calls[0].data }).name, 'cancel');
   chain.cancelled.add(mw.order.order_hash);
+  // The once-a-minute read-back sees it: one Multicall3 call for every live order on the chain, not three an order.
+  chain.calls.length = 0;
+  await orders._reconcile({ force: true });
+  assert.deepEqual(chain.calls.map(c => c.to), [MULTICALL3], 'one call for every live order');
+  const after = (await orders.list(account)).orders;
+  assert.equal(after.find(o => o.id === mw.order.id).state, 'cancelled');
+  assert.equal(after.find(o => o.id === tp.order.id).state, 'triggered', 'the other order is untouched');
   assert.equal((await orders.refresh(account, mw.order.id)).state, 'cancelled');
   const c2 = await orders.cancel(account, tp.order.id);
   assert.equal(c2.revokes_approval, true, 'the last order on the coin: its approval revoked');

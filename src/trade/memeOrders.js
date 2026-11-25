@@ -67,6 +67,10 @@ const PREPARED_TTL_MS = 30 * 60_000; // a prepared order never signed is forgott
 const NOT_SEEN_MS = 30 * 60_000; // a sent fill with no receipt after this is failed
 const LOCK_ID = 727002; // pg advisory lock: one sender at a time for the executor's nonces
 const EIP1271 = new ethers.Interface(['function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)']);
+// Multicall3, at the same address on Base and BNB Chain: many view calls in one eth_call (the once-a-minute read-back).
+const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11';
+const MC = new ethers.Interface(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
+const MULTICALL_CHUNK = 300; // tiny view calls: about 3,000 gas each, so 300 stay far under any node's eth_call gas cap
 
 const addr = a => /^0x[0-9a-f]{40}$/.test(String(a || '').toLowerCase());
 const whole = (raw, decimals) => Number(ethers.formatUnits(BigInt(raw), decimals)); // exact digits first: 18 decimals overflow a float's
@@ -107,6 +111,22 @@ async function read(chain, to, iface, fn, args = []) {
 }
 const ROUTER = tx.ROUTER;
 const ERC20 = tx.ERC20;
+
+/** Many view calls [{ target, iface, fn, args }] in one eth_call per MULTICALL_CHUNK (Multicall3): each { ok, value }. */
+async function readMany(chain, calls) {
+  const out = [];
+  for (let i = 0; i < calls.length; i += MULTICALL_CHUNK) {
+    const part = calls.slice(i, i + MULTICALL_CHUNK);
+    const data = MC.encodeFunctionData('aggregate3', [part.map(c => ({ target: c.target, allowFailure: true, callData: c.iface.encodeFunctionData(c.fn, c.args) }))]);
+    const [results] = MC.decodeFunctionResult('aggregate3', await provider(chain).call({ to: MULTICALL3, data }));
+    results.forEach((r, j) => {
+      const c = part[j];
+      if (!r.success || r.returnData === '0x') return out.push({ ok: false });
+      try { out.push({ ok: true, value: c.iface.decodeFunctionResult(c.fn, r.returnData)[0] }); } catch { out.push({ ok: false }); }
+    });
+  }
+  return out;
+}
 
 /**
  * The router as deployed, kept 10 minutes: code at the address, a fee of at
@@ -461,15 +481,20 @@ async function refresh(account, id) {
 
 /** The order read back from the router: cancelled (one or all), filled, or as it was. */
 async function settle(row) {
-  const o = tx.fromJson(row.order_json);
   const [cancelled, epoch, filled] = await Promise.all([
     read(row.chain, row.router, ROUTER, 'cancelled', [row.order_hash]),
     read(row.chain, row.router, ROUTER, 'epochOf', [row.owner]).then(BigInt),
     read(row.chain, row.router, ROUTER, 'filled', [row.order_hash]).then(BigInt),
   ]);
   const { rows: [pending] } = await db.query(`SELECT count(*)::int AS n FROM meme_order_fills WHERE order_id = $1 AND state = 'sent'`, [row.id]);
+  return settleWith(row, { cancelled, epoch, filled }, pending.n > 0);
+}
+
+/** An order's state from what the router says ({ cancelled, epoch, filled }); a fill still in flight is confirmed first. */
+async function settleWith(row, { cancelled, epoch, filled }, inFlight) {
+  const o = tx.fromJson(row.order_json);
   let state = row.state;
-  if (filled >= BigInt(row.amount_in) && !pending.n) state = 'filled';
+  if (filled >= BigInt(row.amount_in) && !inFlight) state = 'filled';
   else if (cancelled || epoch !== o.epoch) state = 'cancelled';
   if (state === row.state && filled === BigInt(row.filled_in)) return row;
   const { rows: [done] } = await db.query('UPDATE meme_orders SET state = $2, filled_in = $3, updated_at = now() WHERE id = $1 RETURNING *', [row.id, state, filled.toString()]);
@@ -548,7 +573,7 @@ async function alert(row, severity, id, title, text, source = 'RektBull\'s order
 /**
  * Prepared orders never signed forgotten, ended orders marked (every pass),
  * and live orders read back from the routers, cancelled or filled from the
- * user's own wallet or elsewhere (once a minute: three calls an order).
+ * user's own wallet or elsewhere (once a minute, batched through Multicall3).
  */
 let lastReadBack = 0;
 async function reconcile({ force = false } = {}) {
@@ -561,10 +586,35 @@ async function reconcile({ force = false } = {}) {
   }
   if (!force && Date.now() - lastReadBack < 60_000) return;
   lastReadBack = Date.now();
-  const { rows } = await db.query(`SELECT * FROM meme_orders WHERE state IN ('open', 'triggered') ORDER BY id LIMIT 500`);
-  for (const row of rows) {
-    if (!config().routers?.[row.chain]) continue;
-    await settle(row).catch(err => logger.warn('meme orders: order not read back', { order: row.id, error: err.message }));
+  const routers = config().routers || {};
+  const { rows } = await db.query(`SELECT * FROM meme_orders WHERE state IN ('open', 'triggered') ORDER BY id LIMIT 2000`);
+  const live = rows.filter(r => routers[r.chain]);
+  if (!live.length) return;
+  const { rows: sent } = await db.query(`SELECT DISTINCT order_id FROM meme_order_fills WHERE state = 'sent' AND order_id = ANY($1::bigint[])`, [live.map(r => r.id)]);
+  const inFlight = new Set(sent.map(r => String(r.order_id)));
+  // One Multicall3 call per chain for up to about 100 orders (cancelled and filled for each, epochOf once per wallet),
+  // instead of three calls an order: the read-back runs before the pass's fills, so this keeps them from waiting.
+  for (const chain of [...new Set(live.map(r => r.chain))]) {
+    const mine = live.filter(r => r.chain === chain);
+    const owners = [...new Set(mine.map(r => `${r.router}|${r.owner}`))];
+    let got;
+    try {
+      got = await readMany(chain, [
+        ...owners.map(k => { const [router, owner] = k.split('|'); return { target: router, iface: ROUTER, fn: 'epochOf', args: [owner] }; }),
+        ...mine.flatMap(r => [{ target: r.router, iface: ROUTER, fn: 'cancelled', args: [r.order_hash] }, { target: r.router, iface: ROUTER, fn: 'filled', args: [r.order_hash] }]),
+      ]);
+    } catch (err) {
+      logger.warn('meme orders: orders not read back', { chain, orders: mine.length, error: err.message });
+      continue;
+    }
+    const epochs = new Map(owners.map((k, i) => [k, got[i]]));
+    for (const [i, row] of mine.entries()) {
+      const epoch = epochs.get(`${row.router}|${row.owner}`);
+      const [cancelled, filled] = [got[owners.length + 2 * i], got[owners.length + 2 * i + 1]];
+      if (!epoch.ok || !cancelled.ok || !filled.ok) continue; // read again next minute
+      await settleWith(row, { cancelled: cancelled.value, epoch: BigInt(epoch.value), filled: BigInt(filled.value) }, inFlight.has(String(row.id)))
+        .catch(err => logger.warn('meme orders: order not read back', { order: row.id, error: err.message }));
+    }
   }
 }
 

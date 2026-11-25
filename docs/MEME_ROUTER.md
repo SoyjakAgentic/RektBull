@@ -258,7 +258,12 @@ advisory lock, so the executor's nonces never collide):
 order on that input; or "Cancel every order on this chain", `cancelAll()` (a
 new epoch) with every approval revoked. The order is then read back from the
 router: `cancelled`, `epochOf` and `filled` are read for every live order once
-a minute, so a cancel or a fill made anywhere else is seen too.
+a minute, so a cancel or a fill made anywhere else is seen too. They go in one
+Multicall3 call per chain for up to about 100 orders (`epochOf` once per wallet),
+not three calls an order: about 45,000 RPC requests a month per chain whatever
+the number of orders. That keeps the plan's allowance from growing with orders
+(at three an order, 50 open orders on a chain cost about 13 million a month),
+and keeps the pass's fills, which come after it, from waiting.
 
 **Tests:** `test/memeOrders.test.js` runs the whole path on the real database
 against a stand-in chain, 0x and four.meme: placed, signed (another key
