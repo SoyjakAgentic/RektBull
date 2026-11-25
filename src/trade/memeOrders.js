@@ -39,6 +39,7 @@ const env = require('../config/env');
 const db = require('../config/db');
 const logger = require('../config/logger');
 const privateSend = require('./privateSend');
+const exitRules = require('./exitRules');
 const { cached } = require('../lib/cache');
 const { rpcUrls } = require('../providers/chains');
 const { TRADE_CHAINS } = require('./chains');
@@ -309,7 +310,8 @@ function worstCaseBuy({ spend, minCoins, symbol, validUntil, c, q }) {
  * sized to every live order on the coin (sign()). Throws a refusal saying which
  * check failed.
  */
-async function prepare(account, body = {}) {
+async function prepare(account, body = {}, ladder = null) {
+  if (!ladder && String(body.kind || '') === 'take_profit' && body.steps !== undefined && body.steps !== null) return prepareSteps(account, body);
   const chain = String(body.chain || '').toLowerCase();
   if (!CHAINS[chain]) throw refuse('chain must be base or bsc.', 400);
   const cfg = await ready(chain);
@@ -390,6 +392,7 @@ async function prepare(account, body = {}) {
     checks.push({ check: 'route', ok: true, detail: `they would sell for ${nat(refOut)} ${q0.symbol} now ($${valueUsd})`, source: quoteSource(q.route) });
     order = { tokenIn: token, tokenOut: q0.out, amountIn };
     extra = { worst: worstCase({ kind, amountWhole: whole(amountIn, decimals), symbol, minOut: t.minOut, validUntil, q: q0 }) };
+    if (t.trailBps) extra.trail = exitRules.trailNote({ trailPct: t.said.trail_pct, start: nat(t.triggerOut), floor: nat(t.minOut), unit: q0.symbol });
   }
 
   const epoch = await read(chain, cfg.router, ROUTER, 'epochOf', [owner]);
@@ -400,16 +403,18 @@ async function prepare(account, body = {}) {
   checks.push({ check: 'order', ok: true, detail: 'the router hashes this order exactly as your wallet will sign it', source: `the Meme Router on ${c.label} (hashOrder)` });
 
   const { rows: [row] } = await db.query(
-    `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, spend_usd)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
+    `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, spend_usd, trail_bps, peak_out, ladder, step, steps)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING *`,
     [account.id, chain, c.chainId, cfg.router, owner, kind, token, symbol, decimals, o.tokenIn.toLowerCase(), o.tokenOut.toLowerCase(), o.amountIn.toString(), t.minOut.toString(),
-      t.triggerOut?.toString() ?? null, refOut.toString(), cfg.executor, new Date(validUntil), JSON.stringify(tx.toJson(o)), hash.toLowerCase(), extra.spendUsd ?? null]);
+      t.triggerOut?.toString() ?? null, refOut.toString(), cfg.executor, new Date(validUntil), JSON.stringify(tx.toJson(o)), hash.toLowerCase(), extra.spendUsd ?? null,
+      t.trailBps ?? null, t.trailBps ? refOut.toString() : null, ladder?.id ?? null, ladder?.step ?? null, ladder?.of ?? null]);
   const buy = kind === 'limit_buy';
   return {
     order: view(row),
     terms: t.said,
     worst_case: extra.worst,
     notes: [
+      ...(extra.trail ? [extra.trail] : []),
       buy ? (q0.virtual ? 'After you sign, your wallet approves the Meme Router for exactly the VIRTUAL your buys on Virtuals curve coins spend.'
         : `After you sign, your wallet wraps the ${c.native} it needs into ${c.wrappedName} (if it hasn't enough) and approves the Meme Router for exactly what your buys on ${c.label} spend.`)
         : `After you sign, your wallet approves the Meme Router for exactly what your orders on this coin sell (unless it already has).`,
@@ -424,6 +429,44 @@ async function prepare(account, body = {}) {
     checks,
     chain_id: ethers.toBeHex(c.chainId),
     typed_data: tx.typedData(c.chainId, cfg.router, o),
+  };
+}
+
+/**
+ * Take-profits in steps (exitRules.parseSteps): one router order a step, each its part of the share, prepared
+ * together. The wallet signs each (a signature only); once the last is signed, one approval covers them all
+ * (fundingCalls counts every live order on the coin). If a step can't be prepared, none is kept.
+ */
+async function prepareSteps(account, body) {
+  const steps = exitRules.parseSteps(body.steps);
+  const share = num(body.share_pct, 1, 100, 100, 'share_pct');
+  const id = crypto.randomBytes(8).toString('hex');
+  const out = [];
+  try {
+    for (const [i, s] of steps.entries()) {
+      const one = { ...body, steps: undefined, take_pct: s.take_pct, share_pct: share * s.part_pct / 100 };
+      out.push(await prepare(account, one, { id, step: i + 1, of: steps.length }).catch(err => { err.message = `Step ${i + 1}: ${err.message}`; throw err; }));
+    }
+  } catch (err) {
+    await db.query(`DELETE FROM meme_orders WHERE ladder = $1 AND state = 'prepared'`, [id]);
+    throw err;
+  }
+  const first = out[0];
+  const sym = first.order.symbol || 'coins';
+  return {
+    ladder: id,
+    steps: out.map((p, i) => ({ step: i + 1, part_pct: steps[i].part_pct, ...p.terms, order: p.order, typed_data: p.typed_data, worst_case: p.worst_case })),
+    orders: out.map(p => p.order),
+    worst_case: out.flatMap((p, i) => p.worst_case.slice(0, 1).map(x => `Step ${i + 1}. ${x}`)).concat(first.worst_case.slice(1)),
+    notes: [
+      `${out.length} take-profits on ${sym}, placed together: ${out.map((p, i) => `${p.order.amount_whole.toLocaleString('en-US')} ${sym} when their value is up ${steps[i].take_pct}% (step ${i + 1})`).join('; ')}. Your wallet signs each one (a signature only), then approves the router once for all of them. Each fills on its own; cancel any of them on its own.`,
+      ...first.notes.slice(1),
+    ],
+    costs: first.costs,
+    checks: out.flatMap((p, i) => p.checks.map(c => ({ ...c, detail: `step ${i + 1}: ${c.detail}` }))),
+    chain_id: first.chain_id,
+    typed_data: first.typed_data,
+    order: first.order,
   };
 }
 
@@ -544,7 +587,7 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
     const t = require('./solanaOrders').terms(kind, refOut, exits, settings, net);
     if (t.minOut <= 0n) return { off: 'that floor rounds to nothing.' };
     const o = tx.order({ account: owner, executor: cfg.executor, tokenIn: token, tokenOut: q.out, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000), epoch, salt: BigInt('0x' + crypto.randomBytes(32).toString('hex')) });
-    orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said });
+    orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null });
   }
   // The router's own hash of the first: a layout that drifted from the contract's is caught before anyone signs.
   if (String(await read(chain, router, ROUTER, 'hashOrder', [orders[0].order])).toLowerCase() !== orders[0].hash.toLowerCase()) {
@@ -586,10 +629,11 @@ async function recordExits(accountId, tradeId, plan) {
   const out = [];
   for (const o of plan.orders) {
     const { rows: [row] } = await db.query(
-      `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, trade_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
+      `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, trade_id, trail_bps, peak_out)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING *`,
       [accountId, plan.chain, c.chainId, plan.router, o.order.account.toLowerCase(), o.kind, plan.token, plan.symbol, plan.decimals, plan.token, NATIVE, o.order.amountIn.toString(), o.minOut.toString(),
-        o.triggerOut?.toString() ?? null, o.refOut.toString(), plan.executor, new Date(plan.validUntil), JSON.stringify(tx.toJson(o.order)), o.hash.toLowerCase(), tradeId]);
+        o.triggerOut?.toString() ?? null, o.refOut.toString(), plan.executor, new Date(plan.validUntil), JSON.stringify(tx.toJson(o.order)), o.hash.toLowerCase(), tradeId,
+        o.trailBps || null, o.trailBps ? o.refOut.toString() : null]);
     out.push({ id: Number(row.id), kind: o.kind, kind_name: o.kind_name, chain_id: ethers.toBeHex(c.chainId), typed_data: tx.typedData(c.chainId, plan.router, o.order) });
   }
   return out;
@@ -733,6 +777,8 @@ function view(r) {
   return {
     ...common, amount_whole: whole(r.amount_in, r.decimals), sold_whole: whole(r.filled_in, r.decimals),
     floor_native: nat(r.min_out), trigger_native: r.trigger_out ? nat(r.trigger_out) : null, value_when_placed_native: nat(r.ref_out), delivered_native: nat(r.delivered),
+    ...(r.trail_bps ? { trail_pct: r.trail_bps / 100, peak_native: nat(r.peak_out) } : {}),
+    ...(r.ladder ? { ladder: r.ladder, step: r.step, steps: r.steps } : {}),
   };
 }
 
@@ -859,7 +905,15 @@ async function triggers() {
     for (const row of mine) {
       const q = quoteOfRow(row);
       const source = `DexScreener (the coin's most liquid pair) and DefiLlama (${q.symbol})`;
-      const c = checkPrice(row, pairs[row.token]?.price_usd, q.virtual ? virtualUsd : usd, source);
+      const p = pairs[row.token]?.price_usd;
+      const quoteUsd = q.virtual ? virtualUsd : usd;
+      if (row.trail_bps && p > 0 && quoteUsd > 0) {
+        // A trailing stop: raised to trail_bps under the highest value seen two checks in a row (exitRules.trail), never lowered.
+        const tr = exitRules.trail(row, BigInt(Math.floor(whole(row.amount_in, row.decimals) * p / quoteUsd * 1e18)));
+        await db.query(`UPDATE meme_orders SET peak_out = $2, trigger_out = $3, last_value_out = $4, updated_at = now() WHERE id = $1 AND state = 'open'`, [row.id, tr.peak.toString(), tr.trigger.toString(), tr.last.toString()]);
+        row.trigger_out = tr.trigger.toString();
+      }
+      const c = checkPrice(row, p, quoteUsd, source);
       if (c.reason) await fire(row.id, c.reason);
     }
   }

@@ -135,7 +135,8 @@
     chain: $('chain').value, side: $('side').value, base: $('base').value, token: $('token').value.trim(),
     ...(isSell() ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
     ...(tradeState.ack ? { acknowledge_risks: true } : {}),
-    ...(exitsAsked() ? { exits: { stop_loss: $('x-stop').checked, take_profit: $('x-take').checked, stop_pct: Number($('x-stop-pct').value), take_pct: Number($('x-take-pct').value) } } : {}),
+    ...(exitsAsked() ? { exits: { stop_loss: $('x-stop').checked, take_profit: $('x-take').checked, stop_pct: Number($('x-stop-pct').value), take_pct: Number($('x-take-pct').value),
+      ...($('x-stop').checked && $('x-trail').checked ? { trail_pct: Number($('x-stop-pct').value) } : {}) } } : {}),
   });
   // Exits with a buy: on Solana in RektBull's order program, in the same transaction; on BNB Chain and Base, Meme Router
   // orders the wallet signs right after it sends the buy.
@@ -182,7 +183,7 @@
   $('side').addEventListener('change', () => { showSide(); changed(); });
   for (const id of ['token', 'amount', 'fraction']) $(id).addEventListener('input', () => changed({ keepAck: id !== 'token' }));
   for (const id of ['chain', 'base']) $(id).addEventListener('change', () => { showSide(); changed({ keepAck: true }); });
-  for (const id of ['x-stop', 'x-take']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+  for (const id of ['x-stop', 'x-take', 'x-trail']) $(id).addEventListener('change', () => changed({ keepAck: true }));
   for (const id of ['x-stop-pct', 'x-take-pct']) $(id).addEventListener('input', () => changed({ keepAck: true }));
 
   /** Runs every check on a firm price and shows it. Resolves to the preview, or null if the trade can't go ahead. */

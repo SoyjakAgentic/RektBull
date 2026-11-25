@@ -37,6 +37,7 @@ const rpc = require('../providers/rpc');
 const jupiter = require('../providers/jupiter');
 const op = require('./solanaOrderProgram');
 const otx = require('./solanaOrderTx');
+const exitRules = require('./exitRules');
 const privateSend = require('./privateSend');
 const { TradeBlocked } = require('./zeroex');
 
@@ -194,6 +195,13 @@ const net = gross => gross - op.feeOf(gross);
  * (or after `netOf`, for orders on BNB Chain and Base: trade/memeOrders.js).
  */
 function terms(kind, refOut, body, settings, netOf = net) {
+  if (kind === 'stop_loss' && body.trail_pct !== undefined && body.trail_pct !== null && body.trail_pct !== '') {
+    // A trailing stop: it starts trail_pct under the value now and follows it up (exitRules.trail); the floor is fixed.
+    const trail = num(body.trail_pct, 1, 90, NaN, 'trail_pct');
+    const floor = num(body.floor_pct, 2, 99, Math.min(99, trail + 15), 'floor_pct');
+    if (floor <= trail) throw refuse('Your floor must be below where the trailing stop starts: floor_pct more than trail_pct.', 400);
+    return { triggerOut: pctOf(refOut, 100 - trail), minOut: netOf(pctOf(refOut, 100 - floor)), trailBps: Math.round(trail * 100), said: { trail_pct: trail, floor_pct: floor } };
+  }
   if (kind === 'stop_loss') {
     const stop = num(body.stop_pct, 1, 95, settings.stop_loss_pct, 'stop_pct');
     const floor = num(body.floor_pct, 2, 99, Math.min(99, stop + 15), 'floor_pct');
@@ -258,20 +266,29 @@ async function prepare(account, body = {}) {
   const [src] = await accounts([source]);
   const held = tokenAccount(src);
   if (!held || held.amount === 0n) throw refuse('Your wallet holds none of this coin (in its main token account for it).');
-  const amountIn = held.amount * BigInt(Math.round(share * 100)) / 10000n;
-  if (amountIn === 0n) throw refuse('That share of your holding rounds to nothing.');
-
-  const refOut = await quoteOut(token, amountIn);
-  if (refOut === null || refOut === 0n) throw refuse('There is no route to sell this coin for SOL just now (Jupiter), so an order couldn\'t be filled.');
-  const t = terms(kind, refOut, body, settings);
-  if (t.minOut <= 0n) throw refuse('That floor rounds to nothing; choose a higher one.', 400);
+  // Take-profits in steps (exitRules.parseSteps): one order a step, each its part of the share, in one transaction.
+  const steps = kind === 'take_profit' && body.steps !== undefined && body.steps !== null ? exitRules.parseSteps(body.steps) : null;
+  const legs = [];
+  for (const [i, s] of (steps || [null]).entries()) {
+    const at = steps ? `Step ${i + 1}: ` : '';
+    const legShare = steps ? share * s.part_pct / 100 : share;
+    const legAmount = held.amount * BigInt(Math.round(legShare * 100)) / 10000n;
+    if (legAmount === 0n) throw refuse(`${at}that share of your holding rounds to nothing.`);
+    const legRef = await quoteOut(token, legAmount);
+    if (legRef === null || legRef === 0n) throw refuse('There is no route to sell this coin for SOL just now (Jupiter), so an order couldn\'t be filled.');
+    const legTerms = terms(kind, legRef, steps ? { ...body, take_pct: s.take_pct } : body, settings);
+    if (legTerms.minOut <= 0n) throw refuse(`${at}that floor rounds to nothing; choose a higher one.`, 400);
+    legs.push({ amountIn: legAmount, refOut: legRef, t: legTerms, part: steps ? s.part_pct : null, nonce: crypto.randomBytes(8).readBigUInt64LE() >> 1n });
+  }
+  const amountIn = legs.reduce((a, l) => a + l.amountIn, 0n);
+  const { refOut, t } = legs[0];
 
   // An approval replaces the one before it on the same token account, so it covers this order and what's left of the others.
   const { rows: others } = await db.query(
     `SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM solana_orders WHERE account_id = $1 AND source = $2 AND state IN ('prepared', 'open', 'triggered')`,
     [account.id, source]);
   const MAX_U64 = (1n << 64n) - 1n;
-  let approveAmount = amountIn + BigInt(others[0].left);
+  let approveAmount = amountIn + BigInt(others[0].left); // every step of this order, and what's left of the others
   if (approveAmount > MAX_U64) approveAmount = MAX_U64;
   const notes = [];
   if (held.delegate && held.delegate !== delegate) notes.push(`This replaces the approval your token account gives ${short(held.delegate)} (a token account has one approval at a time).`);
@@ -280,42 +297,59 @@ async function prepare(account, body = {}) {
   const [curve, ...volumes] = await accounts([await op.bondingCurveOf(token), await op.volumeOf(op.P.pumpFun, transit), await op.volumeOf(op.P.pumpAmm, transit)]);
   const volumeVenues = curve ? [op.P.pumpFun, op.P.pumpAmm].filter((_, i) => !volumes[i]) : [];
 
-  const nonce = crypto.randomBytes(8).readBigUInt64LE() >> 1n; // below 2^63: kept exactly as NUMERIC and in JSON
+  // Each nonce is below 2^63: kept exactly as NUMERIC and in JSON.
   const validUntil = Date.now() + days * 86400_000;
   const build = async units => {
-    const p = await otx.placeInstructions({ program: cfg.program, owner, executor: cfg.executor, nonce, token, tokenProgram, decimals, source, approveAmount, amountIn, minOut: t.minOut, validUntil: Math.floor(validUntil / 1000), volumeVenues, units });
+    const p = await otx.placeInstructions({ program: cfg.program, owner, executor: cfg.executor, token, tokenProgram, decimals, source, approveAmount, validUntil: Math.floor(validUntil / 1000), volumeVenues, units,
+      orders: legs.map(l => ({ nonce: l.nonce, amountIn: l.amountIn, minOut: l.t.minOut })) });
     const bh = await latestBlockhash();
     return { ...p, ...bh, ...otx.compile({ payer: owner, instructions: p.instructions, ...bh }) };
   };
   const first = await build(null);
-  const sim = await simulate(first.transaction, [first.order]);
+  if (first.bytes > otx.MAX_TX_BYTES) throw refuse(`These ${legs.length} orders don't fit in one Solana transaction (${first.bytes} bytes, ${otx.MAX_TX_BYTES} at most): use fewer steps.`, 400);
+  const sim = await simulate(first.transaction, first.orders);
   if (sim.err) throw refuse(`In a simulation this order fails${why(sim.logs) ? `: ${why(sim.logs)}` : ` (${JSON.stringify(sim.err)})`}. Nothing was sent.`);
-  const placed = op.decodeOrder(sim.accounts[0]?.data?.[0] || '');
-  if (!placed || placed.owner !== owner || placed.executor !== cfg.executor || placed.inputMint !== token || placed.amountIn !== amountIn || placed.minAmountOut !== t.minOut) {
-    throw refuse('In a simulation the order didn\'t come out as prepared. Nothing was sent.');
+  for (const [i, l] of legs.entries()) {
+    const placed = op.decodeOrder(sim.accounts[i]?.data?.[0] || '');
+    if (!placed || placed.owner !== owner || placed.executor !== cfg.executor || placed.inputMint !== token || placed.amountIn !== l.amountIn || placed.minAmountOut !== l.t.minOut) {
+      throw refuse('In a simulation the order didn\'t come out as prepared. Nothing was sent.');
+    }
   }
   const built = await build(Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 20_000) * 1.3)));
+  if (built.bytes > otx.MAX_TX_BYTES) throw refuse(`These ${legs.length} orders don't fit in one Solana transaction (${built.bytes} bytes, ${otx.MAX_TX_BYTES} at most): use fewer steps.`, 400);
 
   const symbol = (await require('../providers/dexscreener').pairs('solana', [token]).catch(() => ({})))[token]?.symbol || short(token);
-  const { rows: [row] } = await db.query(
-    `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
-    [account.id, owner, built.order, cfg.program, nonce.toString(), kind, token, symbol, tokenProgram, decimals, source, amountIn.toString(), t.minOut.toString(), t.triggerOut?.toString() ?? null, refOut.toString(), cfg.executor, new Date(validUntil)]);
+  const ladder = steps ? crypto.randomBytes(8).toString('hex') : null;
+  const rows = [];
+  for (const [i, l] of legs.entries()) {
+    const { rows: [r] } = await db.query(
+      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until, trail_bps, peak_out, ladder, step, steps)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING *`,
+      [account.id, owner, built.orders[i], cfg.program, l.nonce.toString(), kind, token, symbol, tokenProgram, decimals, source, l.amountIn.toString(), l.t.minOut.toString(), l.t.triggerOut?.toString() ?? null, l.refOut.toString(), cfg.executor, new Date(validUntil),
+        l.t.trailBps ?? null, l.t.trailBps ? l.refOut.toString() : null, ladder, steps ? i + 1 : null, steps ? legs.length : null]);
+    rows.push(r);
+  }
+  const row = rows[0];
   const amountWhole = whole(amountIn, decimals);
+  if (t.trailBps) notes.unshift(exitRules.trailNote({ trailPct: t.said.trail_pct, start: sol(t.triggerOut), floor: sol(t.minOut), unit: 'SOL' }));
+  if (steps) notes.unshift(`${legs.length} take-profits, placed together in one transaction with one approval for all of them: ${legs.map((l, i) => `${fmt(whole(l.amountIn, decimals))} ${symbol} when their value is up ${l.t.said.take_pct}% (step ${i + 1})`).join('; ')}. Each fills on its own; cancel any of them on its own.`);
   return {
     order: view(row),
+    ...(steps ? { orders: rows.map(view), steps: legs.map((l, i) => ({ step: i + 1, part_pct: l.part, ...l.t.said, amount_whole: whole(l.amountIn, decimals), target_sol: sol(l.t.triggerOut), floor_sol: sol(l.t.minOut) })) } : {}),
     terms: t.said,
-    worst_case: worstCase({ kind, amountWhole, symbol, minOut: t.minOut, validUntil }),
+    worst_case: steps
+      ? legs.flatMap((l, i) => worstCase({ kind, amountWhole: whole(l.amountIn, decimals), symbol, minOut: l.t.minOut, validUntil }).slice(0, 1).map(x => `Step ${i + 1}. ${x}`)).concat(worstCase({ kind, amountWhole, symbol, minOut: t.minOut, validUntil }).slice(1))
+      : worstCase({ kind, amountWhole, symbol, minOut: t.minOut, validUntil }),
     notes,
     costs: {
-      order_deposit_sol: sol(ORDER_RENT), order_deposit_note: 'Held by the order account and returned to you when it is filled or cancelled.',
+      order_deposit_sol: sol(ORDER_RENT * BigInt(legs.length)), order_deposit_note: legs.length > 1 ? `${sol(ORDER_RENT)} SOL for each of the ${legs.length} order accounts, held by them and returned to you when each is filled or cancelled.` : 'Held by the order account and returned to you when it is filled or cancelled.',
       ...(volumeVenues.length ? { volume_accounts_sol: sol(VOLUME_RENT * BigInt(volumeVenues.length)), volume_accounts_note: `Once per wallet: ${volumeVenues.length === 2 ? 'pump.fun\'s and PumpSwap\'s' : volumeVenues[0] === op.P.pumpFun ? 'pump.fun\'s' : 'PumpSwap\'s'} volume account for your order address, which they need for every trade.` } : {}),
       fee: 'RektBull\'s 1% of the SOL a fill brings, taken by the order program. Nothing if it never fills. RektBull pays each fill\'s network fee.',
     },
     checks: [
       { check: 'holding', ok: true, detail: `${fmt(amountWhole)} of the ${fmt(whole(held.amount, decimals))} ${symbol} in your wallet`, source: 'Solana RPC' },
-      { check: 'route', ok: true, detail: `they would sell for ${sol(refOut)} SOL now`, source: 'Jupiter quote' },
-      { check: 'simulation', ok: true, detail: 'the whole transaction ran in a simulation and placed this order', source: 'Solana RPC simulateTransaction' },
+      { check: 'route', ok: true, detail: `they would sell for ${sol(legs.reduce((a, l) => a + l.refOut, 0n))} SOL now`, source: 'Jupiter quote' },
+      { check: 'simulation', ok: true, detail: `the whole transaction ran in a simulation and placed ${legs.length > 1 ? `all ${legs.length} orders` : 'this order'}`, source: 'Solana RPC simulateTransaction' },
     ],
     solana: { transaction: built.transaction, last_valid_block_height: built.lastValidBlockHeight, bytes: built.bytes },
   };
@@ -481,7 +515,7 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
     if (t.minOut <= 0n) throw refuse('That exit\'s floor rounds to nothing; choose another.', 400);
     const nonce = crypto.randomBytes(8).readBigUInt64LE() >> 1n;
     const placed = await op.placeOrder({ program: cfg.program, owner, nonce, executor: cfg.executor, inputMint: token, outputMint: op.WSOL, outputNative: true, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000) });
-    orders.push({ kind, kind_name: KINDS[kind], nonce, order: placed.order, instruction: placed.instruction, amountIn, minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said });
+    orders.push({ kind, kind_name: KINDS[kind], nonce, order: placed.order, instruction: placed.instruction, amountIn, minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null });
   }
   const instructions = [
     ...await Promise.all(volumeVenues.map(venue => op.initVolume({ venue, payer: owner, user: transit }))),
@@ -543,10 +577,11 @@ async function setup(account) {
 async function recordExits(accountId, orders = []) {
   for (const o of orders || []) {
     await db.query(
-      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until)
-       SELECT $1, owner, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16 FROM (SELECT solana_wallet AS owner FROM accounts WHERE id = $1) a
+      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until, trail_bps, peak_out)
+       SELECT $1, owner, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18 FROM (SELECT solana_wallet AS owner FROM accounts WHERE id = $1) a
        ON CONFLICT (order_address) DO NOTHING`,
-      [accountId, o.order, o.program, String(o.nonce), o.kind, o.token, o.symbol, o.tokenProgram, o.decimals, o.source, String(o.amountIn), String(o.minOut), o.triggerOut === null ? null : String(o.triggerOut), String(o.refOut), o.executor, new Date(o.validUntil)]);
+      [accountId, o.order, o.program, String(o.nonce), o.kind, o.token, o.symbol, o.tokenProgram, o.decimals, o.source, String(o.amountIn), String(o.minOut), o.triggerOut === null ? null : String(o.triggerOut), String(o.refOut), o.executor, new Date(o.validUntil),
+        o.trailBps || null, o.trailBps ? String(o.refOut) : null]);
   }
 }
 
@@ -640,6 +675,8 @@ function view(r) {
   return {
     ...common, amount_whole: whole(r.amount_in, r.decimals), sold_whole: whole(r.filled_in, r.decimals),
     floor_sol: sol(r.min_out), trigger_sol: r.trigger_out ? sol(r.trigger_out) : null, value_when_placed_sol: sol(r.ref_out), delivered_sol: sol(r.delivered),
+    ...(r.trail_bps ? { trail_pct: r.trail_bps / 100, peak_sol: sol(r.peak_out) } : {}),
+    ...(r.ladder ? { ladder: r.ladder, step: r.step, steps: r.steps } : {}),
   };
 }
 
@@ -705,6 +742,12 @@ async function triggers() {
     if (!(p > 0) || !(solUsd > 0)) continue;
     const left = BigInt(row.amount_in) - BigInt(row.filled_in);
     if (left <= 0n) continue;
+    if (row.trail_bps) {
+      // A trailing stop: raised to trail_bps under the highest value seen two checks in a row (exitRules.trail), never lowered.
+      const tr = exitRules.trail(row, BigInt(Math.floor(whole(row.amount_in, row.decimals) * p / solUsd * 1e9)));
+      await db.query(`UPDATE solana_orders SET peak_out = $2, trigger_out = $3, last_value_out = $4, updated_at = now() WHERE id = $1 AND state = 'open'`, [row.id, tr.peak.toString(), tr.trigger.toString(), tr.last.toString()]);
+      row.trigger_out = tr.trigger.toString();
+    }
     const trigger = BigInt(row.trigger_out) * left / BigInt(row.amount_in);
     if (isBuy(row)) {
       // What the SOL left would buy now (less the 1%), against the coins at the user's limit.

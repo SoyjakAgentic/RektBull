@@ -603,6 +603,36 @@ version is a choice to make at deployment.
 8. No private key, seed phrase or program keypair ever goes into the
    repository, a chat or an issue.
 
+## Trailing stops and take-profits in steps (built 25 November 2026)
+
+Rules shared by both chains: `src/trade/exitRules.js`. Migration 045.
+
+- **A trailing stop-loss** (`trail_pct` instead of `stop_pct`, 1 to 90%):
+  - **Start:** it begins `trail_pct` under the coins' value now.
+  - **Rising:** at each price check (the trade service's, every 15 seconds:
+    DexScreener and DefiLlama) it moves up to `trail_pct` under the highest
+    value seen, and never moves down.
+  - **One-pass spikes ignored:** only a value seen on two checks in a row
+    raises it (the lower of the two), so one stray price print can't drag it
+    up and sell early.
+  - **The floor doesn't move:** the floor the user signs (`floor_pct`, below
+    where the trail starts) is the least the coins can sell for. The order program
+    enforces it whatever the trail does.
+  - **Who does the trailing:** RektBull's trade service, as with every
+    trigger. The stream's copy of an order can be a pass behind, but a trailing
+    trigger only rises, so a stale copy can only fire later, never early.
+  - **Where to set it:** on its own, or as the stop-loss placed with a buy on
+    the Trade desk ("that trails the price up").
+- **Take-profits in steps** (`steps`: 2 or 3 `{ take_pct, part_pct }`):
+  - Each step sells its part of the share when the coins' value is up by its
+    own amount.
+  - Each step must rise further than the one before, and the parts add up to
+    at most 100%.
+  - All the steps are placed in one transaction: one place_order a step, one approval for all of them (and the user's other orders on the token account), and an order deposit for each. Three steps fit with room to spare; anything that wouldn't fit in a Solana transaction is refused
+  - Each step is its own order, filled and cancelled on its own, and the
+    listing shows it as "step n of m".
+- **Tests:** `test/solanaOrders.test.js` steps 8 and 9. Step 8: the trail follows to 0.15 SOL under a 0.2 peak, then fires, and isn't sent while Jupiter quotes under the floor. Step 9: three steps in one transaction with one approval and three deposits, each confirmed from the chain.
+
 ## Private submission (built 25 November 2026)
 
 Fills go to Jito as single-transaction bundles (`bundleOnly=true`), with the

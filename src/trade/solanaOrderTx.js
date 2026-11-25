@@ -46,16 +46,18 @@ function withSignature(tx, address, signature) {
  *     their transit (`volumeVenues`), paid by them: without it the exchange
  *     would try to create it during a fill, from transit, which holds nothing.
  */
-async function placeInstructions({ program, owner, executor, nonce, token, tokenProgram, decimals, source, approveAmount, amountIn, minOut, validUntil, volumeVenues = [], units = null }) {
+async function placeInstructions({ program, owner, executor, nonce, token, tokenProgram, decimals, source, approveAmount, amountIn, minOut, validUntil, volumeVenues = [], units = null, orders = null }) {
   const [delegate, transit] = await Promise.all([op.delegateOf(program), op.transitOf(program, owner)]);
-  const placed = await op.placeOrder({ program, owner, nonce, executor, inputMint: token, outputMint: op.WSOL, outputNative: true, amountIn, minAmountOut: minOut, validUntil });
+  // Several orders on the same coin (take-profits in steps): one place_order each, and one approval for all of them.
+  const legs = orders || [{ nonce, amountIn, minOut }];
+  const placed = await Promise.all(legs.map(l => op.placeOrder({ program, owner, nonce: l.nonce, executor, inputMint: token, outputMint: op.WSOL, outputNative: true, amountIn: l.amountIn, minAmountOut: l.minOut, validUntil })));
   const instructions = [
     ...(units ? [op.cuLimit(units)] : []),
     ...await Promise.all(volumeVenues.map(venue => op.initVolume({ venue, payer: owner, user: transit }))),
-    placed.instruction,
+    ...placed.map(p => p.instruction),
     op.approveChecked({ tokenProgram, source, mint: token, delegate, owner, amount: approveAmount, decimals }),
   ];
-  return { instructions, order: placed.order, delegate, transit };
+  return { instructions, order: placed[0].order, orders: placed.map(p => p.order), delegate, transit };
 }
 
 /**

@@ -432,6 +432,36 @@ Run it again before deploying, and whenever Virtuals upgrades either contract:
 `npx hardhat run scripts/memeRouterVirtualsCheck.js --network baseMainnetFork`.
 Tests: `test/virtualsOrders.test.js`.
 
+## Trailing stops and take-profits in steps (built 25 November 2026)
+
+Rules shared by both chains: `src/trade/exitRules.js`. Migration 045.
+
+- **A trailing stop-loss** (`trail_pct` instead of `stop_pct`, 1 to 90%):
+  - **Start:** it begins `trail_pct` under the coins' value now.
+  - **Rising:** at each price check (the trade service's, every 15 seconds:
+    DexScreener and DefiLlama) it moves up to `trail_pct` under the highest
+    value seen, and never moves down.
+  - **One-pass spikes ignored:** only a value seen on two checks in a row
+    raises it (the lower of the two), so one stray price print can't drag it
+    up and sell early.
+  - **The floor doesn't move:** the floor the user signs (`floor_pct`, below
+    where the trail starts) is the least the coins can sell for. The Meme Router
+    enforces it whatever the trail does.
+  - **Who does the trailing:** RektBull's trade service, as with every
+    trigger. The stream's copy of an order can be a pass behind, but a trailing
+    trigger only rises, so a stale copy can only fire later, never early.
+  - **Where to set it:** on its own, or as the stop-loss placed with a buy on
+    the Trade desk ("that trails the price up").
+- **Take-profits in steps** (`steps`: 2 or 3 `{ take_pct, part_pct }`):
+  - Each step sells its part of the share when the coins' value is up by its
+    own amount.
+  - Each step must rise further than the one before, and the parts add up to
+    at most 100%.
+  - Each step is a router order of its own. The wallet signs each (a signature only), then approves the router once: the approval counts every live order on the coin. If one step can't be prepared (under $5, say), none of them is kept
+  - Each step is its own order, filled and cancelled on its own, and the
+    listing shows it as "step n of m".
+- **Tests:** `test/memeOrders.test.js` steps 10 and 11. Step 10: the trail starts 20% under 0.05 ETH, ignores a value seen once, follows to 0.08 under a peak of 0.1, ignores a spike, doesn't come down, and fires and fills at 0.07, with the signed floor unchanged. Step 11: two steps of 450 coins at +100% and +200%, one approval for both after the last signature, and the refusals, with nothing left behind.
+
 ## Private submission (built 25 November 2026)
 
 Fills on BNB Chain go to privacy RPCs (48 Club and BlockRazor's full-privacy

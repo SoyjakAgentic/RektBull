@@ -14,6 +14,8 @@
     stop_loss: 'Fires when the coins\' value falls by your amount (DexScreener\'s price). It then sells at the market, but never below your floor: if the price falls straight past it, the order can\'t fill and you keep the coins.',
     take_profit: 'Fires when the coins\' value rises by your amount. It sells at your target less your slippage, or better.',
     meme_watch_exit: 'Fires when Meme Watch raises a critical alert for the coin: launch-bundle wallets selling, or liquidity pulled. Needs Meme Watch on (My agents). It sells at the market, but never below your floor.',
+    trailing: 'A trailing stop: it starts that far under the coins\' value now and follows their value up, staying that far under the highest value RektBull\'s price checks see twice in a row. It never moves down. When their value falls to it, it sells at the market, but never below your floor, which is fixed in what you sign.',
+    steps: 'Take-profits in steps: each sells its part of the coins when their value is up by its own amount, at that target less your slippage, or better. Your wallet signs each step (a signature only), then approves the router once for all of them.',
     limit_buy: 'Fires when the coin\'s price falls by your amount (DexScreener\'s price). It then buys, but never fewer coins than your limit less your slippage. The Trade desk\'s buy checks run now, and the token check runs again before it buys. What it spends stays in your wallet, wrapped, until it fills.',
   };
 
@@ -21,10 +23,11 @@
   document.addEventListener('DOMContentLoaded', () => {
     $('eo-kind').addEventListener('change', showKind);
     $('eo-chain').addEventListener('change', showKind);
+    for (const id of ['eo-trail', 'eo-steps']) $(id).addEventListener('change', showKind);
     $('eo-prepare').addEventListener('click', () => prepare());
     $('eo-sign').addEventListener('click', place);
     $('eo-cancel-all').addEventListener('click', cancelAll);
-    for (const id of ['eo-chain', 'eo-token', 'eo-share', 'eo-spend', 'eo-dip', 'eo-stop', 'eo-take', 'eo-floor', 'eo-slip', 'eo-days', 'eo-kind']) {
+    for (const id of ['eo-chain', 'eo-token', 'eo-share', 'eo-spend', 'eo-dip', 'eo-stop', 'eo-take', 'eo-floor', 'eo-slip', 'eo-days', 'eo-kind', 'eo-trail', 'eo-steps', 'eo-s1-take', 'eo-s1-part', 'eo-s2-take', 'eo-s2-part', 'eo-s3-take', 'eo-s3-part']) {
       $(id).addEventListener('input', () => { prepared = null; $('eo-plan').hidden = true; $('eo-sign').hidden = true; });
     }
     showKind();
@@ -43,7 +46,16 @@
     $('eo-spend-label').textContent = $('eo-chain').value === 'base' ? 'ETH to spend (VIRTUAL for a coin on Virtuals\' curve)' : `${NATIVE[$('eo-chain').value].coin} to spend`;
     if (kind === 'meme_watch_exit' && $('eo-floor').value === '35') $('eo-floor').value = '50';
     if (kind === 'stop_loss' && $('eo-floor').value === '50') $('eo-floor').value = '35';
-    $('eo-explain').textContent = EXPLAIN[kind];
+    const steps = kind === 'take_profit' ? Number($('eo-steps').value) : 1;
+    $('eo-trail-wrap').hidden = kind !== 'stop_loss';
+    $('eo-steps-wrap').hidden = kind !== 'take_profit';
+    $('eo-take-wrap').hidden = kind !== 'take_profit' || steps > 1;
+    $('eo-steps-rows').hidden = steps < 2;
+    $('eo-s3').hidden = steps < 3;
+    // The usual splits: halves for 2 steps, 40/30/30 for 3 (unless already changed).
+    if (steps === 3 && $('eo-s1-part').value === '50' && $('eo-s2-part').value === '50') { $('eo-s1-part').value = '40'; $('eo-s2-part').value = '30'; $('eo-s2-take').value = '200'; }
+    if (steps === 2 && $('eo-s1-part').value === '40' && $('eo-s2-part').value === '30') { $('eo-s1-part').value = '50'; $('eo-s2-part').value = '50'; $('eo-s2-take').value = '300'; }
+    $('eo-explain').textContent = kind === 'stop_loss' && $('eo-trail').checked ? EXPLAIN.trailing : steps > 1 ? EXPLAIN.steps : EXPLAIN[kind];
   }
 
   async function load() {
@@ -75,7 +87,8 @@
     const sym = o.symbol || short(o.token);
     const buy = o.side === 'buy';
     const fired = buy ? `${coins(o.trigger_coins)} ${sym} for it (${coins(o.coins_when_placed)} when placed)`
-      : o.kind === 'meme_watch_exit' ? 'a critical Meme Watch alert' : `${o.trigger_native} ${o.native} (worth ${o.value_when_placed_native} when placed)`;
+      : o.kind === 'meme_watch_exit' ? 'a critical Meme Watch alert'
+        : o.trail_pct ? `${o.trigger_native} ${o.native} now: ${o.trail_pct}% under their highest (${o.peak_native})` : `${o.trigger_native} ${o.native} (worth ${o.value_when_placed_native} when placed)`;
     const status = [buy && o.state === 'triggered' ? 'Fired: buying' : STATES[o.state] || o.state];
     if (buy && o.bought_coins) status.push(`${coins(o.bought_coins)} ${sym} to you`);
     if (!buy && o.delivered_native !== '0') status.push(`${o.delivered_native} ${o.native} to you`);
@@ -84,7 +97,7 @@
     const live = ['open', 'triggered', 'expired'].includes(o.state) || o.waiting_for_buy;
     const cells = status.flatMap((s, i) => (i ? [' · ', s] : [s]));
     return el('tr', {},
-      el('td', {}, `${o.kind_name} (${o.chain_label})`),
+      el('td', {}, `${o.trail_pct ? 'Trailing stop' : o.kind_name}${o.step ? ` (step ${o.step} of ${o.steps})` : ''} (${o.chain_label})`),
       el('td', {}, buy ? `${o.spend_native} ${o.native} of ${sym}` : `${o.amount_whole.toLocaleString('en-US')} ${sym}`),
       el('td', {}, fired),
       el('td', {}, buy ? `at least ${coins(o.min_coins)} ${sym}` : `${o.floor_native} ${o.native}`),
@@ -95,8 +108,13 @@
   function body() {
     const kind = $('eo-kind').value;
     const b = { chain: $('eo-chain').value, kind, token: $('eo-token').value.trim(), share_pct: Number($('eo-share').value), days: Number($('eo-days').value) };
-    if (kind === 'stop_loss') Object.assign(b, { stop_pct: Number($('eo-stop').value), floor_pct: Number($('eo-floor').value) });
-    if (kind === 'take_profit') Object.assign(b, { take_pct: Number($('eo-take').value), slippage_pct: Number($('eo-slip').value) });
+    if (kind === 'stop_loss') Object.assign(b, { [$('eo-trail').checked ? 'trail_pct' : 'stop_pct']: Number($('eo-stop').value), floor_pct: Number($('eo-floor').value) });
+    const steps = Number($('eo-steps').value);
+    if (kind === 'take_profit') {
+      Object.assign(b, steps > 1
+        ? { steps: [1, 2, 3].slice(0, steps).map(i => ({ take_pct: Number($(`eo-s${i}-take`).value), part_pct: Number($(`eo-s${i}-part`).value) })), slippage_pct: Number($('eo-slip').value) }
+        : { take_pct: Number($('eo-take').value), slippage_pct: Number($('eo-slip').value) });
+    }
     if (kind === 'meme_watch_exit') Object.assign(b, { floor_pct: Number($('eo-floor').value) });
     if (kind === 'limit_buy') {
       delete b.share_pct;
@@ -126,7 +144,7 @@
     const sym = p.order.symbol || short(p.order.token);
     const what = p.order.side === 'buy' ? `${p.order.spend_native} ${p.order.native} of ${sym}` : `${p.order.amount_whole.toLocaleString('en-US')} ${sym}`;
     $('eo-plan').replaceChildren(
-      el('strong', {}, `${p.order.kind_name} on ${p.order.chain_label}: ${what}`),
+      el('strong', {}, p.orders ? `${p.orders.length} take-profits on ${p.order.chain_label}: ${p.orders.map(o => o.amount_whole.toLocaleString('en-US')).join(' + ')} ${sym}` : `${p.order.kind_name} on ${p.order.chain_label}: ${what}`),
       ...p.worst_case.map(t => el('p', {}, t)),
       ...p.notes.map(t => el('p', { class: 'warn' }, t)),
       el('p', { class: 'small' }, p.costs.deposit),
@@ -149,11 +167,16 @@
     if (!prepared) return;
     try {
       await switchChain(prepared.chain_id);
-      say('eo-msg', 'Waiting for your wallet: sign the order (a signature only, nothing is sent).');
-      const signature = await RB.request('eth_signTypedData_v4', [state.address, JSON.stringify(prepared.typed_data)]);
-      const s = await api('POST', `/v1/evm/orders/${prepared.order.id}/sign`, { signature });
+      // Take-profits in steps: one signature a step; the last one's approval covers them all.
+      const legs = prepared.steps || [{ order: prepared.order, typed_data: prepared.typed_data }];
+      let s = null;
+      for (const [i, leg] of legs.entries()) {
+        say('eo-msg', `Waiting for your wallet: sign ${legs.length > 1 ? `step ${i + 1} of ${legs.length}` : 'the order'} (a signature only, nothing is sent).`);
+        const signature = await RB.request('eth_signTypedData_v4', [state.address, JSON.stringify(leg.typed_data)]);
+        s = await api('POST', `/v1/evm/orders/${leg.order.id}/sign`, { signature });
+      }
       await fund(s.calls);
-      say('eo-msg', 'Your order is placed. RektBull watches it from now on.', 'ok');
+      say('eo-msg', `${legs.length > 1 ? 'Your orders are' : 'Your order is'} placed. RektBull watches ${legs.length > 1 ? 'them' : 'it'} from now on.`, 'ok');
       prepared = null;
       $('eo-plan').hidden = true; $('eo-sign').hidden = true;
       await refresh();
