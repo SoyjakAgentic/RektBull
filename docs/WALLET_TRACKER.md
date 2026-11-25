@@ -181,3 +181,57 @@ an alert within seconds of its next trade. Past profit says nothing sure about
 the next trade: copying a wallet buys after it, at a worse price, and some
 wallets trade to be copied. The card says so.
 
+
+## Top wallets on four.meme (BNB Chain, built 25 November 2026)
+
+The same rules on four.meme's bonding curves, chosen by the owner on
+25 November 2026 with a daily budget of its own (option A; the limits are in
+[COST_LIMITS.md](COST_LIMITS.md)). The card on `/launches` switches between
+Solana and BNB Chain; `GET /v1/wallet-tracker/top?chain=bsc`.
+
+- **The source:** four.meme's TokenManager2
+  (`0x5c952063c7fc8610ffdb798152d69f0b9550762b`), on the trade service's
+  WebSocket stream for BNB Chain (`trade/memeStream.js`).
+  - **Events:** `TokenPurchase` and `TokenSale` (`token, account, price,
+    amount, cost, fee, offers, funds`) and `TokenCreate`, which names the
+    coin's creator.
+  - **Verified:** each signature was matched, hash for hash, against
+    TokenManager2's own logs on BNB Chain on 25 November 2026.
+  - **Fees:** in the same logs, `fee` was 1% of `cost`. A buyer pays
+    `cost + fee`, and a seller gets `cost - fee`.
+- **Only coins priced in BNB** (each coin's quote read once a day from
+  four.meme's helper contract, `launchpads.identify`). Others, such as USD1
+  coins, are left out, as Solana leaves out curves not priced in SOL.
+- **A budget of its own:** `rankings_daily_budget`, 50,000 events a day (admin
+  panel), counted apart from the order triggers' budget.
+  - When measured, four.meme sent about 10,000 trades and creations a day.
+  - At the budget, the filter is dropped until the next UTC day. The ranking
+    is partial on such a day, and its rules say so.
+  - BNB Chain is streamed for this even before the Meme Router is deployed.
+  - 0 switches it off.
+- **The same rules otherwise:**
+  - realised profit only;
+  - the coin's creator left out;
+  - a first buy under 0.01 BNB left out (about the 0.05 SOL Solana uses);
+  - buys within 2 seconds of a coin's creation counted apart as snipes;
+  - 5 coins closed to be ranked;
+  - bots and snipers left out.
+- **Kept:** in BNB, as gwei (nine decimals, like lamports), in the same
+  `wallet_pnl_daily` table with `chain = 'bsc'`. Positions are held in the
+  trade service's memory, as Solana's are in the worker's.
+- **Events in order:** the stream's events are handled one at a time, in the
+  order the chain pushed them, so a coin's sale is never counted before its
+  buy.
+- **Not yet:**
+  - Base (Virtuals' trade events come from a pair contract for each coin,
+    with no published layout);
+  - four.meme coins after they move to PancakeSwap.
+
+  Both are listed in [COST_LIMITS.md](COST_LIMITS.md).
+
+Test: `test/fourMemeRankings.test.js`, end to end with the order service off:
+- the filter on the three verified topics;
+- the creator's trade, a USD1 coin and a snipe all left out;
+- five coins ranked at 2.375 BNB;
+- the budget dropping the filter without touching the triggers' budget;
+- the health note, and off at 0.

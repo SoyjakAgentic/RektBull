@@ -697,10 +697,13 @@ const trackerCall = fn => async (req, res) => {
 router.get('/v1/wallet-tracker', requireAuth, trackerCall(req => walletTracker.list(req.account.id)));
 router.post('/v1/wallet-tracker/wallets', requireAuth, trackerCall(req => walletTracker.follow(req.account.id, req.body || {})));
 router.delete('/v1/wallet-tracker/wallets/:id', requireAuth, trackerCall(req => walletTracker.unfollow(req.account.id, req.params.id)));
-// Wallets ranked by realised profit on pump.fun (services/walletRankings.js): public, kept five minutes.
+// Wallets ranked by realised profit on pump.fun (Solana) and four.meme (BNB Chain), services/walletRankings.js:
+// public, kept five minutes. ?chain=solana (the default) or bsc.
 router.get('/v1/wallet-tracker/top', async (req, res) => {
   if (!env.databaseUrl) return res.status(503).json({ error: 'unavailable', message: 'The ranking needs the database.' });
-  res.json(await require('../services/walletRankings').top(String(req.query.window || '7d')));
+  const chain = String(req.query.chain || 'solana');
+  if (!['solana', 'bsc'].includes(chain)) return res.status(400).json({ error: 'bad_chain', message: 'chain must be solana or bsc.' });
+  res.json(await require('../services/walletRankings').top(String(req.query.window || '7d'), chain));
 });
 
 // ── Where alerts go: Telegram, email, browser push ──
