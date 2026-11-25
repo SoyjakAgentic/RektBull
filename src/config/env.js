@@ -95,6 +95,21 @@ const env = {
   // switched on in the admin panel.
   memeStreamWsBase: (process.env.MEME_STREAM_WS_BASE || '').trim(),
   memeStreamWsBsc: (process.env.MEME_STREAM_WS_BSC || '').trim(),
+  // Private submission of the order services' fills (src/trade/privateSend.js, docs/PRIVATE_SEND.md). MEME_PRIVATE_SEND
+  // is JSON, chain to privacy RPC URLs ({"bsc":["https://…"]}, '{}' for none); SOLANA_JITO_URL is Jito's block engine
+  // ('off' for none). Unset, production uses the defaults below and anywhere else uses none.
+  memePrivateSend: (() => {
+    if (process.env.MEME_PRIVATE_SEND) { try { return JSON.parse(process.env.MEME_PRIVATE_SEND); } catch { return {}; } }
+    return process.env.NODE_ENV === 'production' ? { bsc: ['https://rpc.48.club', 'https://bsc.blockrazor.xyz/fullprivacy'] } : {};
+  })(),
+  solanaJitoUrl: (() => {
+    const v = (process.env.SOLANA_JITO_URL || '').trim();
+    if (v === 'off') return '';
+    return v || (process.env.NODE_ENV === 'production' ? 'https://mainnet.block-engine.jito.wtf' : '');
+  })(),
+  solanaJitoTipMaxLamports: int(process.env.SOLANA_JITO_TIP_MAX_LAMPORTS, 200_000),
+  // A privately sent fill not seen onchain after this is sent the usual way too (the same signed transaction).
+  privateSendGraceMs: int(process.env.PRIVATE_SEND_GRACE_MS, 12_000),
   // KMS only: these orders run on mainnets, so there is no stand-in key (tests inject a signer).
   kmsMemeExecutorKeyVersion: process.env.KMS_MEME_EXECUTOR_KEY_VERSION || '',
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.

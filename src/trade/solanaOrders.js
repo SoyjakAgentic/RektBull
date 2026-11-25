@@ -37,6 +37,7 @@ const rpc = require('../providers/rpc');
 const jupiter = require('../providers/jupiter');
 const op = require('./solanaOrderProgram');
 const otx = require('./solanaOrderTx');
+const privateSend = require('./privateSend');
 const { TradeBlocked } = require('./zeroex');
 
 const KINDS = {
@@ -735,6 +736,13 @@ async function confirmFills() {
     };
     if (!s) {
       if (height !== null && f.last_valid_block_height && Number(height) > Number(f.last_valid_block_height)) await failed('it didn\'t land before its blockhash expired');
+      else if (f.sent_via === 'jito' && !f.public_at && f.raw_tx && Date.now() - new Date(f.created_at).getTime() > privateSend.graceMs()) {
+        // Not landed through Jito: the same signed transaction (same signature, so it can only land once) the usual way.
+        await db.query(`UPDATE solana_order_fills SET public_at = now() WHERE id = $1`, [f.id]);
+        await rpc.solanaRpc('sendTransaction', [f.raw_tx, { encoding: 'base64', skipPreflight: true, maxRetries: 3 }])
+          .then(() => logger.warn('solana orders: a fill hadn\'t landed through Jito; sent the usual way too', { order: f.order_id, signature: f.signature }))
+          .catch(err => logger.warn('solana orders: a fill not resent', { order: f.order_id, error: err.message }));
+      }
       continue;
     }
     if (s.err) {
@@ -772,6 +780,20 @@ async function priority(swap, units) {
   const fees = ((await rpc.solanaRpc('getRecentPrioritizationFees', [writable]).catch(() => [])) || []).map(f => Number(f.prioritizationFee)).filter(f => f > 0).sort((a, b) => a - b);
   if (!fees.length) return 0;
   return Math.min(fees[Math.floor(fees.length * 0.75)], Number(PRIORITY_CAP_LAMPORTS * 1_000_000n / BigInt(units)));
+}
+
+/**
+ * The Jito tip for a fill: { account, lamports }, or null when Jito's tip accounts can't be read (the fill is then sent
+ * the usual way). A stop-loss or a Meme Watch exit tips what most bundles that landed lately paid; others the median.
+ */
+async function jitoTip(row) {
+  try {
+    const accounts = await privateSend.tipAccounts();
+    return { account: accounts[crypto.randomInt(accounts.length)], lamports: await privateSend.tipLamports(row.kind === 'stop_loss' || row.kind === 'meme_watch_exit') };
+  } catch (err) {
+    logger.warn('solana orders: Jito\'s tip accounts not read; sending the usual way', { error: err.message });
+    return null;
+  }
 }
 
 /** One fill of a triggered order. Records what happened; throws only on a bug. */
@@ -879,10 +901,15 @@ async function attempt(row, cfg, exec) {
         `It fired, but this ${buy ? 'buy' : 'sale'} goes through pump.fun, which needs a volume account for your order address, opened once by your wallet (about ${sol(VOLUME_RENT)} SOL each). Open Orders on Solana on the Trade desk and press "Set up"; the order fills as soon as it's done.`);
     }
     const tables = { ...r.tables, ...own };
-    const make = async (units, microLamports) => {
+    // Jito (privateSend.js): a tip from the executor to one of Jito's tip accounts, in the fill itself, so it's paid
+    // only if the fill lands. The tip account is never taken from a lookup table (Jito's rule).
+    const tip = privateSend.jitoOn() ? await jitoTip(row) : null;
+    const make = async (units, microLamports, withTip = false) => {
       const f = await otx.fillInstructions({ side: buy ? 'buy' : 'sell', program: row.program, executor: exec.address, owner: row.owner, order: row.order_address, token: row.token, tokenProgram: row.token_program, source: row.source, feeWallet: cfg.feeWallet, swap: r.swap, amountIn: amount, units, microLamports, unwrapIn: r.unwrapIn, wrappedOut: r.wrappedOut });
       const bh = await latestBlockhash();
-      return { ...bh, ...otx.compile({ payer: exec.address, instructions: f.instructions, ...bh, tables }) };
+      const instructions = withTip ? [...f.instructions, op.transfer({ from: exec.address, to: tip.account, lamports: tip.lamports })] : f.instructions;
+      const lookups = withTip ? Object.fromEntries(Object.entries(tables).map(([t, list]) => [t, list.filter(a => a !== tip.account)])) : tables;
+      return { ...bh, ...otx.compile({ payer: exec.address, instructions, ...bh, tables: lookups }), tipped: withTip };
     };
     const first = await make(CU_MAX, 0);
     if (first.bytes > otx.MAX_TX_BYTES) {
@@ -900,16 +927,25 @@ async function attempt(row, cfg, exec) {
       return later(`in a simulation the fill fails${logs ? `: ${logs}` : ` (${JSON.stringify(sim.err)})`}`, RETRY_MS.failed);
     }
     const units = Math.min(CU_MAX, Math.ceil(Math.max(sim.units, 100_000) * 1.2));
-    const ready = await make(units, await priority(r.swap, units));
+    const price = await priority(r.swap, units);
+    let ready = await make(units, price, !!tip);
+    // A tip that makes the fill too big for one transaction: sent the usual way, without it.
+    if (ready.tipped && ready.bytes > otx.MAX_TX_BYTES) ready = await make(units, price, false);
     if (ready.bytes > otx.MAX_TX_BYTES) return later(`the fill is ${ready.bytes} bytes, over Solana's ${otx.MAX_TX_BYTES}`, RETRY_MS.failed);
 
     const signature = await exec.sign(ready.messageBytes, `solana_fill:${row.id}`);
     const sigText = b58encode(signature);
     const wire = otx.withSignature(ready.tx, exec.address, signature);
-    // Recorded before it's sent, so a crash between the two can't lose track of it.
-    await db.query(`INSERT INTO solana_order_fills (order_id, signature, amount_in, quoted_out, route, last_valid_block_height) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [row.id, sigText, amount.toString(), r.quotedOut.toString(), r.label, ready.lastValidBlockHeight]);
+    // Recorded before it's sent, so a crash between the two can't lose track of it (one meant for Jito is sent the usual
+    // way once its grace period is over, the same transaction).
+    await db.query(`INSERT INTO solana_order_fills (order_id, signature, amount_in, quoted_out, route, last_valid_block_height, raw_tx, sent_via, tip) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [row.id, sigText, amount.toString(), r.quotedOut.toString(), r.label, ready.lastValidBlockHeight, wire, ready.tipped ? 'jito' : 'public', ready.tipped ? tip.lamports : null]);
     await db.query(`UPDATE solana_orders SET last_attempt_at = now(), attempts = attempts + 1, next_attempt_at = now() + interval '30 seconds', updated_at = now() WHERE id = $1`, [row.id]);
+    if (ready.tipped) {
+      if ((await privateSend.sendJito(wire)).ok) return;
+      // Jito refused it: the usual way at once, since an exit must never wait on Jito.
+      await db.query(`UPDATE solana_order_fills SET public_at = now() WHERE signature = $1`, [sigText]);
+    }
     try {
       await rpc.solanaRpc('sendTransaction', [wire, { encoding: 'base64', skipPreflight: true, maxRetries: 3 }]);
     } catch (err) {

@@ -56,7 +56,7 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   orders._setExecutor(async (name, p) => ({
     address: exec.address.toLowerCase(),
     signer: {
-      populateTransaction: async c => ({ to: c.to, data: c.data, value: 0n, chainId: orders.CHAINS[name].chainId, nonce: nonce++, gasLimit: 300_000n, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1_000_000n, type: 2 }),
+      populateTransaction: async c => ({ to: c.to, data: c.data, value: 0n, chainId: orders.CHAINS[name].chainId, nonce: c.nonce ?? nonce++, gasLimit: 300_000n, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1_000_000n, type: 2 }),
       signTransaction: t2 => exec.signTransaction(t2),
     },
   }));
@@ -278,4 +278,74 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   assert.deepEqual([fill2.f.venue.toLowerCase(), fill2.f.spender.toLowerCase(), fill2.f.unwrapIn], [TM2, TM2, true], 'on the curve, paid in BNB the router unwraps');
   const buyArgs = lp.TOKEN_MANAGER.decodeFunctionData('buyTokenAMAP', fill2.f.venueCalldata);
   assert.deepEqual([buyArgs[0].toLowerCase(), buyArgs[1], buyArgs[2]], [FOUR, 495n * 10n ** 14n, tx.minimumFor(fill2.o.minAmountOut, fill2.f.amountIn, fill2.o.amountIn)], 'the curve\'s own minimum is the user\'s limit');
+  const { rows: [pub] } = await db.query(`SELECT sent_via, relays FROM meme_order_fills WHERE order_id = $1`, [lb.order.id]);
+  assert.deepEqual([pub.sent_via, pub.relays], ['public', null], 'no privacy RPCs set: the usual way');
+  const lbHash = (await orders.list(account)).orders.find(o => o.id === lb.order.id).order_hash;
+  const lbEv = tx.ROUTER.encodeEventLog('Filled', [lbHash, user.address, WBNB, FOUR, 5n * 10n ** 16n, 5n * 10n ** 14n, false, 1287n * E18]);
+  chain.receipts.set(ethers.keccak256(chain.sent[1].raw), { status: 1, logs: [{ address: ROUTER_BSC, ...lbEv }] });
+  chain.filled.set(lbHash, 5n * 10n ** 16n);
+  await orders.tick();
+
+  // 9. Privately on BNB Chain (privateSend.js): each fill to both privacy RPCs and not to the public mempool, the
+  //    executor's nonce tracked past the chain's own count, the same transaction the usual way once it hasn't landed,
+  //    and nothing ever waiting on a relay.
+  const privateSend = require('../src/trade/privateSend');
+  env.memePrivateSend = { bsc: ['https://rpc.48.club', 'https://bsc.blockrazor.xyz/fullprivacy'] };
+  const relayed = [];
+  let relayAnswer = () => ({ jsonrpc: '2.0', id: 1, result: '0x' });
+  privateSend._setTransport(async (url, body) => { relayed.push({ url, method: body.method, raw: body.params[0] }); return relayAnswer(url); });
+  t.after(() => privateSend._setTransport(async () => { throw new Error('no network in tests'); }));
+  chain.pendingNonce.set(56, 5); // what the chain's public RPC counts for the executor
+  const buys = [];
+  for (const spend of [0.02, 0.021]) {
+    const b = await orders.prepare(account, { chain: 'bsc', kind: 'limit_buy', token: FOUR, spend, dip_pct: 20, slippage_pct: 3 });
+    await orders.sign(account, b.order.id, { signature: await signFor(b) });
+    buys.push(b.order.id);
+  }
+  chain.hold(WBNB, owner, 10n ** 17n);
+  chain.approve(WBNB, owner, ROUTER_BSC, 10n ** 17n);
+  price[FOUR] = 0.016; fourRate = 40000n; await fresh();
+  await orders.tick();
+  assert.equal(chain.sent.length, 2, 'not to the public mempool');
+  assert.equal(relayed.length, 4, 'each fill to both privacy RPCs');
+  assert.ok(relayed.every(r => r.method === 'eth_sendRawTransaction'));
+  assert.deepEqual(relayed.map(r => r.url), [...env.memePrivateSend.bsc, ...env.memePrivateSend.bsc]);
+  assert.equal(relayed[0].raw, relayed[1].raw, 'the same signed transaction to each: only one can land');
+  const nonces = [relayed[0], relayed[2]].map(r => ethers.Transaction.from(r.raw).nonce);
+  assert.deepEqual(nonces, [5, 6], 'the second fill\'s nonce comes after the first, which the chain\'s RPC can\'t see');
+  const fillsOf = async () => (await db.query(`SELECT f.order_id, f.state, f.sent_via, f.relays, f.nonce, f.public_at, f.raw_tx, f.error FROM meme_order_fills f WHERE f.order_id = ANY($1::bigint[]) ORDER BY f.state DESC, f.nonce, f.id`, [buys])).rows;
+  let pf = await fillsOf();
+  assert.deepEqual(pf.map(f => [f.state, f.sent_via, f.relays, Number(f.nonce)]), [['sent', 'private', ['48 Club', 'BlockRazor'], 5], ['sent', 'private', ['48 Club', 'BlockRazor'], 6]]);
+  await orders.tick();
+  assert.equal(chain.sent.length, 2, 'within the grace period: still only private');
+  // Not landed after the grace period (the later one, nonce 6): the same signed transaction the usual way.
+  const [low, high] = pf; // nonces 5 and 6
+  await db.query(`UPDATE meme_order_fills SET created_at = now() - interval '20 seconds' WHERE order_id = $1`, [high.order_id]);
+  await orders.tick();
+  assert.equal(chain.sent.length, 3);
+  assert.equal(chain.sent[2].raw, high.raw_tx, 'the same transaction, so the same hash and nonce');
+  pf = await fillsOf();
+  assert.ok(pf[1].public_at && !pf[0].public_at);
+  // The usual way refuses the earlier one: it can't land, nor can the later, whose nonce comes after it. Both are filled again.
+  chain.onBroadcast = raw => { if (raw === low.raw_tx) throw new Error('insufficient funds for gas * price + value'); };
+  await db.query(`UPDATE meme_order_fills SET created_at = now() - interval '20 seconds' WHERE order_id = $1`, [low.order_id]);
+  await orders.tick();
+  chain.onBroadcast = null;
+  pf = await fillsOf();
+  const gone = pf.filter(f => f.state === 'failed');
+  assert.deepEqual(gone.map(f => [f.order_id, Number(f.nonce)]), [[low.order_id, 5], [high.order_id, 6]]);
+  assert.match(gone[0].error, /didn't land privately and the usual way refused it: insufficient funds/);
+  assert.match(gone[1].error, /an earlier fill from RektBull's executor didn't go through/);
+  assert.deepEqual(pf.filter(f => f.state === 'sent').map(f => [f.order_id, Number(f.nonce), f.sent_via]), [[high.order_id, 5, 'private']],
+    'the later one is filled again at once, its nonce counted again from the chain');
+  // Both privacy RPCs refuse: the usual way at once, never held.
+  relayAnswer = () => ({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'rejected' } });
+  await db.query(`UPDATE meme_orders SET next_attempt_at = now() WHERE id = $1`, [low.order_id]);
+  const before = chain.sent.length;
+  await orders.tick();
+  assert.equal(chain.sent.length, before + 1, 'refused by every privacy RPC: sent the usual way at once');
+  assert.equal(ethers.Transaction.from(chain.sent[before].raw).nonce, 6);
+  const [refused] = (await fillsOf()).filter(f => f.state === 'sent' && f.order_id === low.order_id);
+  assert.ok(refused.public_at && refused.relays === null);
+  assert.ok([...require('../src/providers/usage')._counts.keys()].some(k => k.startsWith('private-send:rpc.48.club|')), 'every relay call counted');
 });

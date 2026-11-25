@@ -29,7 +29,7 @@ function standIn() {
     allowances: new Map(), // `${token}:${owner}:${spender}` -> amount
     native: new Map(),
     epoch: new Map(), cancelled: new Set(), filled: new Map(),
-    receipts: new Map(), sent: [], calls: [],
+    receipts: new Map(), sent: [], calls: [], pendingNonce: new Map(),
     onFill: null, // (order, fill) => throws a revert, or returns
     storage: new Map(), // `${address}:${slot}` -> value (Virtuals' proxies: their implementations, as checked, unless a test changes them)
   };
@@ -51,8 +51,9 @@ function standIn() {
       return impl ? ethers.zeroPadValue(impl, 32) : ethers.ZeroHash;
     },
     getFeeData: async () => ({ maxFeePerGas: 1_000_000_000n, gasPrice: 1_000_000_000n }),
+    getTransactionCount: async () => s.pendingNonce.get(chainId) ?? 0, // the chain's own count: what its public RPC has seen
     getTransactionReceipt: async h => s.receipts.get(h) || null,
-    broadcastTransaction: async raw => { s.sent.push({ chainId, raw }); },
+    broadcastTransaction: async raw => { if (s.onBroadcast) s.onBroadcast(raw); s.sent.push({ chainId, raw }); },
     // Every eth_call the service makes, recorded; Multicall3's batch answered call by call, as the contract does.
     async call({ to, data }) {
       s.calls.push({ to: to.toLowerCase() });

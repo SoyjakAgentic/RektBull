@@ -432,6 +432,17 @@ Run it again before deploying, and whenever Virtuals upgrades either contract:
 `npx hardhat run scripts/memeRouterVirtualsCheck.js --network baseMainnetFork`.
 Tests: `test/virtualsOrders.test.js`.
 
+## Private submission (built 25 November 2026)
+
+Fills on BNB Chain go to privacy RPCs (48 Club and BlockRazor's full-privacy
+mode by default), not the public mempool, so nobody can trade around them and
+push them down to the user's floor. A fill that every relay refuses, or that
+hasn't landed within 12 seconds, goes the usual way: it's the same signed
+transaction, so it lands once at most. The executor's nonce is tracked by the
+service, since the chain's RPC can't see private transactions. Base has no
+public mempool, so its fills go the usual way. Details, sources and settings:
+[PRIVATE_SEND.md](PRIVATE_SEND.md).
+
 ## What's next
 
 1. **The audit.** Add `RektBullMemeRouter.sol` to `docs/AUDIT_BRIEF.md`'s

@@ -603,6 +603,17 @@ version is a choice to make at deployment.
 8. No private key, seed phrase or program keypair ever goes into the
    repository, a chat or an issue.
 
+## Private submission (built 25 November 2026)
+
+Fills go to Jito as single-transaction bundles (`bundleOnly=true`), with the
+executor's tip to one of Jito's tip accounts inside the fill. The tip is paid
+only if the fill lands, and is never taken from a lookup table. A stop-loss or
+a Meme Watch exit tips the 75th percentile of what landed lately; others tip
+the median. The tip is at least 1,000 lamports and at most 0.0002 SOL by
+default. A fill Jito refuses, or one that hasn't landed within 12 seconds,
+goes the usual way: it's the same signed transaction, so it lands once at
+most. Details, sources and settings: [PRIVATE_SEND.md](PRIVATE_SEND.md).
+
 ## What's next
 
 1. **The audit**, with the EVM contracts or on its own ([AUDIT_BRIEF.md](AUDIT_BRIEF.md)).

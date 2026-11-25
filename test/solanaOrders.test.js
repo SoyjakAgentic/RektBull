@@ -184,6 +184,7 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   put(TOKEN, mint);
   put(source, tokenAccountData({ mint: TOKEN, owner: user.address, amount: 1_000_000_000n })); // 1,000 coins
   const sent = [];
+  let notLanded = false; // a fill not seen onchain yet
   let landed = null; // the Filled event the next confirmed fill shows
   let quoteNow = SOL; // what Jupiter would pay for all 1,000 coins
   rpc.solanaRpc = async (method, params) => {
@@ -200,7 +201,7 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
         return { value: { err: null, unitsConsumed: 60_000, logs: [], accounts: place ? [{ data: [orderFromPlace(place).toString('base64'), 'base64'] }] : [] } };
       }
       case 'sendTransaction': sent.push(params[0]); return 'ok';
-      case 'getSignatureStatuses': return { value: params[0].map(() => ({ confirmationStatus: 'confirmed', err: null })) };
+      case 'getSignatureStatuses': return { value: params[0].map(() => (notLanded ? null : { confirmationStatus: 'confirmed', err: null })) };
       case 'getTransaction': return { meta: { err: null, logMessages: landed ? [`Program data: ${landed.toString('base64')}`] : [] } };
       default: throw new Error(`unexpected RPC ${method}`);
     }
@@ -281,9 +282,37 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   assert.ok(setupIxs.ixs.every(i => i.data.equals(op.DISC.initVolume)));
   // Their wallet sent it: the fill is built, checked, simulated, signed by the executor and sent.
   for (const v of [op.P.pumpFun, op.P.pumpAmm]) put(await op.volumeOf(v, transit), Buffer.alloc(137), v);
+  // Through Jito (privateSend.js): a single-transaction bundle, the executor's tip in the fill itself, not the usual way.
+  const privateSend = require('../src/trade/privateSend');
+  const TIPS = Array.from({ length: 8 }, () => b58(crypto.randomBytes(32)));
+  const jito = [];
+  let jitoAnswer = () => ({ jsonrpc: '2.0', id: 1, result: 'accepted' });
+  privateSend._setTransport(async (url, body) => { jito.push({ url, body }); return body.method === 'getTipAccounts' ? { result: TIPS } : jitoAnswer(); },
+    async url => (url === 'https://bundles.jito.wtf/api/v1/bundles/tip_floor' ? [{ landed_tips_50th_percentile: 0.00001, landed_tips_75th_percentile: 0.00005 }] : null));
+  t.after(() => privateSend._setTransport(async () => { throw new Error('no network in tests'); }));
+  env.solanaJitoUrl = 'https://mainnet.block-engine.jito.wtf';
+  notLanded = true;
   await db.query('UPDATE solana_orders SET next_attempt_at = now() WHERE id = $1', [p.order.id]);
   await orders.tick();
+  assert.equal(sent.length, 0, 'not sent the usual way');
+  const toJito = jito.filter(j => j.body.method === 'sendTransaction');
+  assert.equal(toJito.length, 1);
+  assert.equal(toJito[0].url, 'https://mainnet.block-engine.jito.wtf/api/v1/transactions?bundleOnly=true');
+  const tipIx = decodeTx(toJito[0].body.params[0]).ixs.find(i => i.program === op.P.system);
+  assert.ok(tipIx, 'the tip is in the fill itself, so it\'s paid only if the fill lands');
+  assert.deepEqual([tipIx.accounts[0], TIPS.includes(tipIx.accounts[1])], [exec.address, true], 'from the executor to one of Jito\'s tip accounts, named in the transaction itself');
+  assert.equal(tipIx.data.readBigUInt64LE(4), 50_000n, 'a stop-loss tips what most bundles that landed lately paid (the 75th percentile)');
+  await orders.tick();
+  assert.equal(sent.length, 0, 'within the grace period: Jito only');
+  // Not landed after the grace period: the same signed transaction the usual way (the same signature: it lands once).
+  await db.query(`UPDATE solana_order_fills SET created_at = now() - interval '20 seconds'`);
+  await orders.tick();
   assert.equal(sent.length, 1);
+  assert.equal(sent[0], toJito[0].body.params[0]);
+  const { rows: [jf] } = await db.query('SELECT sent_via, tip, public_at FROM solana_order_fills');
+  assert.deepEqual([jf.sent_via, Number(jf.tip), !!jf.public_at], ['jito', 50_000, true]);
+  notLanded = false;
+  env.solanaJitoUrl = '';
   const fill = decodeTx(sent[0]);
   assert.deepEqual(Object.keys(fill.t.signatures), [exec.address], 'the executor alone signs');
   assert.ok(crypto.verify(null, Buffer.from(fill.t.messageBytes), crypto.createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(k.getAddressEncoder().encode(exec.address))]), format: 'der', type: 'spki' }), Buffer.from(fill.t.signatures[exec.address])));
@@ -392,9 +421,16 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
 
   // The price is there: the buy is filled, the coins going only to the user's own account, the 1% in wrapped SOL.
   buyRate = 1.3;
+  // Jito refuses it: the usual way at once, never held.
+  env.solanaJitoUrl = 'https://mainnet.block-engine.jito.wtf';
+  jitoAnswer = () => ({ jsonrpc: '2.0', id: 1, error: { code: -32097, message: 'Network congested. Endpoint is globally rate limited.' } });
   await db.query('UPDATE solana_orders SET next_attempt_at = now() WHERE id = $1', [lb.order.id]);
   await orders.tick();
+  env.solanaJitoUrl = '';
   assert.equal(sent.length, 2);
+  assert.equal(sent[1], jito.filter(j => j.body.method === 'sendTransaction').pop().body.params[0], 'the transaction Jito refused, sent the usual way at once');
+  const { rows: [bj] } = await db.query('SELECT sent_via, tip, public_at FROM solana_order_fills f JOIN solana_orders o ON o.id = f.order_id WHERE o.id = $1', [lb.order.id]);
+  assert.deepEqual([bj.sent_via, Number(bj.tip), !!bj.public_at], ['jito', 10_000, true], 'a limit buy tips the median');
   const bf = decodeTx(sent[1]).ixs.find(i => i.program === PROGRAM);
   assert.equal(bf.data.readBigUInt64LE(8), SOL);
   assert.deepEqual([bf.accounts[5], bf.accounts[6], bf.accounts[9], bf.accounts[11], bf.accounts[14]],
