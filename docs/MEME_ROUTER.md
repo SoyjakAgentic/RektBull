@@ -407,6 +407,9 @@ can't be added afterwards.
     approves a venue only for a fill's own input, resets the approval, and
     checks what reaches the user against the signed minimum.
   - An upgrade could still make fills misbehave, which is why the service stops.
+  - **The owner's decision (25 November 2026):** keep Virtuals in the router,
+    with this automatic pause on upgrades, rather than leave it out. (Leaving it
+    out was the alternative, since venues can't be added after deployment.)
 - **The stream** (triggers over WebSocket) watches a coin on Virtuals' curve as
   it does a four.meme one: by the coin's own Transfers, then the curve's quote.
 
