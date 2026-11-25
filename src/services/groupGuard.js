@@ -13,6 +13,16 @@
  *     gets a warning.
  *   - Impersonators: a member whose name copies an admin's, or who calls
  *     themselves support or admin without being one, is flagged once a day.
+ *   - Requests for a wallet's secret (secretsIn): a message asking for a
+ *     private key or recovery phrase, to "migrate", "verify", "sync" or the
+ *     like, with a link or a "DM me", is removed with a warning (the
+ *     fake-migration scams that follow any wallet change, such as pump.fun's
+ *     end of wallet sign-in on 30 November 2026). The same ask with no link is
+ *     answered with a warning and left up, since it may be a real question.
+ *     Advice ("never share your seed phrase") is left alone.
+ *   - A recovery phrase posted by mistake (12 or more words in a row from
+ *     BIP-39's English list) is removed, and its poster told to move their
+ *     funds at once.
  *   - /check <chain> <address> for anyone; /guard and the settings commands
  *     for the group's admins only.
  *
@@ -27,6 +37,7 @@ const logger = require('../config/logger');
 const tg = require('../providers/telegramBot');
 const { cached } = require('../lib/cache');
 const { EVM } = require('../providers/chains');
+const { wordlists } = require('ethers');
 
 const LIMITS = { replies: 200, links_checked: 600, tokens_checked: 150 };
 const ADMINS_TTL_MS = 10 * 60 * 1000;
@@ -39,6 +50,17 @@ const URL_RE = /\b((?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a
 const TLDS = new Set('com net org io xyz app fi finance co me gg dev site online top live info cc pro ai so to ly vip club fun link click claims claim gift exchange network wallet money cash bet win shop store ru cn us uk de eu'.split(' '));
 const CONTRACT_WORDS = /\b(ca|contract|address|token|buy|official|addy)\b/i;
 const ROLE_WORDS = /(support|admin|helpdesk|moderator|\bmod\b|official|team)/i;
+// A wallet's secret, asked for (stated rules, no AI: secretsIn).
+const SECRET_WORDS = /\b(private[\s_-]*keys?|secret[\s_-]*keys?|(?:seed|recovery|secret(?:[\s_-]*recovery)?|wallet|backup)[\s_-]*(?:phrase|words?)|mnemonic|(?:12|24)[\s_-]*words?)\b/i;
+const ASK_WORDS = /\b(enter|import|paste|send|share|submit|type|input|provide|give|fill|verify|verification|validat\w*|sync\w*|synchroni[sz]\w*|migrat\w*|connect|restore|recover|rectify|claim|unlock|whitelist|update)\b/i;
+// The asks that are a scam's, with or without a link: no wallet, exchange or project needs a secret for any of these.
+const SCAM_ASKS = /\b(verify|verification|validat\w*|sync\w*|synchroni[sz]\w*|migrat\w*|rectify|claim|unlock|whitelist)\b/i;
+const DM_WORDS = /\b(dm|pm|inbox|message me|text me|write me|contact (?:me|us|support|admin)|reach out)\b/i;
+// Advice and warnings about secrets: "never share", "don't enter", "it's a scam".
+const ADVICE = /\b(never|don'?t|do not|dont|no one|nobody|won'?t|will not|shouldn'?t|should not)\s+(?:\w+\s+){0,2}?(share|send|give|enter|ask\w*|type|paste|reveal|tell|post|import)\b/i;
+// Warning words count as advice only without a link or a "DM me": scams open with "beware of scammers, use only <link>".
+const WARNING = /\b(scam\w*|phish\w*|beware|careful|fraud\w*)\b/i;
+const MIN_PHRASE_WORDS = 12;
 
 /* ── text helpers ── */
 
@@ -210,6 +232,50 @@ async function checkAddresses(msg, g) {
   }
 }
 
+/**
+ * A wallet's secret in a message: { kind: 'lure' } (asked for, with a link or a "DM me": removed), { kind: 'ask' }
+ * (asked for to "verify", "migrate" and the like, with neither: a warning reply), { kind: 'phrase', words }
+ * (a recovery phrase posted: 12 or more BIP-39 words in a row: removed), or null. Advice and warnings are null.
+ */
+function secretsIn(text, hasLink) {
+  const t = String(text || '');
+  // A posted phrase: words in a row from BIP-39's English list (numbering like "1." between them is skipped).
+  let run = 0, best = 0;
+  for (const w of t.toLowerCase().split(/[^a-z0-9]+/).filter(x => x && !/^\d+$/.test(x))) {
+    run = /^[a-z]+$/.test(w) && wordlists.en.getWordIndex(w) >= 0 ? run + 1 : 0;
+    if (run > best) best = run;
+  }
+  if (best >= MIN_PHRASE_WORDS) return { kind: 'phrase', words: best };
+  if (!SECRET_WORDS.test(t) || ADVICE.test(t)) return null;
+  const reach = hasLink || DM_WORDS.test(t);
+  if (reach && ASK_WORDS.test(t)) return { kind: 'lure' };
+  if (!reach && !WARNING.test(t) && SCAM_ASKS.test(t)) return { kind: 'ask' };
+  return null;
+}
+
+/** A message asking for a wallet's secret, or posting one: removed or answered (secretsIn). True when it acted. */
+async function checkSecrets(msg) {
+  const text = msg.text || msg.caption || '';
+  const hit = secretsIn(text, linksIn(msg).length > 0);
+  if (!hit) return false;
+  if (hit.kind === 'ask') {
+    await count(msg.chat.id, 'key_request_warned');
+    await say(msg.chat.id, msg.message_id, '⚠️ Careful: never type or paste a private key or recovery phrase into a site, a form, a bot or a chat, whoever asks and whatever for ("migration", "verification", "sync", a claim). No real wallet, exchange or project needs it, and whoever has it can empty the wallet. (Group Guard\'s rule for requests for a wallet\'s secret.)');
+    return true;
+  }
+  const deleted = await tg.deleteMessage(msg.chat.id, msg.message_id).then(() => true, () => false);
+  if (hit.kind === 'phrase') {
+    await count(msg.chat.id, 'seed_phrase_removed');
+    await say(msg.chat.id, deleted ? null : msg.message_id, deleted
+      ? `⚠️ Removed a message that looked like a wallet's recovery phrase (${hit.words} words in a row from the standard BIP-39 list). If it was yours, treat that wallet as lost: anyone who saw it can empty it. Move everything to a new wallet now, from a device you trust.`
+      : `⚠️ This message looks like a wallet's recovery phrase (${hit.words} words in a row from the standard BIP-39 list). If it's yours, move everything to a new wallet now. Admins: delete it, and give me the "Delete messages" right so I can.`);
+    return true;
+  }
+  await count(msg.chat.id, 'key_request_removed');
+  await say(msg.chat.id, deleted ? null : msg.message_id, `⚠️ ${deleted ? 'Removed a message' : 'This message is'} asking for a private key or recovery phrase. It's a scam: no real wallet, exchange, project or support team ever asks for one, not to "migrate", "verify", "sync" or "claim". Whoever has it can empty the wallet. (Group Guard's rule for requests for a wallet's secret.)${deleted ? '' : ' Admins: give me the "Delete messages" right and I\'ll remove these.'}`);
+  return true;
+}
+
 const flagged = new Map(); // `${chat}:${user}` -> day, so a member is flagged once a day
 async function checkMember(chatId, user, replyTo) {
   if (!user || user.is_bot) return;
@@ -229,7 +295,7 @@ async function checkMember(chatId, user, replyTo) {
 /* ── commands ── */
 
 const HELP = [
-  'RektBull Group Guard checks links and contract addresses posted here, and flags members whose names copy an admin\'s.',
+  'RektBull Group Guard checks links and contract addresses posted here, removes requests for a wallet\'s private key or recovery phrase, and flags members whose names copy an admin\'s.',
   'Anyone: /check <chain> <address> to check a token.',
   'Admins:',
   '/guard to see the settings',
@@ -344,6 +410,7 @@ async function handle(update) {
   if (msg.from && !msg.new_chat_members && !msg.sender_chat) {
     if (await isAdmin(msg.chat.id, msg.from.id)) return { ok: true, group: true };
     await checkMember(msg.chat.id, msg.from, msg.message_id);
+    if (await checkSecrets(msg)) return { ok: true, group: true }; // removed or answered: nothing more to say about it
     await checkLinks(msg, g);
     await checkAddresses(msg, g);
   }
@@ -359,4 +426,4 @@ async function stats() {
 
 const addLink = () => (env.telegramBotUsername ? `https://t.me/${env.telegramBotUsername}?startgroup=guard&admin=delete_messages` : null);
 
-module.exports = { handle, stats, addLink, looks, impersonates, lookalike, linksIn, tokenWarnings, LIMITS, HELP, _adminCache: adminCache, _flagged: flagged };
+module.exports = { handle, stats, addLink, looks, impersonates, lookalike, linksIn, tokenWarnings, secretsIn, LIMITS, HELP, _adminCache: adminCache, _flagged: flagged };

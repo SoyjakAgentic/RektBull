@@ -251,7 +251,7 @@ const COMMUNITY = {
     const add = require('../services/groupGuard').addLink();
     return {
       id: 'group_guard', name: 'Group Guard', plan: 'free', price: 'Free', community: true,
-      does: 'A Telegram bot for crypto groups. It checks every link and contract address posted, removes known phishing links, warns about look-alike sites and fake contracts, and flags members whose names copy an admin\'s.',
+      does: 'A Telegram bot for crypto groups. It checks every link and contract address posted, removes known phishing links and requests for a wallet\'s private key or recovery phrase (the fake migration and verification scams), warns about look-alike sites and fake contracts, and flags members whose names copy an admin\'s.',
       alerts: 'In the group itself, as a reply to the message, with the source.',
       schedules: [{ label: 'On every message' }],
       desk: add ? { name: 'Telegram', href: add } : { name: 'AI agents', href: '/agents#communities' },
