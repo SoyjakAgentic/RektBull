@@ -348,4 +348,63 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   const [refused] = (await fillsOf()).filter(f => f.state === 'sent' && f.order_id === low.order_id);
   assert.ok(refused.public_at && refused.relays === null);
   assert.ok([...require('../src/providers/usage')._counts.keys()].some(k => k.startsWith('private-send:rpc.48.club|')), 'every relay call counted');
+
+  // 10. A trailing stop on Base (exitRules.trail): it starts 20% under the value now and follows it up, raised only by
+  //     a value seen on two checks in a row (a one-check spike doesn't move it), never down; the signed floor stays.
+  const near = (x, want) => assert.ok(Math.abs(Number(x) - want) < 1e-6, `${x} is about ${want}`);
+  price[BULL] = 0.15; sellRate = 5n * 10n ** 13n; await fresh(); // 1,000 BULL = 0.05 ETH
+  const ts = await orders.prepare(account, { chain: 'base', kind: 'stop_loss', token: BULL, trail_pct: 20, floor_pct: 40 });
+  assert.deepEqual(ts.terms, { trail_pct: 20, floor_pct: 40 });
+  assert.deepEqual([ts.order.trigger_native, ts.order.floor_native, ts.order.trail_pct, ts.order.peak_native], ['0.04', '0.0297', 20, '0.05']);
+  assert.match(ts.notes[0], /^This stop trails: it starts at 0\.04 ETH \(20% under their value now\).*Your floor \(0\.0297 ETH\) doesn't move/);
+  assert.equal(ts.typed_data.message.minAmountOut, (297n * 10n ** 14n).toString(), 'the floor is what\'s signed');
+  await assert.rejects(orders.prepare(account, { chain: 'base', kind: 'stop_loss', token: BULL, trail_pct: 30, floor_pct: 25 }), /floor must be below where the trailing stop starts/);
+  await orders.sign(account, ts.order.id, { signature: await signFor(ts) });
+  chain.approve(BULL, owner, ROUTER_BASE, 1000n * E18);
+  const trailOf = async () => (await orders.list(account)).orders.find(o => o.id === ts.order.id);
+  const at = async usdPrice => { price[BULL] = usdPrice; await fresh(); await orders.tick(); return trailOf(); };
+  let tr = await at(0.15);
+  assert.deepEqual([tr.trigger_native, tr.peak_native], ['0.04', '0.05']);
+  tr = await at(0.3); // worth 0.1 ETH, once: not yet
+  near(tr.trigger_native, 0.04);
+  tr = await at(0.3); // twice: the stop follows, to 20% under 0.1
+  near(tr.peak_native, 0.1); near(tr.trigger_native, 0.08);
+  tr = await at(0.9); // a one-check spike to 0.3 ETH: ignored
+  near(tr.peak_native, 0.1);
+  tr = await at(0.27); // down a little (0.09): above the stop, which doesn't come down
+  near(tr.trigger_native, 0.08); assert.equal(tr.state, 'open');
+  const sentBefore = chain.sent.length;
+  sellRate = 7n * 10n ** 13n; // 0x pays 0.07 ETH, well over the 0.0297 floor
+  tr = await at(0.21); // 0.07 ETH: under the stop at 0.08
+  assert.equal(tr.state, 'triggered');
+  near(tr.trigger_reason.trigger_native, 0.08);
+  assert.equal(chain.sent.length, sentBefore + 1, 'filled');
+  const tsEv = tx.ROUTER.encodeEventLog('Filled', [ts.order.order_hash, user.address, BULL, tx.NATIVE, 1000n * E18, 7n * 10n ** 14n, true, net(7n * 10n ** 16n)]);
+  chain.receipts.set(ethers.keccak256(chain.sent[sentBefore].raw), { status: 1, logs: [{ address: ROUTER_BASE, ...tsEv }] });
+  chain.filled.set(ts.order.order_hash, 1000n * E18);
+  await orders.tick();
+  assert.equal((await trailOf()).state, 'filled');
+
+  // 11. Take-profits in steps: one router order a step, each its part of the share; one approval for all of them once the last is signed.
+  price[BULL] = 0.15; sellRate = 5n * 10n ** 13n; await fresh();
+  chain.approve(BULL, owner, ROUTER_BASE, 0n);
+  const lad = await orders.prepare(account, { chain: 'base', kind: 'take_profit', token: BULL, share_pct: 90, slippage_pct: 3, steps: [{ take_pct: 100, part_pct: 50 }, { take_pct: 200, part_pct: 50 }] });
+  assert.equal(lad.steps.length, 2);
+  assert.deepEqual(lad.orders.map(o => [o.amount_whole, o.step, o.steps, o.trigger_native]), [[450, 1, 2, '0.045'], [450, 2, 2, '0.0675']], '450 coins each (half of 90%), at +100% and +200% of their 0.0225 ETH');
+  assert.ok(lad.orders.every(o => o.ladder === lad.ladder));
+  assert.match(lad.notes[0], /^2 take-profits on BULL, placed together: 450 BULL when their value is up 100% \(step 1\); 450 BULL when their value is up 200% \(step 2\)/);
+  assert.match(lad.worst_case[0], /^Step 1\. Worst case/);
+  assert.match(lad.worst_case[1], /^Step 2\. Worst case/);
+  const s1 = await orders.sign(account, lad.steps[0].order.id, { signature: await signFor(lad.steps[0]) });
+  const s2 = await orders.sign(account, lad.steps[1].order.id, { signature: await signFor(lad.steps[1]) });
+  assert.equal(s1.order.state, 'open'); assert.equal(s2.order.state, 'open');
+  assert.deepEqual(tx.ERC20.decodeFunctionData('approve', s2.calls.calls[0].data)[1], 900n * E18, 'the last signature\'s approval covers both steps');
+  // Steps that don't rise, that add up to more than all, too many, or one too small: refused, and nothing is kept.
+  const ladderBody = steps => ({ chain: 'base', kind: 'take_profit', token: BULL, share_pct: 10, steps });
+  await assert.rejects(orders.prepare(account, ladderBody([{ take_pct: 200, part_pct: 50 }, { take_pct: 100, part_pct: 50 }])), /Step 2 must sell at a higher rise than step 1/);
+  await assert.rejects(orders.prepare(account, ladderBody([{ take_pct: 100, part_pct: 60 }, { take_pct: 200, part_pct: 50 }])), /add up to 110%/);
+  await assert.rejects(orders.prepare(account, ladderBody([1, 2, 3, 4].map(i => ({ take_pct: i * 50, part_pct: 20 })))), /2 or 3 steps/);
+  await assert.rejects(orders.prepare(account, ladderBody([{ take_pct: 100, part_pct: 90 }, { take_pct: 200, part_pct: 10 }])), /Step 2: An order needs at least \$5/);
+  const { rows: [{ n: leftover }] } = await db.query(`SELECT count(*)::int AS n FROM meme_orders WHERE ladder IS NOT NULL AND ladder <> $1`, [lad.ladder]);
+  assert.equal(leftover, 0, 'a ladder that fails part-way keeps none of its steps');
 });

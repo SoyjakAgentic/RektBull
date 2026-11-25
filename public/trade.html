@@ -55,6 +55,7 @@
       <div id="exits-wrap" class="row small" hidden>
         <span id="exits-label">With this buy, in the same transaction:</span>
         <label class="inline"><input type="checkbox" id="x-stop"> a stop-loss at down <input id="x-stop-pct" type="number" min="1" max="95" step="1" value="20" style="width:4.5em">%</label>
+        <label class="inline"><input type="checkbox" id="x-trail"> that trails the price up (stays that far under its highest)</label>
         <label class="inline"><input type="checkbox" id="x-take"> a take-profit at up <input id="x-take-pct" type="number" min="1" max="10000" step="1" value="50" style="width:5.5em">%</label>
       </div>
       <div id="presets" class="row presets" aria-label="One-click amounts"></div>
@@ -91,7 +92,15 @@
           <label id="so-spend-wrap" hidden>SOL to spend<input id="so-spend" type="number" min="0.01" step="0.01" value="0.5"></label>
           <label id="so-dip-wrap" hidden>Buy if its price falls by (%)<input id="so-dip" type="number" min="1" max="95" step="1" value="20"></label>
           <label id="so-stop-wrap">Sell if its value falls by (%)<input id="so-stop" type="number" min="1" max="95" step="1" value="20"></label>
+          <label id="so-trail-wrap" class="inline"><input type="checkbox" id="so-trail"> Trailing: it follows the value up, staying that far under its highest</label>
+          <label id="so-steps-wrap" hidden>Sell<select id="so-steps"><option value="1">all at once</option><option value="2">in 2 steps</option><option value="3">in 3 steps</option></select></label>
           <label id="so-take-wrap" hidden>Sell if its value rises by (%)<input id="so-take" type="number" min="1" max="10000" step="1" value="50"></label>
+          <div id="so-steps-rows" class="wide-input" hidden>
+            <p class="small">Each step sells its part of the coins (of the share above) when their value is up by its own amount.</p>
+            <label id="so-s1">Step 1: up (%)<input id="so-s1-take" type="number" min="1" max="10000" step="1" value="100"> part (%)<input id="so-s1-part" type="number" min="1" max="100" step="1" value="50"></label>
+            <label id="so-s2">Step 2: up (%)<input id="so-s2-take" type="number" min="1" max="10000" step="1" value="300"> part (%)<input id="so-s2-part" type="number" min="1" max="100" step="1" value="50"></label>
+            <label id="so-s3" hidden>Step 3: up (%)<input id="so-s3-take" type="number" min="1" max="10000" step="1" value="400"> part (%)<input id="so-s3-part" type="number" min="1" max="100" step="1" value="30"></label>
+          </div>
           <label id="so-floor-wrap">But never for less than: down (%)<input id="so-floor" type="number" min="1" max="99" step="1" value="35"></label>
           <label id="so-slip-wrap" hidden>Slippage (%)<input id="so-slip" type="number" min="0.5" max="20" step="0.5" value="3"></label>
           <label>Ends after (days)<input id="so-days" type="number" min="1" max="30" step="1" value="30"></label>
@@ -123,7 +132,15 @@
           <label id="eo-spend-wrap" hidden><span id="eo-spend-label">BNB to spend</span><input id="eo-spend" type="number" min="0.001" step="0.001" value="0.05"></label>
           <label id="eo-dip-wrap" hidden>Buy if its price falls by (%)<input id="eo-dip" type="number" min="1" max="95" step="1" value="20"></label>
           <label id="eo-stop-wrap">Sell if its value falls by (%)<input id="eo-stop" type="number" min="1" max="95" step="1" value="20"></label>
+          <label id="eo-trail-wrap" class="inline"><input type="checkbox" id="eo-trail"> Trailing: it follows the value up, staying that far under its highest</label>
+          <label id="eo-steps-wrap" hidden>Sell<select id="eo-steps"><option value="1">all at once</option><option value="2">in 2 steps</option><option value="3">in 3 steps</option></select></label>
           <label id="eo-take-wrap" hidden>Sell if its value rises by (%)<input id="eo-take" type="number" min="1" max="10000" step="1" value="50"></label>
+          <div id="eo-steps-rows" class="wide-input" hidden>
+            <p class="small">Each step sells its part of the coins (of the share above) when their value is up by its own amount.</p>
+            <label id="eo-s1">Step 1: up (%)<input id="eo-s1-take" type="number" min="1" max="10000" step="1" value="100"> part (%)<input id="eo-s1-part" type="number" min="1" max="100" step="1" value="50"></label>
+            <label id="eo-s2">Step 2: up (%)<input id="eo-s2-take" type="number" min="1" max="10000" step="1" value="300"> part (%)<input id="eo-s2-part" type="number" min="1" max="100" step="1" value="50"></label>
+            <label id="eo-s3" hidden>Step 3: up (%)<input id="eo-s3-take" type="number" min="1" max="10000" step="1" value="400"> part (%)<input id="eo-s3-part" type="number" min="1" max="100" step="1" value="30"></label>
+          </div>
           <label id="eo-floor-wrap">But never for less than: down (%)<input id="eo-floor" type="number" min="1" max="99" step="1" value="35"></label>
           <label id="eo-slip-wrap" hidden>Slippage (%)<input id="eo-slip" type="number" min="0.5" max="20" step="0.5" value="3"></label>
           <label>Ends after (days)<input id="eo-days" type="number" min="1" max="30" step="1" value="30"></label>

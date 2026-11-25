@@ -22,6 +22,7 @@ const otx = require('../src/trade/solanaOrderTx');
 const ex = require('../src/trade/solanaExecutor');
 const orders = require('../src/trade/solanaOrders');
 const { encode: b58 } = require('../src/lib/base58');
+const cache = require('../src/lib/cache');
 
 const PROGRAM = 'CYiK4necGUc4CZZmGM9CALRAurATaE1qR3dc6UJoUAsZ';
 const FEE_WALLET = 'FeeWa11et1111111111111111111111111111111111';
@@ -197,8 +198,9 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
       case 'getRecentPrioritizationFees': return [{ prioritizationFee: 2000 }];
       case 'simulateTransaction': {
         const { ixs } = decodeTx(params[0]);
-        const place = ixs.find(i => i.program === PROGRAM && i.data.subarray(0, 8).equals(op.DISC.placeOrder));
-        return { value: { err: null, unitsConsumed: 60_000, logs: [], accounts: place ? [{ data: [orderFromPlace(place).toString('base64'), 'base64'] }] : [] } };
+        // Each order account asked for, as the program would write it (one per place_order: take-profits in steps place several).
+        const placed = ixs.filter(i => i.program === PROGRAM && i.data.subarray(0, 8).equals(op.DISC.placeOrder));
+        return { value: { err: null, unitsConsumed: 60_000, logs: [], accounts: placed.map(place => ({ data: [orderFromPlace(place).toString('base64'), 'base64'] })) } };
       }
       case 'sendTransaction': sent.push(params[0]); return 'ok';
       case 'getSignatureStatuses': return { value: params[0].map(() => (notLanded ? null : { confirmationStatus: 'confirmed', err: null })) };
@@ -456,4 +458,48 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   const c2ixs = decodeTx(c2.solana.transaction).ixs;
   assert.deepEqual(c2ixs.map(i => [i.program, i.data[0]]).slice(1), [[op.P.token, 5], [op.P.token, 9]], 'Revoke, then CloseAccount');
   assert.deepEqual([c2ixs[2].accounts[0], c2ixs[2].accounts[1]], [wsol, user.address], 'the wrapped SOL back to the user as SOL');
+
+  // 8. A trailing stop (exitRules.trail): 25% under the value now, following it up once two checks agree, never down.
+  quoteNow = SOL; priceUsd = 0.15; // 1,000 coins = 1 SOL
+  const near = (x, want) => assert.ok(Math.abs(Number(x) - want) < 1e-6, `${x} is about ${want}`);
+  const ts = await orders.prepare(account, { kind: 'stop_loss', token: TOKEN, share_pct: 10, trail_pct: 25, floor_pct: 50 });
+  assert.deepEqual([ts.order.trail_pct, ts.order.trigger_sol, ts.order.peak_sol, ts.order.floor_sol], [25, '0.075', '0.1', '0.0495']);
+  assert.match(ts.notes[0], /^This stop trails: it starts at 0\.075 SOL/);
+  put(ts.order.order_address, orderFromPlace(decodeTx(ts.solana.transaction).ixs.find(i => i.program === PROGRAM)), PROGRAM);
+  assert.equal((await orders.confirm(account, ts.order.id)).state, 'open');
+  const trailing = async usd => { priceUsd = usd; cache._memory.clear(); await db.query('DELETE FROM cache'); await orders.tick(); return (await db.query('SELECT * FROM solana_orders WHERE id = $1', [ts.order.id])).rows[0]; };
+  let tr = await trailing(0.15);
+  tr = await trailing(0.3); // its 100 coins worth 0.2 SOL, once
+  near(Number(tr.trigger_out) / 1e9, 0.075);
+  tr = await trailing(0.3); // twice: 25% under 0.2
+  near(Number(tr.peak_out) / 1e9, 0.2); near(Number(tr.trigger_out) / 1e9, 0.15);
+  quoteNow = 40n * SOL / 100n; // Jupiter would pay 0.04 SOL for them, under the 0.0495 floor: nothing is sent
+  const sentNow = sent.length;
+  tr = await trailing(0.2); // worth 0.133 SOL: under the stop at 0.15
+  assert.equal(tr.state, 'triggered');
+  near(Number(tr.trigger_reason.trigger_sol), 0.15);
+  assert.match(tr.last_error, /below the floor/);
+  assert.equal(sent.length, sentNow, 'never below the signed floor');
+
+  // 9. Take-profits in steps: all of them placed in one transaction, with one approval for all.
+  quoteNow = SOL; priceUsd = 0.15;
+  const lad = await orders.prepare(account, { kind: 'take_profit', token: TOKEN, share_pct: 90, slippage_pct: 3, steps: [{ take_pct: 100, part_pct: 40 }, { take_pct: 200, part_pct: 30 }, { take_pct: 400, part_pct: 30 }] });
+  assert.deepEqual(lad.orders.map(o => [o.amount_whole, o.step, o.steps, o.trigger_sol]), [[360, 1, 3, '0.72'], [270, 2, 3, '0.81'], [270, 3, 3, '1.35']]);
+  assert.deepEqual(lad.steps.map(x => [x.step, x.take_pct, x.part_pct]), [[1, 100, 40], [2, 200, 30], [3, 400, 30]]);
+  assert.equal(lad.costs.order_deposit_sol, '0.00655632', 'a deposit for each of the 3 order accounts');
+  assert.ok(lad.solana.bytes <= otx.MAX_TX_BYTES);
+  const ladTx = decodeTx(lad.solana.transaction);
+  assert.deepEqual(Object.keys(ladTx.t.signatures), [user.address], 'one signature, the user\'s');
+  const places = ladTx.ixs.filter(i => i.program === PROGRAM);
+  assert.deepEqual(places.map(i => i.accounts[1]), lad.orders.map(o => o.order_address));
+  const approvals = ladTx.ixs.filter(i => i.program === op.P.token && i.data[0] === 13);
+  const { rows: [{ left: othersLeft }] } = await db.query(`SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM solana_orders WHERE source = $1 AND state IN ('prepared', 'open', 'triggered') AND ladder IS DISTINCT FROM $2`, [source, lad.orders[0].ladder]);
+  assert.equal(approvals.length, 1);
+  assert.equal(approvals[0].data.readBigUInt64LE(1), 900_000_000n + BigInt(othersLeft), 'one approval: all three steps and what the other orders on the account have left');
+  for (const [i, o] of lad.orders.entries()) {
+    put(o.order_address, orderFromPlace(places[i]), PROGRAM);
+    assert.equal((await orders.confirm(account, o.id)).state, 'open');
+  }
+  await assert.rejects(orders.prepare(account, { kind: 'take_profit', token: TOKEN, steps: [1, 2, 3, 4].map(i => ({ take_pct: i * 50, part_pct: 20 })) }), /2 or 3 steps/);
+  await assert.rejects(orders.prepare(account, { kind: 'take_profit', token: TOKEN, steps: [{ take_pct: 100, part_pct: 60 }, { take_pct: 200, part_pct: 60 }] }), /add up to 120%/);
 });
