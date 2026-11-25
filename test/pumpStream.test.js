@@ -61,6 +61,24 @@ test('pump.fun\'s events, read with its IDL\'s layouts; later fields it adds don
   assert.equal(ps.decodeEvent(createEvent().subarray(0, 30)), null, 'cut short: skipped, not guessed');
 });
 
+// PumpSwap's BuyEvent and SellEvent, every field as idl/pump_amm.json lists it (read 25 November 2026).
+const i128 = () => Buffer.alloc(16);
+const swapEvent = (isBuy, { base = 2_000_000_000_000n, quote = 1_234_000_000n, pool = POOL, user = USER, at = T + 300 } = {}) => Buffer.concat([isBuy ? ps.DISC.swapBuy : ps.DISC.swapSell,
+  i64(at), u64(base), u64(isBuy ? 2_000_000_000n : 1_000_000_000n), u64(1), u64(2), u64(3), u64(4), u64(1_200_000_000n), u64(20), u64(2_400_000n), u64(5), u64(600_000n), u64(1_202_400_000n), u64(quote),
+  pk(pool), pk(user), pk(USER), pk(USER), pk(USER), pk(USER), pk(CURVE), u64(5), u64(600_000n),
+  ...(isBuy ? [bool(true), u64(0), u64(0), u64(0), i64(T), u64(0), str('buy')] : []), u64(0), u64(0), u64(0), u64(0), i128(), bool(false), u64(10n ** 15n), u64(0), u64(0), u64(0)]);
+
+test('PumpSwap\'s buys and sales, read with its IDL\'s layouts, from its own self-CPI events only', () => {
+  const b = ps.decodeEvent(swapEvent(true));
+  assert.deepEqual([b.type, b.is_buy, b.base_amount, b.quote_amount, b.pool, b.user, b.coin_creator, b.timestamp], ['swap', true, 2_000_000_000_000n, 1_234_000_000n, POOL, USER, CURVE, T + 300],
+    'what the user paid, every fee in (user_quote_amount_in)');
+  const s = ps.decodeEvent(swapEvent(false, { quote: 987_000_000n }));
+  assert.deepEqual([s.type, s.is_buy, s.quote_amount], ['swap', false, 987_000_000n], 'what the user got, after every fee (user_quote_amount_out)');
+  const tx = { failed: false, logs: [], instructions: [{ program: ps.PUMP_AMM, data: Buffer.concat([ps.EVENT_TAG, swapEvent(false)]) }, { program: USER, data: Buffer.concat([ps.EVENT_TAG, swapEvent(true)]) }] };
+  assert.deepEqual(ps.eventsOf(tx).map(e => [e.type, e.is_buy]), [['swap', false]], 'only PumpSwap\'s own events');
+  assert.equal(ps.decodeEvent(swapEvent(true).subarray(0, 100)), null, 'cut short: skipped');
+});
+
 test('found as self-CPI events or as log lines; failed transactions and non-SOL curves left out', () => {
   const cpi = { failed: false, logs: [], instructions: [{ program: PUMP, data: Buffer.concat([ps.EVENT_TAG, createEvent()]) }, { program: USER, data: Buffer.concat([ps.EVENT_TAG, tradeEvent()]) }] };
   assert.deepEqual(ps.eventsOf(cpi).map(e => e.type), ['create'], 'only the pump.fun program\'s own events');
