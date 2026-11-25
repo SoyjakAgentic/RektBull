@@ -23,10 +23,16 @@
  *   BondingV5 on Base): its own Transfer events (the launchpads' events don't
  *   index the coin), and on one, the curve's quote for each order on it, at
  *   most once a second.
- * - Meme Watch: for coins with an open Meme Watch exit, Transfers out of their
- *   launch-bundle wallets (Meme Watch's groups). Each is recorded once
- *   (meme_insider_sells); when a group's sales since the stream started watching
- *   reach 20% of what it bought (the 6-hour check's step), its exits fire.
+ * - Meme Watch: for every coin on BNB Chain and Base in an enabled Meme Watch
+ *   (up to `max_insider_coins` a chain, those with an open Meme Watch exit
+ *   first, then those the most users watch), Transfers out of its launch-bundle
+ *   wallets (Meme Watch's groups). Each is recorded once (meme_insider_sells).
+ *   Everyone watching the coin is told, as on Solana (services/insiderWatch.js):
+ *   the group's first sale seen (high, once per group), and each 20% of what it
+ *   bought gone (critical, the 6-hour check's own alert and key, so nobody is
+ *   told twice). At 20%, the coin's Meme Watch exits fire too. These run even
+ *   before the Meme Router is deployed (the order service off): only the
+ *   price and curve subscriptions need it.
  * - A budget: `daily_budget` pushed logs a day across both chains (150,000,
  *   about 4.5 million a month). At it, the price and curve subscriptions stop
  *   until the next UTC day; the insiders' stay (they're rare).
@@ -51,8 +57,8 @@ const tx = require('./memeOrderTx');
 const { TRADE_CHAINS } = require('./chains');
 
 const SETTINGS_KEY = 'meme_stream';
-const DEFAULTS = { on: false, daily_budget: 150000, max_pools: 10, arm_pct: 15 };
-const LIMITS = { daily_budget: [1000, 20000000], max_pools: [0, 100], arm_pct: [1, 50] };
+const DEFAULTS = { on: false, daily_budget: 150000, max_pools: 10, arm_pct: 15, max_insider_coins: 50 };
+const LIMITS = { daily_budget: [1000, 20000000], max_pools: [0, 100], arm_pct: [1, 50], max_insider_coins: [0, 500] };
 const get = () => ({ ...DEFAULTS, ...(settings.get(SETTINGS_KEY) || {}) });
 function check(input) {
   const out = {};
@@ -110,7 +116,7 @@ const priceIn = (ratio, orient, decimals, quoteDecimals) => (orient === 0 ? rati
 
 /* ── State ── */
 
-const st = { conns: {}, watches: {}, budgetHit: {}, lock: null, leading: false, timer: null, pending: new Set(), bad: new Set(), lastCurve: new Map(), status: {} };
+const st = { conns: {}, watches: {}, budgetHit: {}, insiderOverflow: {}, lock: null, leading: false, timer: null, pending: new Set(), bad: new Set(), lastCurve: new Map(), status: {} };
 
 function track(p) {
   st.pending.add(p);
@@ -164,8 +170,13 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
       };
     }
   }
-  // Meme Watch: the launch-bundle wallets of coins with an open Meme Watch exit.
-  for (const token of [...new Set(rows.filter(r => r.kind === 'meme_watch_exit').map(r => r.token))]) {
+  // Meme Watch: the launch-bundle wallets of every coin an enabled Meme Watch holds on this chain, those with an open
+  // Meme Watch exit first, then those the most accounts watch; at most max_insider_coins (the rest: the 6-hour check).
+  const exits = new Set(rows.filter(r => r.kind === 'meme_watch_exit').map(r => r.token));
+  const coins = [...groupsByToken.entries()].filter(([k, g]) => k.startsWith(`${chain}:`) && g.length).map(([k, g]) => ({ token: k.slice(chain.length + 1), accounts: new Set(g.flatMap(x => [...x.accounts])).size }))
+    .sort((a, b) => (exits.has(b.token) - exits.has(a.token)) || (b.accounts - a.accounts) || a.token.localeCompare(b.token));
+  st.insiderOverflow[chain] = Math.max(0, coins.length - s.max_insider_coins);
+  for (const { token } of coins.slice(0, s.max_insider_coins)) {
     const groups = groupsByToken.get(`${chain}:${token}`) || [];
     const wallets = [...new Set(groups.flatMap(g => [...g.wallets]))].sort();
     for (let i = 0; i < wallets.length; i += MAX_TOPIC_WALLETS) {
@@ -180,7 +191,7 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
 /** Meme Watch's launch-bundle groups, by `chain:token`, from every enabled Meme Watch's snapshot. */
 async function insiderGroups() {
   if (require('../admin/agentStates').isOff('meme_watch')) return new Map();
-  const { rows } = await db.query(`SELECT snapshot FROM agent_settings WHERE agent = 'meme_watch' AND enabled`);
+  const { rows } = await db.query(`SELECT account_id, snapshot FROM agent_settings WHERE agent = 'meme_watch' AND enabled`);
   const out = new Map();
   for (const r of rows) {
     for (const [key, p] of Object.entries(r.snapshot?.positions || {})) {
@@ -188,9 +199,10 @@ async function insiderGroups() {
       const list = out.get(key) || [];
       for (const g of p.groups) {
         if (!g.funder || !Array.isArray(g.wallets) || !(g.bought_pct > 0)) continue;
-        let cur = list.find(x => x.funder === g.funder);
-        if (!cur) { cur = { funder: String(g.funder).toLowerCase(), wallets: new Set(), bought_pct: g.bought_pct }; list.push(cur); }
+        let cur = list.find(x => x.funder === String(g.funder).toLowerCase());
+        if (!cur) { cur = { funder: String(g.funder).toLowerCase(), wallets: new Set(), bought_pct: g.bought_pct, accounts: new Set(), symbol: p.symbol || null }; list.push(cur); }
         for (const w of g.wallets) if (w?.address && /^0x[0-9a-fA-F]{40}$/.test(w.address)) cur.wallets.add(w.address.toLowerCase());
+        cur.accounts.add(String(r.account_id));
       }
       out.set(key, list);
     }
@@ -210,11 +222,15 @@ const quoteDecimalsOf = async (chain, quote) => {
 /** One planning pass: who leads, what to subscribe on each chain, and the health state. */
 async function plan() {
   const s = get();
-  if (!s.on || !configured() || orders.config().off || !env.databaseUrl) { stopAll(); return { off: true }; }
+  if (!s.on || !configured() || !env.databaseUrl) { stopAll(); return { off: true }; }
   if (!(await lead())) return { standby: true };
-  const chains = Object.keys(urls()).filter(c => orders.config().routers?.[c]);
-  const { rows } = await db.query(`SELECT * FROM meme_orders WHERE state = 'open' AND valid_until > now() AND chain = ANY($1)`, [chains]);
+  // A chain is streamed for its orders (once the Meme Router is deployed there) or for Meme Watch (from day one).
+  const ordersOn = !orders.config().off;
   const groups = await insiderGroups();
+  const chains = Object.keys(urls()).filter(c => (ordersOn && orders.config().routers?.[c]) || [...groups.keys()].some(k => k.startsWith(`${c}:`)));
+  const { rows } = ordersOn
+    ? await db.query(`SELECT * FROM meme_orders WHERE state = 'open' AND valid_until > now() AND chain = ANY($1)`, [chains])
+    : { rows: [] };
   for (const chain of chains) {
     if (!st.conns[chain]) {
       st.conns[chain] = evmStream.connect(chain, urls()[chain], { onLog: (key, log) => onLog(chain, key, log), onStatus: x => { st.status[chain] = x; } });
@@ -234,7 +250,8 @@ function stateNow(s = get()) {
     written_at: new Date().toISOString(), on: s.on, daily_budget: s.daily_budget, worker: `${require('os').hostname()}:${process.pid}`,
     chains: Object.fromEntries(Object.entries(st.conns).map(([chain, c]) => {
       const w = Object.values(st.watches[chain] || {});
-      return [chain, { ...c.status(), today: c.counts().total, over_budget: !!st.budgetHit[chain], pools: w.filter(x => x.type === 'pool').length, curves: w.filter(x => x.type === 'curve').length, insider_filters: w.filter(x => x.type === 'insiders').length }];
+      return [chain, { ...c.status(), today: c.counts().total, over_budget: !!st.budgetHit[chain], pools: w.filter(x => x.type === 'pool').length, curves: w.filter(x => x.type === 'curve').length,
+        insider_filters: w.filter(x => x.type === 'insiders').length, insider_coins: new Set(w.filter(x => x.type === 'insiders').map(x => x.token)).size, insider_overflow: st.insiderOverflow[chain] || 0 }];
     })),
     not_used: [...st.bad],
   };
@@ -325,17 +342,51 @@ async function onInsider(chain, w, log) {
     [chain, w.token, g.funder, from, log.transactionHash, Number(log.logIndex), amount.toString()]);
   if (!rowCount) return; // seen before (a reconnect)
   const { rows: [sum] } = await db.query(`SELECT COALESCE(sum(amount), 0)::text AS sold FROM meme_insider_sells WHERE chain = $1 AND token = $2 AND funder = $3`, [chain, w.token, g.funder]);
-  const supply = BigInt(await cache.cached(`meme:stream:supply:${chain}:${w.token}`, 86400, async () => String(await orders.read(chain, w.token, tx.ERC20, 'totalSupply'))));
+  let supply = 0n;
+  try {
+    supply = BigInt(await cache.cached(`meme:stream:supply:${chain}:${w.token}`, 86400, async () => String(await orders.read(chain, w.token, tx.ERC20, 'totalSupply'))));
+  } catch (err) { logger.warn('meme stream: supply not read', { chain, token: w.token, error: err.message }); }
   const bought = supply * BigInt(Math.round(g.bought_pct * 100)) / 10000n;
-  if (bought <= 0n) return;
-  const soldPct = Number(BigInt(sum.sold) * 10000n / bought) / 100;
-  if (soldPct < INSIDER_STEP_PCT) return;
+  const soldPct = bought > 0n ? Number(BigInt(sum.sold) * 10000n / bought) / 100 : null;
+  await alertWatchers(chain, w.token, g, { from, to, amount, supply, soldPct, txHash: log.transactionHash });
+  if (soldPct === null || soldPct < INSIDER_STEP_PCT) return;
   const n = await orders.memeWatchSignal(chain, w.token, {
     source: 'Meme Watch (the stream): Transfers out of the launch-bundle wallets, pushed over the chain\'s WebSocket',
     alert: `launch-bundle wallets have sold ${soldPct.toFixed(0)}% of what they bought (since the stream started watching)`,
     funder: g.funder, tx: log.transactionHash,
   });
   if (n) await fireAndFill([true]);
+}
+
+const LABEL = { base: 'Base', bsc: 'BNB Chain' };
+const shortAddr = a => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/**
+ * Meme Watch's alerts for a sale out of a launch-bundle group, to every account watching the coin: the group's first
+ * sale seen (high, once per group), and each 20% of what it bought gone (critical, the 6-hour check's own key:
+ * services/myAgents.js, so nobody is told twice). Never sells: each links a sell on the Trade desk for the wallet to sign.
+ */
+async function alertWatchers(chain, token, g, { from, to, amount, supply, soldPct, txHash }) {
+  if (!g.accounts?.size) return 0;
+  const myAgents = require('../services/myAgents');
+  const key = `${chain}:${token}`;
+  const name = g.symbol || shortAddr(token);
+  const source = `${LABEL[chain]}'s WebSocket: the coin's Transfer event in transaction ${txHash.slice(0, 10)}…`;
+  const ofSupply = supply > 0n ? `${(Number(amount * 1000000n / supply) / 10000).toLocaleString('en-US', { maximumFractionDigits: 4 })}% of the supply` : 'coins';
+  const gone = soldPct === null ? null : Math.min(100, Math.round(soldPct));
+  const reasons = [
+    { text: `A wallet funded from ${shortAddr(g.funder)} (one of ${g.wallets.size} that bought ${g.bought_pct}% of the supply at launch) sent ${ofSupply} to ${shortAddr(to)}, outside the group: a sale or a transfer out.`, source },
+    ...(gone === null ? [] : [{ text: `Since RektBull started watching them, ${gone}% of what they bought has left the group.`, source: `${source}; the supply from ${LABEL[chain]} RPC (totalSupply)` }]),
+  ];
+  const detail = { reasons, token: { chain, token }, sell: myAgents.sellLink(chain, token), tx: txHash, wallet_from: from };
+  const alerts = [{ kind: 'meme_watch', severity: 'high', dedupe: `meme:${key}:insiders:${g.funder}:first`, title: `${name} on ${chain}: a launch-bundle wallet just sold`, detail }];
+  if (gone !== null && gone >= INSIDER_STEP_PCT) {
+    alerts.push({ kind: 'meme_watch', severity: 'critical', dedupe: `meme:${key}:insiders:${g.funder}:${Math.floor(gone / INSIDER_STEP_PCT)}`, title: `${name} on ${chain}: launch-bundle wallets are selling (${gone}% of what they bought is gone)`, detail });
+  }
+  const { rows: accounts } = await db.query('SELECT id, wallet, solana_wallet FROM accounts WHERE id = ANY($1::bigint[])', [[...g.accounts]]);
+  let raised = 0;
+  for (const a of accounts) raised += await myAgents.raise(a.id, alerts.map(x => ({ ...x, wallet: a.wallet || a.solana_wallet })));
+  return raised;
 }
 
 /* ── Leading, starting, stopping ── */
@@ -390,7 +441,7 @@ async function health(now = Date.now()) {
   return {
     name, state: live ? 'live' : 'down', today, budget: s.daily_budget, chains: x?.chains || {}, worker: x?.worker || null,
     note: live
-      ? `${today.toLocaleString('en-US')} of today's ${s.daily_budget.toLocaleString('en-US')} pushed logs used. ${Object.entries(x.chains).map(([c, v]) => `${c}: ${v.pools} pools, ${v.curves} curves, ${v.insider_filters} insider filters${v.over_budget ? ' (over budget: prices back on polling until tomorrow)' : ''}`).join('; ')}.${x.not_used?.length ? ` ${x.not_used.length} pool(s) not used (their events didn't match DexScreener's price).` : ''}`
+      ? `${today.toLocaleString('en-US')} of today's ${s.daily_budget.toLocaleString('en-US')} pushed logs used. ${Object.entries(x.chains).map(([c, v]) => `${c}: ${v.pools} pools, ${v.curves} curves, ${v.insider_coins ?? 0} Meme Watch coins (${v.insider_filters} insider filters${v.insider_overflow ? `; ${v.insider_overflow} more left to the 6-hour check` : ''})${v.over_budget ? ' (over budget: prices back on polling until tomorrow)' : ''}`).join('; ')}.${x.not_used?.length ? ` ${x.not_used.length} pool(s) not used (their events didn't match DexScreener's price).` : ''}`
       : 'No fresh state from the trade service: orders fire on its polling until the stream is back.',
   };
 }

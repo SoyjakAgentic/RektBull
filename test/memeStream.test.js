@@ -204,8 +204,13 @@ test('triggers over WebSocket, end to end: armed near the trigger, fired by a po
   // 5. Meme Watch: an exit on the coin, and its launch-bundle group (10% of the supply). Moves inside the group don't count;
   // sales out of it do, once each; at 20% of what it bought, the exit fires and is filled.
   const W1 = '0x' + 'a1'.repeat(20), W2 = '0x' + 'a2'.repeat(20), OUT = '0x' + 'dd'.repeat(20);
+  // A second coin Meme Watch watches, with no exit on it: watched too, for the alerts.
+  const OTHER = '0x' + 'e1'.repeat(20), FUNDER = '0x' + 'f0'.repeat(20);
   await db.query(`INSERT INTO agent_settings (account_id, agent, enabled, snapshot) VALUES ($1, 'meme_watch', true, $2)`,
-    [acct, JSON.stringify({ positions: { [`base:${BULL}`]: { groups: [{ funder: '0x' + 'f0'.repeat(20), wallets: [{ address: W1 }, { address: W2 }], bought_pct: 10 }] } } })]);
+    [acct, JSON.stringify({ positions: {
+      [`base:${BULL}`]: { symbol: 'BULL', groups: [{ funder: FUNDER, wallets: [{ address: W1 }, { address: W2 }], bought_pct: 10 }] },
+      [`base:${OTHER}`]: { symbol: 'OTHER', groups: [{ funder: '0x' + 'f1'.repeat(20), wallets: [{ address: '0x' + 'b1'.repeat(20) }], bought_pct: 5 }] },
+    } })]);
   const mw = await place({ kind: 'meme_watch_exit', floor_pct: 50 });
   await pass();
   const ins = ws.subFor(f => f.address === BULL);
@@ -213,17 +218,45 @@ test('triggers over WebSocket, end to end: armed near the trigger, fired by a po
   assert.deepEqual(ws.subs.get(ins).topics, [T.transfer, [ethers.zeroPadValue(W1, 32), ethers.zeroPadValue(W2, 32)]]);
   const transfer = (from, to, amount, i) => ({ address: BULL, topics: [T.transfer, ethers.zeroPadValue(from, 32), ethers.zeroPadValue(to, 32)], data: ethers.toBeHex(amount, 32), transactionHash: '0x' + String(i).padStart(64, '0'), logIndex: '0x1' });
   const E24 = 10n ** 24n; // the group bought 10% of a billion coins: 1e26 raw; 20% of that is 2e25
+  assert.ok(ws.subFor(f => f.address === OTHER), 'a coin Meme Watch watches with no exit on it: watched for the alerts');
+  const watchAlerts = async () => (await db.query(`SELECT severity, title, dedupe_key, detail FROM monitor_alerts WHERE account_id = $1 AND kind = 'meme_watch' ORDER BY id`, [acct])).rows;
   ws.push(ins, transfer(W1, W2, 30n * E24, 1)); // inside the group
+  await stream._drain();
+  assert.equal((await watchAlerts()).length, 0, 'a move inside the group isn\'t a sale');
   ws.push(ins, transfer(W1, OUT, 10n * E24, 2)); // 10%
   ws.push(ins, transfer(W1, OUT, 10n * E24, 2)); // the same log again (a reconnect): counted once
   await stream._drain();
   assert.equal((await orders.list(account)).orders.find(o => o.id === mw.id).state, 'open');
+  // Everyone watching the coin is told of the group's first sale, within the block: once.
+  let wa = await watchAlerts();
+  assert.deepEqual(wa.map(a => [a.severity, a.title, a.dedupe_key]), [['high', 'BULL on base: a launch-bundle wallet just sold', `meme:base:${BULL}:insiders:${FUNDER}:first`]]);
+  assert.match(wa[0].detail.reasons[0].text, /^A wallet funded from 0xf0f0…f0f0 \(one of 2 that bought 10% of the supply at launch\) sent 1% of the supply to 0xdddd…dddd, outside the group/);
+  assert.match(wa[0].detail.reasons[0].source, /^Base's WebSocket: the coin's Transfer event in transaction 0x00000000…/);
+  assert.match(wa[0].detail.reasons[1].text, /10% of what they bought has left the group/);
+  assert.match(wa[0].detail.sell, /^\/trade\?chain=base&token=0x(b0){20}&side=sell/);
   ws.push(ins, transfer(W2, OUT, 12n * E24, 3)); // 22%
   await stream._drain();
   const mwRow = (await orders.list(account)).orders.find(o => o.id === mw.id);
   assert.equal(mwRow.state, 'triggered');
   assert.match(mwRow.trigger_reason.alert, /sold 22% of what they bought/);
   assert.equal(chain.sent.length, 2, 'the exit filled at once');
+  wa = await watchAlerts();
+  assert.deepEqual(wa.slice(1).map(a => [a.severity, a.title, a.dedupe_key]), [['critical', 'BULL on base: launch-bundle wallets are selling (22% of what they bought is gone)', `meme:base:${BULL}:insiders:${FUNDER}:1`]],
+    'the 6-hour check\'s own alert and key: nobody is told twice');
+
+  // At most max_insider_coins a chain, those with an exit first; the rest are left to the 6-hour check, and the health view says so.
+  await admin.set('meme_stream', { on: true, max_insider_coins: 1 }, { wallet: 'admin', action: 'meme_stream', reason: 'test' });
+  await pass();
+  assert.equal(ws.subFor(f => f.address === OTHER), undefined);
+  assert.ok(ws.subFor(f => f.address === BULL), 'the coin with an open exit is kept');
+  assert.match((await stream.health()).note, /1 Meme Watch coins \(1 insider filters; 1 more left to the 6-hour check\)/);
+  await admin.set('meme_stream', { on: true, max_insider_coins: 50 }, { wallet: 'admin', action: 'meme_stream', reason: 'test' });
+  // Meme Watch's alerts don't wait for the Meme Router: with the order service off, its coins are still watched.
+  env.memeOrdersEnabled = false;
+  await pass();
+  assert.ok(ws.subFor(f => f.address === OTHER) && ws.subFor(f => f.address === BULL), 'still watched with orders off');
+  assert.equal(ws.subFor(f => f.address === POOL), undefined, 'no price subscriptions without orders');
+  env.memeOrdersEnabled = true;
 
   // 6. The daily budget: once it's used, prices go back to polling (the pool is unsubscribed); the insiders stay.
   sellRate = 5n * 10n ** 13n; // placed at 0x's price before the fall: 500 BULL = 0.025 ETH, stop at 0.02
