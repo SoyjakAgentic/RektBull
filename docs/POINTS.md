@@ -22,12 +22,14 @@ have been earned, and once per fee (one row per source and reference):
 | --- | --- | --- |
 | Swap you signed (EVM, Solana) | The trade is confirmed onchain | The fee the trade's plan showed (`trade/positions.js`) |
 | Automatic swap (Trade Router) | The router's `Swapped` event is confirmed | The router's fee, as a share of the trade's value (`trade/autonomous.js`) |
+| Order fill on BNB Chain or Base (stop-loss, take-profit, Meme Watch exit, limit buy) | The Meme Router's `Filled` event is confirmed | The fee in that event, priced in USD then (DefiLlama: ETH, BNB or VIRTUAL) (`trade/memeOrders.js`) |
+| Order fill on Solana | The order program's `Filled` event is confirmed | The fee in that event, priced in USD then (DefiLlama: SOL) (`trade/solanaOrders.js`) |
 | Hyperliquid perps fee, page orders | Hyperliquid's answer reports a fill | Builder rate times what filled (`routes/hyperliquid.js`) |
 | Hyperliquid perps fee, automatic | The automatic order fills | The same (`hyperliquid/auto.js`) |
 | Polymarket trading fee | Polymarket's builder-trades feed shows the fill confirmed | Builder rate times the fill's USDC size, matched to the user by the order RektBull prepared (`polymarket/fills.js`, every 10 minutes) |
 | Polymarket profit share | The redemption that paid it is confirmed | The share in the batch (`polymarket/wallets.js`) |
 
-A rebate that can't be written is logged and never stops the trade it's for.
+A rebate that can't be written (or, for an order fill, priced) is logged and never stops the trade it's for.
 
 ## The cap
 
@@ -66,5 +68,5 @@ The wording is an admin setting, so it can change without a code change.
 ## Tests
 
 `test/rewardPoints.test.js` covers the rebate maths, once per fee, the cap, buying with points, a
-confirmed swap, the Polymarket fills feed (confirmed fills only, RektBull's
+confirmed swap, order fills on both chains (`memeOrders.test.js`, `solanaOrders.test.js`: once each, and none when the price can't be read), the Polymarket fills feed (confirmed fills only, RektBull's
 code only, never twice), and the API.

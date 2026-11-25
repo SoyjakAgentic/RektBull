@@ -178,6 +178,11 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   assert.equal(o1.delivered_native, '0.03465');
   assert.equal(o1.fills[0].state, 'confirmed');
   assert.match(o1.fills[0].tx_url, /^https:\/\/basescan\.org\/tx\/0x/);
+  // RektBull Points: 25% of the fee the fill paid (0.00035 ETH at $3,000 = $1.05), at $0.10 a point, once.
+  const pointsFor = async ref => (await db.query(`SELECT points::float AS p, fee_usd::float AS fee, source FROM reward_points WHERE ref = $1`, [ref])).rows;
+  assert.deepEqual(await pointsFor(ethers.keccak256(chain.sent[0].raw)), [{ p: 2.625, fee: 1.05, source: 'order_fill' }]);
+  await orders.tick();
+  assert.equal((await pointsFor(ethers.keccak256(chain.sent[0].raw))).length, 1, 'once per fill');
   const { rows: alerts } = await db.query(`SELECT * FROM monitor_alerts WHERE account_id = $1 AND kind = 'meme_order'`, [acct]);
   assert.match(alerts.map(a => a.title).join(' | '), /Stop-loss on BULL \(Base\): sold/);
   assert.match(require('../src/alerts/format').message({ ...alerts[0], detail: alerts[0].detail }).url, /\/trade\?chain=base#evm-orders-card/);
@@ -284,7 +289,13 @@ test('orders on BNB Chain and Base, end to end: placed, signed, fired, filled by
   const lbEv = tx.ROUTER.encodeEventLog('Filled', [lbHash, user.address, WBNB, FOUR, 5n * 10n ** 16n, 5n * 10n ** 14n, false, 1287n * E18]);
   chain.receipts.set(ethers.keccak256(chain.sent[1].raw), { status: 1, logs: [{ address: ROUTER_BSC, ...lbEv }] });
   chain.filled.set(lbHash, 5n * 10n ** 16n);
+  // A price that can't be read: no Points for this fill, and the fill is confirmed all the same.
+  const usdWas = prices.usdPrice;
+  prices.usdPrice = async () => { throw new Error('DefiLlama is down'); };
   await orders.tick();
+  prices.usdPrice = usdWas;
+  assert.equal((await orders.list(account)).orders.find(o => o.id === lb.order.id).state, 'filled');
+  assert.deepEqual(await pointsFor(ethers.keccak256(chain.sent[1].raw)), [], 'not rebated, never blocking');
 
   // 9. Privately on BNB Chain (privateSend.js): each fill to both privacy RPCs and not to the public mempool, the
   //    executor's nonce tracked past the chain's own count, the same transaction the usual way once it hasn't landed,
