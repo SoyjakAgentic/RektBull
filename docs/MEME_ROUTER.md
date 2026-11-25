@@ -274,9 +274,35 @@ one order or all of them. `contracts/test/memeOrdersService.test.js` runs the
 service's own order, hash, signature, fill, approval, cancel, cancel-all,
 wrap and `Filled` decoding against the router itself.
 
+**Exits with a buy (built 25 November 2026).** Asked for by the owner on 24
+November 2026 ("start exits with the buy on BNB Chain and Base"), as on Solana.
+On the Trade desk, a buy on BNB Chain or Base can carry a stop-loss and/or a
+take-profit (`exitsForBuy`, from `trade/proposals.js`):
+- **What they cover:** the coins the buy is sure to bring (its minimum), valued
+  at the buy's own price (what that minimum cost, in ETH or BNB). The terms
+  are the Solana exits' (`terms`, after the router's fee), and the router's own
+  `hashOrder` is checked before anyone is asked to sign.
+- **The approval** goes in the buy's own batch, after the swap: these coins for
+  each exit, plus what's left of the account's other live orders on them
+  (`exit_approve`). None when the router already has enough.
+- **Signing comes after the buy is sent**, so the buy isn't held up: the page
+  asks the wallet to sign each exit (a signature, nothing sent). Declining one
+  only leaves it out.
+- **Opening:** a signed exit waits (`prepared`, with its `trade_id`, migration
+  042, shown as "waiting for its buy to land") until the trade service confirms
+  the buy, then opens. It's dropped if the buy fails, is cancelled or expires,
+  and signing after that is refused. Cancelling one that's still waiting sends
+  the router's `cancel`, since its signature exists.
+- **They never stop the buy.** When exits can't be added, the buy goes ahead
+  and the plan says why: orders off or not open on that chain, a coin that taxes
+  transfers, under $5 covered, or the router not readable just then.
+
+Tests: `test/evmBuyWithExits.test.js` (the Trade desk's real buy on Base with
+the stand-in chain of `test/helpers/memeChain.js`) and
+`test/browser/evmBuyWithExits.js` (the page, with a wallet that really signs).
+
 **Not yet:** coins on a Virtuals curve on Base (0x can't route them; the
-router has no Virtuals venue until the check on a copy of Base below), and
-exits placed in the same step as a buy on the Trade desk, as on Solana.
+router has no Virtuals venue until the check on a copy of Base below).
 
 ## What's next
 
