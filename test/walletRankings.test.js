@@ -69,10 +69,11 @@ test('left out: a coin\'s creator, dust, snipes (counted apart), positions on a 
   const d = day(wr._state());
   assert.deepEqual([d.coins, d.snipes, Math.round(d.realised)], [0, 1, 0]);
 
-  // The coin left the curve: its open positions are dropped.
+  // The coin left the curve: its open positions follow it to PumpSwap (below); with no pool for it, they stay open.
   wr.onEvent(trade(A, mint(4), true, SOL, 1_000_000));
   wr.onEvent({ type: 'complete', mint: mint(4), timestamp: T + 200 });
-  assert.equal(wr._state().positions.has(`${A}:${mint(4)}`), false);
+  assert.equal(wr._state().positions.has(`${A}:${mint(4)}`), true);
+  wr.reset();
 
   // A position untouched for over 7 days is dropped (never realised).
   wr.onEvent(trade(A, mint(5), true, SOL, 1_000_000, T));
@@ -82,6 +83,43 @@ test('left out: a coin\'s creator, dust, snipes (counted apart), positions on a 
   // Curves priced in something other than SOL are left out.
   wr.onEvent({ ...trade(A, mint(6), true, SOL, 1_000_000), quote_mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' });
   assert.equal(wr._state().positions.size, 0);
+});
+
+test('a coin that moves to PumpSwap: its positions followed there, its pool on the stream while they\'re open, capped', () => {
+  wr.reset();
+  const B = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
+  const POOL = 'FLkA8e9yqSSu3pNswV8tQSqqD8Zz5FKtsTWw6Py8VSaQ';
+  const swap = (user, isBuy, quote, base, pool = POOL, creator = DEV) => ({ type: 'swap', is_buy: isBuy, user, pool, base_amount: BigInt(base), quote_amount: BigInt(quote), coin_creator: creator, timestamp: T + 400 });
+  wr.onEvent(trade(A, mint(7), true, SOL, 1_000_000)); // bought on the curve: 1.013 SOL with fees
+  assert.deepEqual(wr.pools(), [], 'no pool before the coin moves');
+  wr.onEvent({ type: 'complete', mint: mint(7), timestamp: T + 200 });
+  wr.onEvent({ type: 'migrate', mint: mint(7), pool: POOL, timestamp: T + 205 });
+  assert.deepEqual(wr.pools(), [POOL], 'its pool is followed while a position on it is open');
+  // On PumpSwap: a new wallet's buy doesn't start a position; the open one adds, then sells all of it.
+  wr.onEvent(swap(B, true, SOL, 500_000));
+  assert.equal(wr._state().positions.has(`${B}:${mint(7)}`), false, 'PumpSwap never starts a position');
+  wr.onEvent(swap(A, true, SOL / 2n, 250_000)); // 0.5 SOL, fees in
+  wr.onEvent(swap(A, false, 3n * SOL, 1_250_000)); // 3 SOL to the user, after every fee
+  const d = day(wr._state());
+  assert.deepEqual([d.coins, d.wins], [1, 1]);
+  assert.equal(Math.round(d.realised), Math.round(3e9 - 1.013e9 - 0.5e9), 'what it got, less the curve cost and the PumpSwap buy, fees in both');
+  assert.deepEqual(wr.pools(), [], 'nothing open on the coin: its pool is no longer followed');
+  // A trade in a pool RektBull doesn't know: nothing.
+  wr.onEvent(swap(A, false, SOL, 1, 'Unkn0wnPoo1111111111111111111111111111111111'));
+  // The coin's creator selling on PumpSwap: left out.
+  wr.onEvent(trade(DEV, mint(8), true, SOL, 1_000_000, T + 100, A));
+  wr.onEvent({ type: 'migrate', mint: mint(8), pool: 'Poo1Two1111111111111111111111111111111111111', timestamp: T + 205 });
+  assert.equal(wr._state().positions.size, 1);
+  // More pools than the stream takes: the most recently graduated kept, the rest's positions dropped.
+  const max = wr.RULES.max_amm_pools;
+  wr.RULES.max_amm_pools = 1;
+  wr.onEvent(trade(A, mint(9), true, SOL, 1_000_000));
+  wr.onEvent({ type: 'migrate', mint: mint(9), pool: 'Poo1Three111111111111111111111111111111111111', timestamp: T + 206 });
+  assert.deepEqual(wr.pools(), ['Poo1Three111111111111111111111111111111111111']);
+  assert.deepEqual(wr.poolSummary(), { watched: 1, known: 3, overflow: 1 });
+  assert.equal(wr._state().positions.has(`${DEV}:${mint(8)}`), false, 'the older coin\'s position: dropped, it can\'t close where RektBull sees it');
+  wr.RULES.max_amm_pools = max;
+  assert.match(wr.describe().join(' '), /once the coin moves, on PumpSwap/);
 });
 
 test('the rules are stated with the ranking', () => {

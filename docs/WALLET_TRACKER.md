@@ -135,9 +135,27 @@ the stream is switched on. Each trade event gives:
 - **Realised profit only:** the SOL a wallet got back from selling a coin, less
   what that part cost at its average cost, after pump.fun's and the creator's
   fees. Coins still held don't count.
-- **Only what RektBull saw:** trades on the curve while the stream ran. A coin
-  bought before, or sold after it moved to PumpSwap, isn't counted. PumpSwap
-  isn't on the stream: adding it would be one more filter, but much more data.
+- **Only what RektBull saw:** positions bought on the curve while the stream
+  ran, and their sales there or, once the coin moves, on PumpSwap. A coin bought
+  before RektBull watched, or bought first on PumpSwap, isn't counted.
+- **PumpSwap (added 25 November 2026):** watching all of PumpSwap would be much
+  more data, so the stream follows only the pools of graduated coins with a
+  position still open.
+  - **Which pools:** each pool comes from pump.fun's migration event and goes
+    in one filter of its own on the same subscription. At most
+    `max_amm_pools` (200) pools are followed, those graduated last first, and
+    each is dropped once no position on its coin is open.
+  - **Over the cap:** a coin whose pool doesn't fit has its positions dropped,
+    since they can't close where RektBull sees them. The Health tab says how
+    many.
+  - **What's decoded:** PumpSwap's BuyEvent and SellEvent, read with the
+    layouts in its published IDL (`idl/pump_amm.json` in
+    github.com/pump-fun/pump-public-docs, read 25 November 2026), from its own
+    self-CPI events.
+  - **Amounts:** a sale counts what the user got after every fee
+    (`user_quote_amount_out`); a buy adds what they paid with every fee in
+    (`user_quote_amount_in`) to a position already open. A buy on PumpSwap
+    never starts one.
 - **A coin counts as closed** once 99% of what was bought is sold: a win if
   the position made money. A position still open after 7 days is dropped.
 - **Left out:**

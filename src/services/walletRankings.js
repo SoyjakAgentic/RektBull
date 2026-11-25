@@ -17,10 +17,16 @@
  *     before the stream started) aren't counted.
  *   - A coin counts as closed when 99% of what was bought is sold: a win if
  *     the position made money, a loss if not.
+ *   - Once a coin leaves the curve for PumpSwap, its open positions follow it
+ *     there: the stream adds the pool (from pump.fun's migration event) to a
+ *     filter of its own, at most RULES.max_amm_pools pools, those graduated
+ *     last first, and only while a position on the coin is open. A sale on
+ *     PumpSwap realises profit the same way, at what the user got after every
+ *     fee; a buy there adds to a position already open, never starts one.
  *   - Left out: a coin's creator trading it; positions that started with a buy
  *     under 0.05 SOL; buys within 2 seconds of the coin's creation (snipes,
- *     counted apart); positions still open after 7 days, or whose coin left the
- *     curve (sales on PumpSwap aren't on this stream yet).
+ *     counted apart); positions still open after 7 days, or on a coin whose
+ *     pool didn't fit in the filter (dropped).
  *   - Ranked: wallets with at least 5 coins closed in the window and a profit,
  *     by realised SOL. Left out: a wallet with over 500 trades in any day of the
  *     window (a bot), or with more snipes than counted coins.
@@ -43,6 +49,7 @@ const RULES = {
   open_days: 7,
   min_coins: 5,
   bot_trades_per_day: 500,
+  max_amm_pools: 200, // PumpSwap pools followed on the stream at once
 };
 const FLUSH_MS = 60_000;
 const MAX_POSITIONS = 400_000;
@@ -55,9 +62,12 @@ let days = new Map(); // `${wallet}|${day}` -> sums written at the next flush
 let trades = new Map(); // wallet -> trades today (bot detection), reset each UTC day
 let tradesDay = null;
 let creates = new Map(); // mint -> creation time (s), for the snipe rule
+let amm = new Map(); // PumpSwap pool -> { mint, at }: graduated coins, the most recent last
+let ammOverflow = 0;
+const MAX_AMM_KNOWN = 5000;
 
 function reset() {
-  positions = new Map(); days = new Map(); trades = new Map(); creates = new Map(); tradesDay = null;
+  positions = new Map(); days = new Map(); trades = new Map(); creates = new Map(); amm = new Map(); tradesDay = null; ammOverflow = 0;
 }
 
 const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
@@ -81,10 +91,18 @@ function onEvent(e, now = Date.now()) {
     while (creates.size > MAX_CREATES) creates.delete(creates.keys().next().value);
     return;
   }
-  if (e.type === 'complete' || e.type === 'migrate') {
-    // The coin left the curve: its open positions can't close here any more (PumpSwap isn't on the stream).
-    for (const k of positions.keys()) if (k.endsWith(`:${e.mint}`)) positions.delete(k);
+  if (e.type === 'complete') return; // the curve is full: its migration to PumpSwap follows
+  if (e.type === 'migrate') {
+    // The coin moved to PumpSwap: its pool is followed (pools()), so open positions can still close there.
+    if (e.pool) { touch(amm, e.pool, { mint: e.mint, at: e.timestamp > 0 ? e.timestamp * 1000 : now }); while (amm.size > MAX_AMM_KNOWN) amm.delete(amm.keys().next().value); }
     return;
+  }
+  if (e.type === 'swap') {
+    // A PumpSwap trade, in a pool of a coin that left the curve, as a curve trade: what the user paid or got has every fee in it.
+    const g = amm.get(e.pool);
+    if (!g) return;
+    if (e.is_buy && !positions.has(`${e.user}:${g.mint}`)) return; // PumpSwap adds to positions; it never starts one
+    e = { type: 'trade', mint: g.mint, sol_amount: e.quote_amount, token_amount: e.base_amount, is_buy: e.is_buy, user: e.user, timestamp: e.timestamp, creator: e.coin_creator, net: true };
   }
   if (e.type !== 'trade') return;
   const at = e.timestamp > 0 ? e.timestamp * 1000 : now;
@@ -92,7 +110,7 @@ function onEvent(e, now = Date.now()) {
   if (day !== tradesDay) { trades = new Map(); tradesDay = day; }
   trades.set(e.user, (trades.get(e.user) || 0) + 1);
   if (e.creator && e.user === e.creator) return; // a coin's creator trading their own coin
-  const fees = Number(e.fee || 0n) + Number(e.creator_fee || 0n);
+  const fees = e.net ? 0 : Number(e.fee || 0n) + Number(e.creator_fee || 0n); // PumpSwap's amounts are the user's own, fees in
   const sol = Number(e.sol_amount);
   const tokens = Number(e.token_amount);
   if (!(tokens > 0)) return;
@@ -128,6 +146,23 @@ function onEvent(e, now = Date.now()) {
     }
   } else touch(positions, k, pos);
 }
+
+/**
+ * The PumpSwap pools to follow on the stream: those of graduated coins with a position still open, the most recently
+ * graduated first, at most RULES.max_amm_pools. A coin left out has its open positions dropped (they can't close where
+ * RektBull sees them), and is counted for the health view.
+ */
+function pools() {
+  const open = new Set();
+  for (const k of positions.keys()) open.add(k.slice(k.indexOf(':') + 1));
+  const live = [...amm.entries()].filter(([, g]) => open.has(g.mint)).reverse(); // the most recent first
+  const kept = live.slice(0, RULES.max_amm_pools);
+  const dropped = new Set(live.slice(RULES.max_amm_pools).map(([, g]) => g.mint));
+  ammOverflow = dropped.size;
+  if (dropped.size) for (const k of positions.keys()) if (dropped.has(k.slice(k.indexOf(':') + 1))) positions.delete(k);
+  return kept.map(([pool]) => pool).sort();
+}
+const poolSummary = () => ({ watched: Math.min(RULES.max_amm_pools, amm.size), known: amm.size, overflow: ammOverflow });
 
 /** Positions still open after RULES.open_days are dropped (never realised). */
 function prune(now = Date.now()) {
@@ -204,7 +239,7 @@ async function top(windowName = '7d') {
 function describe() {
   return [
     'Realised profit only: SOL a wallet got back from selling a coin, less what that part cost, after pump.fun\'s and the creator\'s fees. Coins still held don\'t count.',
-    'Only trades on pump.fun\'s bonding curves that RektBull saw: a coin bought before, or sold after it moved to PumpSwap, isn\'t counted.',
+    'Only trades RektBull saw: positions bought on pump.fun\'s bonding curves, and their sales there or, once the coin moves, on PumpSwap. A coin bought before RektBull watched, or bought first on PumpSwap, isn\'t counted.',
     `A coin counts once ${Math.round(RULES.closed_share * 100)}% of what was bought is sold; a position still open after ${RULES.open_days} days is dropped.`,
     `Left out: a coin's creator trading it; positions that started under ${RULES.min_first_buy_lamports / LAMPORTS} SOL; buys within ${RULES.snipe_seconds} seconds of a coin's creation (snipes, shown apart).`,
     `Ranked: at least ${RULES.min_coins} coins closed in the window, and a profit. Left out: wallets with over ${RULES.bot_trades_per_day} trades in a day (bots), or more snipes than counted coins.`,
@@ -212,4 +247,4 @@ function describe() {
   ];
 }
 
-module.exports = { RULES, FLUSH_MS, WINDOWS, onEvent, flush, prune, reset, top, describe, _state: () => ({ positions, days, trades, creates }) };
+module.exports = { RULES, FLUSH_MS, WINDOWS, onEvent, flush, prune, reset, top, describe, pools, poolSummary, _state: () => ({ positions, days, trades, creates, amm }) };
