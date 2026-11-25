@@ -111,6 +111,36 @@ test('Group Guard: links, contracts, impersonators, commands and limits', { skip
   await post(BOB, '/check solana abc');
   assert.match(last().text, /^Use \/check <chain> <address>/);
 
+  /* ── requests for a wallet's secret, and a phrase posted: stated rules ── */
+  said.length = 0;
+  await post(BOB, 'pump.fun migration is live: enter your private key at pumpfun-migrate.io before Nov 30');
+  assert.equal(deleted[deleted.length - 1].id, mid, 'a lure with a link: removed');
+  assert.equal(said.length, 1, 'one warning, no link or address warnings on top');
+  assert.match(last().text, /^⚠️ Removed a message asking for a private key or recovery phrase\. It's a scam:.*\(Group Guard's rule for requests for a wallet's secret\.\)\n\nChecked by RektBull/s);
+  assert.equal(last().replyTo, null);
+  mayDelete = false;
+  await post(BOB, 'Wallet sync needed, DM me your seed phrase to restore access');
+  assert.match(last().text, /^⚠️ This message is asking for a private key or recovery phrase\..*Admins: give me the "Delete messages" right/s);
+  assert.equal(last().replyTo, mid);
+  mayDelete = true;
+  const removedBefore = deleted.length;
+  await post(BOB, 'you have to validate your 12 words to claim the airdrop');
+  assert.match(last().text, /^⚠️ Careful: never type or paste a private key or recovery phrase/);
+  assert.equal(last().replyTo, mid, 'no link or DM: answered, not removed');
+  said.length = 0;
+  await post(BOB, 'never share your seed phrase with anyone, admins will never DM you');
+  await post(BOB, 'how do I import my private key into Phantom?');
+  assert.equal(said.length, 0, 'advice and plain questions are left alone');
+  assert.equal(deleted.length, removedBefore);
+  await post(BOB, 'my wallet: 1. abandon 2. ability 3. able 4. about 5. above 6. absent 7. absorb 8. abstract 9. absurd 10. abuse 11. access 12. accident');
+  assert.equal(deleted[deleted.length - 1].id, mid, 'a posted phrase: removed');
+  assert.match(last().text, /^⚠️ Removed a message that looked like a wallet's recovery phrase \(12 words in a row from the standard BIP-39 list\)\..*Move everything to a new wallet now/s);
+  assert.ok(!/abandon|ability/.test(last().text), 'the phrase is never repeated');
+  said.length = 0;
+  await post(ALICE, 'migration: enter your seed phrase at pumpfun-migrate.io');
+  assert.equal(said.length, 0, 'admins aren\'t checked');
+  assert.equal(deleted.length, removedBefore + 1);
+
   /* ── switched off: silent; on again ── */
   await post(ALICE, '/guard_off');
   said.length = 0;
@@ -126,8 +156,11 @@ test('Group Guard: links, contracts, impersonators, commands and limits', { skip
   assert.equal(counts.contract_warned, 1);
   assert.equal(counts.token_warned, 1);
   assert.equal(counts.impersonator_flagged, 2);
+  assert.equal(counts.key_request_removed, 2);
+  assert.equal(counts.key_request_warned, 1);
+  assert.equal(counts.seed_phrase_removed, 1);
   const dump = JSON.stringify((await db.query('SELECT * FROM guard_groups')).rows) + JSON.stringify(rows);
-  assert.ok(!/airdrop is live|DM me|scam/.test(dump), 'no message text is stored');
+  assert.ok(!/airdrop is live|DM me|scam|seed phrase|private key|abandon/.test(dump), 'no message text is stored');
   await db.query(`UPDATE guard_counts SET n = $1 WHERE chat_id = '-1001' AND kind = 'replies'`, [guard.LIMITS.replies]);
   said.length = 0;
   await post(BOB, 'real CA is 0x' + 'cd'.repeat(20));
