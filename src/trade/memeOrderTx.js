@@ -29,6 +29,7 @@ const ROUTER = new ethers.Interface([
   'function FEE_WALLET() view returns (address)',
   'function WRAPPED_NATIVE() view returns (address)',
   'function isVenue(address) view returns (bool)',
+  'function isBase(address) view returns (bool)',
   'event Filled(bytes32 indexed orderHash, address indexed account, address tokenIn, address tokenOut, uint256 amountIn, uint256 fee, bool feeOnOutput, uint256 amountOut)',
   'error BelowLimit(uint256 amountOut, uint256 minimum)',
   'error NotExecutor()', 'error NotYetValid()', 'error Expired()', 'error OrderCancelled()', 'error BadSignature()',
