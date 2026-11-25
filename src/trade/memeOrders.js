@@ -38,6 +38,7 @@ const { ethers } = require('ethers');
 const env = require('../config/env');
 const db = require('../config/db');
 const logger = require('../config/logger');
+const privateSend = require('./privateSend');
 const { cached } = require('../lib/cache');
 const { rpcUrls } = require('../providers/chains');
 const { TRADE_CHAINS } = require('./chains');
@@ -877,7 +878,9 @@ async function confirmFills() {
     };
     const receipt = await provider(f.chain).getTransactionReceipt(f.tx_hash).catch(() => null);
     if (!receipt) {
-      if (Date.now() - new Date(f.created_at).getTime() > NOT_SEEN_MS) await failed('it wasn\'t seen onchain within 30 minutes');
+      const age = Date.now() - new Date(f.created_at).getTime();
+      if (f.sent_via === 'private' && !f.public_at && f.raw_tx && age > privateSend.graceMs()) await sendPublicly(f, failed);
+      else if (age > NOT_SEEN_MS) await failed('it wasn\'t seen onchain within 30 minutes');
       continue;
     }
     if (receipt.status !== 1) { await failed('it reverted onchain'); continue; }
@@ -899,6 +902,39 @@ async function confirmFills() {
         `Sold ${fmt(whole(ev.amountIn, o.decimals))} ${o.symbol || 'coins'} for ${nat(ev.amountOut)} ${quoteOfRow(o).symbol}, sent to your wallet (RektBull's fee: ${nat(ev.fee)} ${quoteOfRow(o).symbol}).`, source);
     }
   }
+}
+
+/**
+ * A fill sent privately that hasn't landed: the same signed transaction (same hash, same nonce, so it can only land
+ * once) sent the usual way. If the chain's RPC refuses it, it can't land, and nor can the executor's later fills on
+ * that chain, whose nonces come after it: they're marked failed too, and every one is filled again at the next pass.
+ */
+async function sendPublicly(f, failed) {
+  await db.query(`UPDATE meme_order_fills SET public_at = now() WHERE id = $1`, [f.id]);
+  try {
+    await provider(f.chain).broadcastTransaction(f.raw_tx);
+    logger.warn('meme orders: a private fill hadn\'t landed; sent the usual way too', { order: f.order_id, tx: f.tx_hash, relays: f.relays });
+  } catch (err) {
+    const m = err.shortMessage || err.message || String(err);
+    if (/already known|known transaction|nonce too low|nonce has already been used/i.test(m)) return; // it's out there, or it landed
+    await failed(`it didn't land privately and the usual way refused it: ${m}`);
+    const { rows: later } = await db.query(
+      `UPDATE meme_order_fills f SET state = 'failed', error = $3
+         FROM meme_orders o WHERE f.order_id = o.id AND o.chain = $1 AND f.state = 'sent' AND f.nonce > $2 RETURNING f.order_id`,
+      [f.chain, f.nonce, 'an earlier fill from RektBull\'s executor didn\'t go through, so this one couldn\'t land: it\'s sent again']);
+    if (later.length) await db.query(`UPDATE meme_orders SET next_attempt_at = now(), updated_at = now() WHERE id = ANY($1::bigint[])`, [later.map(r => r.order_id)]);
+  }
+}
+
+/**
+ * The executor's next nonce on a chain whose fills go to privacy RPCs: the chain's own count, or one past the last
+ * fill still out there, whichever is higher (the chain's RPC can't count transactions it hasn't seen).
+ */
+async function nextNonce(chain, address, p) {
+  const pending = Number(await p.getTransactionCount(address, 'pending'));
+  const { rows: [r] } = await db.query(
+    `SELECT max(f.nonce) AS n FROM meme_order_fills f JOIN meme_orders o ON o.id = f.order_id WHERE o.chain = $1 AND f.state = 'sent' AND f.nonce IS NOT NULL`, [chain]);
+  return Math.max(pending, r.n === null ? 0 : Number(r.n) + 1);
 }
 
 /**
@@ -1025,7 +1061,10 @@ async function attempt(row, cfg, exec) {
     return later(`in a simulation the fill fails: ${e ? e.name : (err.shortMessage || err.message)}`.slice(0, 400), RETRY_MS.failed);
   }
   const signer = exec.signer;
-  const t = await signer.populateTransaction({ ...call, value: 0n });
+  // BNB Chain: privately, to builders (privateSend.js), so nobody watching the public mempool can trade around it.
+  const relays = privateSend.relays(row.chain);
+  const nonce = relays.length ? await nextNonce(row.chain, exec.address, p) : undefined;
+  const t = await signer.populateTransaction({ ...call, value: 0n, ...(nonce === undefined ? {} : { nonce }) });
   t.gasLimit = (BigInt(t.gasLimit) * 13n) / 10n;
   const fee = await p.getFeeData();
   const gasCost = t.gasLimit * (t.maxFeePerGas ?? t.gasPrice ?? fee.maxFeePerGas ?? fee.gasPrice ?? 0n);
@@ -1037,9 +1076,20 @@ async function attempt(row, cfg, exec) {
   await require('./signers').logSignature(exec.address, unsigned.unsignedHash, `meme_fill:${row.id}`);
   const raw = await signer.signTransaction(t);
   const hash = ethers.keccak256(raw);
-  // Recorded before it's broadcast, so a crash between the two is checked against the chain, never resent blindly.
-  await db.query(`INSERT INTO meme_order_fills (order_id, tx_hash, amount_in, quoted_out, route) VALUES ($1, $2, $3, $4, $5)`, [row.id, hash, amount.toString(), r.quotedOut.toString(), r.route]);
+  // Recorded before it's broadcast, so a crash between the two is checked against the chain, never resent blindly
+  // (one meant for the privacy RPCs is sent the usual way once its grace period is over, the same transaction).
+  await db.query(`INSERT INTO meme_order_fills (order_id, tx_hash, amount_in, quoted_out, route, nonce, raw_tx, sent_via) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [row.id, hash, amount.toString(), r.quotedOut.toString(), r.route, Number(t.nonce), raw, relays.length ? 'private' : 'public']);
   await db.query(`UPDATE meme_orders SET last_attempt_at = now(), attempts = attempts + 1, next_attempt_at = now() + interval '30 seconds', updated_at = now() WHERE id = $1`, [row.id]);
+  if (relays.length) {
+    const sent = await privateSend.sendEvm(row.chain, raw);
+    if (sent.accepted.length) {
+      await db.query(`UPDATE meme_order_fills SET relays = $2 WHERE tx_hash = $1`, [hash, sent.accepted]);
+      return;
+    }
+    // Every privacy RPC refused it: the usual way at once, since an exit must never wait on a relay.
+    await db.query(`UPDATE meme_order_fills SET public_at = now() WHERE tx_hash = $1`, [hash]);
+  }
   try {
     await p.broadcastTransaction(raw);
   } catch (err) {
