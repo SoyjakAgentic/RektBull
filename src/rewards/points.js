@@ -3,7 +3,8 @@
  *
  * Earned: a rebate of the trading fees RektBull earns from a user, 25% of the
  * fee by default, at $0.10 a point. Every trading fee counts: the swap fees
- * (EVM and Solana, signed or automatic), the Hyperliquid builder fee, the
+ * (EVM and Solana, signed or automatic), the 1% on an order the executor fills
+ * (a stop-loss, take-profit, Meme Watch exit or limit buy), the Hyperliquid builder fee, the
  * Polymarket builder fee and the Polymarket profit share. A point is credited
  * only once the fee is known to have been earned (a confirmed trade, a fill
  * Hyperliquid or Polymarket reports, a confirmed redemption), and once per fee.
@@ -40,6 +41,8 @@ const SOURCES = {
   perps_auto: 'Hyperliquid perps fee (automatic)',
   polymarket_fill: 'Polymarket trading fee',
   polymarket_profit: 'Polymarket profit share',
+  order_fill: 'Order fill fee (BNB Chain, Base)',
+  solana_order_fill: 'Order fill fee (Solana)',
   pass: 'Subscription bought with points',
   ai_topup: 'Safety Pro AI top-up bought with points',
 };

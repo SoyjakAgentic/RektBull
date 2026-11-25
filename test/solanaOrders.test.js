@@ -344,6 +344,9 @@ test('orders on Solana, end to end: placed, confirmed, fired, filled by the exec
   const { rows: soldAlerts } = await db.query(`SELECT title, detail FROM monitor_alerts WHERE kind = 'solana_order' ORDER BY id`);
   assert.equal(soldAlerts.at(-1).title, 'Stop-loss on BULL: sold');
   assert.match(soldAlerts.at(-1).detail.reasons[0].text, /^Sold 1,000 BULL for 0\.693 SOL, sent to your wallet \(RektBull's fee: 0\.007 SOL\)\.$/);
+  // RektBull Points: 25% of the 0.007 SOL fee ($1.05 at $150), at $0.10 a point, once per fill.
+  const { rows: pts } = await db.query(`SELECT points::float AS p, fee_usd::float AS fee, source, ref FROM reward_points`);
+  assert.deepEqual(pts, [{ p: 2.625, fee: 1.05, source: 'solana_order_fill', ref: mine.orders[0].fills[0].signature }]);
 
   // 5. A Meme Watch exit needs Meme Watch on; it fires on its critical alerts. With the emergency stop on, nothing is filled.
   await assert.rejects(orders.prepare(account, { kind: 'meme_watch_exit', token: TOKEN }), /Switch on Meme Watch/);

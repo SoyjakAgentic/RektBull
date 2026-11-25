@@ -804,6 +804,12 @@ async function confirmFills() {
          state = CASE WHEN filled_in + $2 >= amount_in THEN 'filled' ELSE state END, updated_at = now() WHERE id = $1 RETURNING *`,
       [f.order_id, amount.toString(), (ev?.delivered ?? 0n).toString()]);
     const source = `Solana transaction ${f.signature.slice(0, 8)}…, the order program's Filled event`;
+    // RektBull Points: a rebate of the 1% this fill paid, priced now (rewards/points.js). Never blocks the fill.
+    if (ev?.fee > 0n) {
+      await require('../providers/prices').usdPrice('coingecko:solana')
+        .then(usd => (usd > 0 ? require('../rewards/points').safeCredit({ accountId: o.account_id, source: 'solana_order_fill', ref: f.signature, feeUsd: Number(ev.fee) / 1e9 * usd }) : null))
+        .catch(err => logger.warn('solana orders: a fill\'s Points rebate was not priced', { fill: f.signature, error: err.message }));
+    }
     if (isBuy(o)) {
       await alert(o, 'high', `fill:${f.signature}`, o.state === 'filled' ? 'bought' : 'bought in part',
         `Bought ${ev ? fmt(whole(ev.delivered, o.decimals)) : 'the'} ${o.symbol || 'coins'}, sent to your wallet, for about ${sol(otx.buySwapAmount(amount) + (ev?.fee ?? 0n))} SOL of your wrapped SOL${ev ? ` (RektBull's fee: ${sol(ev.fee)} SOL)` : ''}. What wasn't used stays in your wallet.`, source);

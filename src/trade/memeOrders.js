@@ -948,6 +948,12 @@ async function confirmFills() {
          state = CASE WHEN GREATEST(filled_in, $2) >= amount_in THEN 'filled' ELSE state END, updated_at = now() WHERE id = $1 RETURNING *`,
       [f.order_id, filled.toString(), ev.amountOut.toString()]);
     const source = `${c.label} transaction ${f.tx_hash.slice(0, 10)}…, the Meme Router's Filled event`;
+    // RektBull Points: a rebate of the 1% this fill paid, priced now (rewards/points.js). Never blocks the fill.
+    if (ev.fee > 0n) {
+      await usdOf(quoteOfRow(o))
+        .then(usd => (usd > 0 ? require('../rewards/points').safeCredit({ accountId: o.account_id, source: 'order_fill', ref: f.tx_hash, feeUsd: whole(ev.fee, 18) * usd }) : null))
+        .catch(err => logger.warn('meme orders: a fill\'s Points rebate was not priced', { fill: f.tx_hash, error: err.message }));
+    }
     if (isBuy(o)) {
       await alert(o, 'high', `fill:${f.tx_hash}`, o.state === 'filled' ? 'bought' : 'bought in part',
         `Bought ${fmt(whole(ev.amountOut, o.decimals))} ${o.symbol || 'coins'}, sent to your wallet, for ${nat(ev.amountIn)} of your ${quoteOfRow(o).spendName} (RektBull's fee: ${nat(ev.fee)} ${quoteOfRow(o).spendName}, included). What wasn't used went back to your wallet.`, source);
