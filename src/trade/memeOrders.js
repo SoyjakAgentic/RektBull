@@ -738,6 +738,37 @@ async function reconcile({ force = false } = {}) {
 }
 
 /** Stop-losses, take-profits and limit buys whose trigger is reached, by DexScreener's price, marked to fill. */
+/**
+ * An order against a coin's price (USD) and the native coin's: { reason } when it fires, else { distance }, how far
+ * it is from its trigger (0.1 = 10% to go). The trade pass uses DexScreener's price; the stream (memeStream.js) the
+ * price in a pool's own events.
+ */
+function checkPrice(row, p, usd, source) {
+  const left = BigInt(row.amount_in) - BigInt(row.filled_in);
+  if (left <= 0n || !(p > 0) || !(usd > 0) || !row.trigger_out) return { distance: null };
+  const trigger = BigInt(row.trigger_out) * left / BigInt(row.amount_in);
+  if (trigger <= 0n) return { distance: null };
+  if (isBuy(row)) {
+    // What the wrapped coin left would buy now (less the fee), against the coins at the user's limit.
+    const coins = BigInt(Math.floor(whole(tx.toTrade(left, 100, false), 18) * usd / p * 10 ** row.decimals));
+    if (coins >= trigger) return { reason: { price_usd: p, native_usd: usd, coins_now: whole(coins, row.decimals), coins_at_limit: whole(trigger, row.decimals), source } };
+    return { distance: Number(trigger - coins) / Number(trigger) };
+  }
+  const value = BigInt(Math.floor(whole(left, row.decimals) * p / usd * 1e18));
+  const fires = row.kind === 'stop_loss' ? value <= trigger : value >= trigger;
+  if (fires) return { reason: { price_usd: p, native_usd: usd, value_native: nat(value), trigger_native: nat(trigger), source } };
+  return { distance: Math.abs(Number(value - trigger)) / Number(trigger) };
+}
+
+/** Marks an open order fired, with why. True when this call fired it. */
+async function fire(id, reason) {
+  const { rowCount } = await db.query(`UPDATE meme_orders SET state = 'triggered', triggered_at = now(), trigger_reason = $2, next_attempt_at = now(), updated_at = now() WHERE id = $1 AND state = 'open'`, [id, JSON.stringify(reason)]);
+  return rowCount > 0;
+}
+
+// The last prices the trade pass read, per chain: { at, native_usd, pairs } (memeStream.js arms its subscriptions from them).
+const lastSeen = {};
+
 async function triggers() {
   const { rows } = await db.query(`SELECT * FROM meme_orders WHERE state = 'open' AND kind IN ('stop_loss', 'take_profit', 'limit_buy') AND valid_until > now()`);
   for (const chain of [...new Set(rows.map(r => r.chain))]) {
@@ -747,23 +778,11 @@ async function triggers() {
       cached(`meme:orders:prices:${chain}:${crypto.createHash('sha1').update(tokens.join(',')).digest('hex')}`, 10, () => require('../providers/dexscreener').pairs(chain, tokens)),
       nativeUsd(chain),
     ]);
+    lastSeen[chain] = { at: Date.now(), native_usd: usd, pairs };
+    const source = `DexScreener (the coin's most liquid pair) and DefiLlama (${CHAINS[chain].native})`;
     for (const row of mine) {
-      const p = pairs[row.token]?.price_usd;
-      if (!(p > 0) || !(usd > 0)) continue;
-      const left = BigInt(row.amount_in) - BigInt(row.filled_in);
-      if (left <= 0n) continue;
-      const trigger = BigInt(row.trigger_out) * left / BigInt(row.amount_in);
-      const source = `DexScreener (the coin's most liquid pair) and DefiLlama (${CHAINS[chain].native})`;
-      let reason = null;
-      if (isBuy(row)) {
-        // What the wrapped coin left would buy now (less the fee), against the coins at the user's limit.
-        const coins = BigInt(Math.floor(whole(tx.toTrade(left, 100, false), 18) * usd / p * 10 ** row.decimals));
-        if (coins >= trigger) reason = { price_usd: p, native_usd: usd, coins_now: whole(coins, row.decimals), coins_at_limit: whole(trigger, row.decimals), source };
-      } else {
-        const value = BigInt(Math.floor(whole(left, row.decimals) * p / usd * 1e18));
-        if (row.kind === 'stop_loss' ? value <= trigger : value >= trigger) reason = { price_usd: p, native_usd: usd, value_native: nat(value), trigger_native: nat(trigger), source };
-      }
-      if (reason) await db.query(`UPDATE meme_orders SET state = 'triggered', triggered_at = now(), trigger_reason = $2, next_attempt_at = now(), updated_at = now() WHERE id = $1 AND state = 'open'`, [row.id, JSON.stringify(reason)]);
+      const c = checkPrice(row, pairs[row.token]?.price_usd, usd, source);
+      if (c.reason) await fire(row.id, c.reason);
     }
   }
 }
@@ -879,6 +898,18 @@ async function attempt(row, cfg, exec) {
     if (!err.isTradeBlocked) throw err;
     return later(`no route: ${err.message}`, RETRY_MS.failed);
   }
+  // A trigger from the stream (memeStream.js) is confirmed by the fill's own quote first: a price misread from a pool's
+  // event must not sell anyone's coins early. Not confirmed: back to watching, nothing sent, nobody alerted.
+  if (row.trigger_reason?.stream && row.kind !== 'meme_watch_exit' && row.trigger_out) {
+    const part = BigInt(row.trigger_out) * amount / BigInt(row.amount_in);
+    const gross = buy ? r.quotedOut : r.quotedOut * 10000n / BigInt(10000 - cfg.check.feeBps);
+    const confirmed = buy || row.kind === 'take_profit' ? gross * 100n >= part * 98n : gross * 100n <= part * 102n;
+    if (!confirmed) {
+      await db.query(`UPDATE meme_orders SET state = 'open', triggered_at = NULL, trigger_reason = NULL, last_error = $2, updated_at = now() WHERE id = $1 AND state = 'triggered'`,
+        [row.id, `the stream's price wasn't confirmed by ${r.route}'s quote, so it's back to watching`]);
+      return;
+    }
+  }
   const below = got => (buy
     ? `It fired, but ${nat(amount)} ${c.wrappedName} would buy about ${fmt(whole(got, row.decimals))} ${name}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the router won't let it fill. It keeps trying while it's open.`
     : `It fired, but ${fmt(whole(amount, row.decimals))} ${name} would sell for about ${nat(got)} ${c.native}, below your floor of ${nat(minimum)} ${c.native} after the fee, so the router won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
@@ -950,27 +981,58 @@ async function tick() {
       await confirmFills();
       await triggers().catch(err => logger.warn('meme orders: prices not read', { error: err.message }));
       if (await require('../admin/stops').isStopped('auto_trading')) return { stopped: true };
-      const { rows } = await db.query(
-        `SELECT o.* FROM meme_orders o WHERE o.state = 'triggered' AND o.valid_until > now() AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= now())
-           AND NOT EXISTS (SELECT 1 FROM meme_order_fills f WHERE f.order_id = o.id AND f.state = 'sent')
-         ORDER BY o.triggered_at LIMIT $1`, [FILLS_PER_TICK]);
-      let attempted = 0;
-      const execs = new Map();
-      for (const row of rows) {
-        try {
-          const ready = await routerCheck(row.chain, row.router);
-          if (!ready.ok || cfg.routers[row.chain] !== row.router) continue;
-          if (!execs.has(row.chain)) execs.set(row.chain, await executor(row.chain));
-          const exec = execs.get(row.chain);
-          if (exec.address !== row.executor) throw new Error('the executor key isn\'t the one this order names');
-          attempted++;
-          await attempt(row, { ...cfg, router: row.router, check: ready }, exec);
-        } catch (err) {
-          logger.error('meme orders: a fill attempt failed', { order: row.id, error: err.message });
-          await db.query(`UPDATE meme_orders SET last_error = $2, next_attempt_at = now() + interval '60 seconds', updated_at = now() WHERE id = $1`, [row.id, `RektBull's order service: ${err.message}`.slice(0, 500)]);
-        }
-      }
-      return { attempted };
+      return await fillTriggered(cfg);
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]);
+    }
+  } finally {
+    client.release();
+  }
+}
+
+/** The fired orders due a fill, one at a time (the caller holds the sender's lock). */
+async function fillTriggered(cfg) {
+  const { rows } = await db.query(
+    `SELECT o.* FROM meme_orders o WHERE o.state = 'triggered' AND o.valid_until > now() AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= now())
+       AND NOT EXISTS (SELECT 1 FROM meme_order_fills f WHERE f.order_id = o.id AND f.state = 'sent')
+     ORDER BY o.triggered_at LIMIT $1`, [FILLS_PER_TICK]);
+  let attempted = 0;
+  const execs = new Map();
+  for (const row of rows) {
+    try {
+      const ready = await routerCheck(row.chain, row.router);
+      if (!ready.ok || cfg.routers[row.chain] !== row.router) continue;
+      if (!execs.has(row.chain)) execs.set(row.chain, await executor(row.chain));
+      const exec = execs.get(row.chain);
+      if (exec.address !== row.executor) throw new Error('the executor key isn\'t the one this order names');
+      attempted++;
+      await attempt(row, { ...cfg, router: row.router, check: ready }, exec);
+    } catch (err) {
+      logger.error('meme orders: a fill attempt failed', { order: row.id, error: err.message });
+      await db.query(`UPDATE meme_orders SET last_error = $2, next_attempt_at = now() + interval '60 seconds', updated_at = now() WHERE id = $1`, [row.id, `RektBull's order service: ${err.message}`.slice(0, 500)]);
+    }
+  }
+  return { attempted };
+}
+
+/**
+ * Fills fired orders now, between passes (the stream fired them: memeStream.js). Takes the sender's lock, waiting
+ * up to about 2 seconds for a pass that holds it; if the pass keeps it longer, that pass fills them.
+ */
+async function fillNow() {
+  const cfg = config();
+  if (cfg.off || !env.databaseUrl) return { skipped: cfg.off || 'no database' };
+  const client = await db.getPool().connect();
+  try {
+    let got = false;
+    for (let i = 0; i < 8 && !got; i++) {
+      ({ rows: [{ ok: got }] } = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK_ID]));
+      if (!got) await new Promise(r => setTimeout(r, 250));
+    }
+    if (!got) return { skipped: 'a pass is sending: it fills them' };
+    try {
+      if (await require('../admin/stops').isStopped('auto_trading')) return { stopped: true };
+      return await fillTriggered(cfg);
     } finally {
       await client.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]);
     }
@@ -982,6 +1044,7 @@ async function tick() {
 module.exports = {
   KINDS, CHAINS, MIN_ORDER_USD,
   config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, tick, fundingCalls, exitsForBuy, recordExits,
+  checkPrice, fire, fillNow, lastSeen: chain => lastSeen[chain] || null, read, onFourMemeCurve, nativeUsd, isBuy,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills, _route: route,
   _setProvider: fn => { providerFor = fn || rpcProvider; providers.clear(); },
   _setExecutor: fn => { testExecutor = fn; },

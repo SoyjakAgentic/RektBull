@@ -40,6 +40,7 @@ const ERC20 = new ethers.Interface([
   'function balanceOf(address) view returns (uint256)',
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
+  'function totalSupply() view returns (uint256)',
 ]);
 const WRAPPED = new ethers.Interface(['function deposit() payable']);
 

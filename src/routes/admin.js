@@ -149,6 +149,21 @@ router.put('/v1/admin/rewards', change, async (req, res) => {
   res.json({ ...rewardPoints.config(), supply: await rewardPoints.supply() });
 });
 
+/* ── Order triggers over WebSocket on BNB Chain and Base (trade/memeStream.js): a switch and its limits ── */
+
+router.get('/v1/admin/meme-stream', admin, async (_req, res) => {
+  await settings.reload();
+  const ms = require('../trade/memeStream');
+  res.json({ settings: ms.get(), defaults: ms.DEFAULTS, limits: ms.LIMITS, configured: ms.configured(), health: await ms.health() });
+});
+router.put('/v1/admin/meme-stream', change, async (req, res) => {
+  const reason = reasonOf(req);
+  const ms = require('../trade/memeStream');
+  const value = { ...(settings.get(ms.SETTINGS_KEY) || {}), ...ms.check(req.body || {}) };
+  await settings.set(ms.SETTINGS_KEY, value, { wallet: who(req), action: 'meme_stream', reason });
+  res.json({ settings: ms.get() });
+});
+
 /* ── AI forecasts: switches and numbers (forecasts/settings.js), and a run on demand (it spends AI usage) ── */
 
 const fsettings = require('../forecasts/settings');

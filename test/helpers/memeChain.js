@@ -83,6 +83,7 @@ function standIn() {
         switch (c.name) {
           case 'decimals': return out(18);
           case 'symbol': return out('TKN');
+          case 'totalSupply': return out(10n ** 27n); // a billion coins
           case 'balanceOf': return out(s.tokens.get(to).get(c.args[0].toLowerCase()) ?? 0n);
           case 'allowance': return out(s.allowances.get(`${to}:${c.args[0].toLowerCase()}:${c.args[1].toLowerCase()}`) ?? 0n);
           default: throw new Error(`unexpected token call ${c.name}`);

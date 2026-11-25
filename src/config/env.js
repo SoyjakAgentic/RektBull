@@ -90,6 +90,11 @@ const env = {
   memeOrdersEnabled: process.env.MEME_ORDERS_ENABLED === 'true',
   memeRouters: (() => { try { return JSON.parse(process.env.MEME_ROUTERS || '{}'); } catch { return {}; } })(),
   memeOrdersExecutor: (process.env.MEME_ORDERS_EXECUTOR || '').trim().toLowerCase(),
+  // Their triggers over WebSocket (src/trade/memeStream.js): the provider's WebSocket URL per chain. The key is in
+  // the URL, so these are secrets (the environment's secret settings, never the repo or chat). Off until set and
+  // switched on in the admin panel.
+  memeStreamWsBase: (process.env.MEME_STREAM_WS_BASE || '').trim(),
+  memeStreamWsBsc: (process.env.MEME_STREAM_WS_BSC || '').trim(),
   // KMS only: these orders run on mainnets, so there is no stand-in key (tests inject a signer).
   kmsMemeExecutorKeyVersion: process.env.KMS_MEME_EXECUTOR_KEY_VERSION || '',
   // The session key's PUBLIC address. Its private key is in KMS, used only by the trade service.
