@@ -21,6 +21,7 @@
     if (!state.provider && !state.sol) return; // signed in on an earlier page: wait until a wallet is connected here
     state.config = await api('GET', '/v1/trading/config');
     state.ordersOn = !!state.config.solana_orders; // exits with a Solana buy need the order program (off until it's deployed)
+    state.evmOrdersOn = !!state.config.evm_orders; // and on BNB Chain and Base, the Meme Router (off until it's deployed)
     for (const id of ['trade-card', 'protect-card', 'history-card', 'settings-card', 'limits-card']) $(id).hidden = false;
     if (!state.config.enabled) say('trade-msg', 'Trading is switched off on this server for now.', 'bad');
     showChains();
@@ -136,8 +137,10 @@
     ...(tradeState.ack ? { acknowledge_risks: true } : {}),
     ...(exitsAsked() ? { exits: { stop_loss: $('x-stop').checked, take_profit: $('x-take').checked, stop_pct: Number($('x-stop-pct').value), take_pct: Number($('x-take-pct').value) } } : {}),
   });
-  // Exits with a Solana buy (a stop-loss and/or a take-profit in RektBull's order program, in the same transaction).
-  const exitsAsked = () => isSolanaChain() && !isSell() && ($('x-stop').checked || $('x-take').checked);
+  // Exits with a buy: on Solana in RektBull's order program, in the same transaction; on BNB Chain and Base, Meme Router
+  // orders the wallet signs right after it sends the buy.
+  const exitChain = () => (isSolanaChain() ? state.ordersOn : ['base', 'bsc'].includes($('chain').value) && state.evmOrdersOn);
+  const exitsAsked = () => exitChain() && !isSell() && ($('x-stop').checked || $('x-take').checked);
   // Solana mints are case-sensitive.
   const sameToken = (a, b, chain) => (chain === 'solana' ? a === b : a.toLowerCase() === b.toLowerCase());
   const matches = (pv, i) => pv && pv.chain === i.chain && pv.side === i.side && pv.base === i.base && sameToken(pv.token, i.token, i.chain);
@@ -146,7 +149,8 @@
   function showSide() {
     const sell = isSell();
     $('amount-wrap').hidden = sell; $('fraction-wrap').hidden = !sell;
-    $('exits-wrap').hidden = sell || !isSolanaChain() || !state.ordersOn;
+    $('exits-wrap').hidden = sell || !exitChain();
+    $('exits-label').textContent = isSolanaChain() ? 'With this buy, in the same transaction:' : 'With this buy (signed right after it):';
     showPresets(); labelGo();
   }
   function showPresets() {
@@ -234,6 +238,14 @@
   function exitsView(x) {
     if (!x) return [];
     if (x.none) return [el('p', { class: 'warn' }, x.none)];
+    if (x.native) {
+      // BNB Chain and Base: Meme Router orders, signed right after the buy.
+      return [el('div', { class: 'worst' },
+        el('strong', {}, `Exits: ${x.orders.map(o => `${o.kind_name.toLowerCase()} (fires at ${o.trigger_native} ${x.native}, never below ${o.floor_native} ${x.native})`).join('; ')}`),
+        el('p', { class: 'small' }, `For ${x.covers}. ${x.how}`),
+        ...x.worst_case.map(t => el('p', { class: 'small' }, t)),
+        el('p', { class: 'small muted' }, `${x.costs.deposit} ${x.costs.fee}`))];
+    }
     return [el('div', { class: 'worst' },
       el('strong', {}, `Exits, in the same transaction: ${x.orders.map(o => `${o.kind_name.toLowerCase()} (fires at ${o.trigger_sol} SOL, never below ${o.floor_sol} SOL)`).join('; ')}`),
       el('p', { class: 'small' }, `For ${x.covers}.`),
@@ -283,6 +295,7 @@
       }
       await api('POST', `/v1/trading/proposals/${t.id}/submitted`, { tx_hash: txHash, click_to_prompt_ms: toPrompt });
       say('trade-msg', `Sent: ${short(txHash)}. RektBull will confirm it onchain.`, 'ok');
+      if (t.exit_orders?.length) await signExits(t.exit_orders);
       await loadHistory();
       pollUntilDone(t.id);
     } catch (err) {
@@ -294,6 +307,26 @@
     } finally {
       $('go').disabled = !tradeState.preview && !isSell();
     }
+  }
+
+  /**
+   * The exits with a buy on BNB Chain or Base: each a Meme Router order the wallet signs (a signature only), after
+   * the buy is on its way. They open when the buy lands. Declining one only leaves that exit out.
+   */
+  async function signExits(list) {
+    let placed = 0;
+    for (const o of list) {
+      try {
+        say('trade-msg', `Sent. Now sign the ${o.kind_name.toLowerCase()} in your wallet (a signature only, nothing is sent)…`);
+        const signature = await req('eth_signTypedData_v4', [state.address, JSON.stringify(o.typed_data)]);
+        await api('POST', `/v1/evm/orders/${o.id}/sign`, { signature });
+        placed++;
+      } catch (err) {
+        if (err.code !== 4001) say('trade-msg', `The ${o.kind_name.toLowerCase()} wasn't placed: ${err.message}`, 'bad');
+      }
+    }
+    say('trade-msg', placed === list.length ? `Sent, with ${placed === 1 ? 'its exit' : 'its exits'}: ${placed === 1 ? 'it opens' : 'they open'} when the buy lands. See them under Orders on BNB Chain and Base.`
+      : placed ? `Sent, with ${placed} of its ${list.length} exits. Place the other from Orders on BNB Chain and Base.` : 'Sent, without exits: you can place them from Orders on BNB Chain and Base once the buy has landed.', placed ? 'ok' : 'warn');
   }
 
   /**

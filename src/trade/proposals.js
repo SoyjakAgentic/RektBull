@@ -26,12 +26,46 @@ const solana = require('./solana');
 const { walletCalls: evmCalls } = require('./calls');
 
 const isSolana = chain => String(chain || '').toLowerCase() === 'solana';
-/** Every check and a firm quote: Solana trades in trade/solana.js, the rest in rules.js. */
-const prepare = x => (isSolana(x.chain) ? solana.prepare(x) : rules.prepare(x));
-/** What the wallet signs: EVM calls, or one Solana transaction. */
-const walletCalls = p => (p.chain === 'solana'
-  ? { chain: 'solana', transaction: p.solana.transaction, last_valid_block_height: p.solana.last_valid_block_height, bytes: p.solana.bytes, ...(p.solana.setup ? { setup: p.solana.setup } : {}) }
-  : evmCalls(p));
+// Where a buy can carry exits: Solana (the order program, in the same transaction) and BNB Chain and Base (the Meme Router).
+const EXIT_CHAINS = new Set(['solana', 'base', 'bsc']);
+/** Every check and a firm quote: Solana trades in trade/solana.js, the rest in rules.js (with exits from memeOrders.js). */
+const prepare = async x => {
+  if (isSolana(x.chain)) return solana.prepare(x);
+  const p = await rules.prepare(x);
+  if (p.side === 'buy' && x.exits) await withEvmExits(p, x);
+  return p;
+};
+
+/**
+ * Exits with a buy on BNB Chain or Base (trade/memeOrders.js exitsForBuy): orders the wallet signs right after it
+ * sends the buy, with their approval in the buy's own batch. They never stop the buy: when they can't be added,
+ * the plan says why.
+ */
+async function withEvmExits(p, x) {
+  let plan;
+  try {
+    plan = await require('./memeOrders').exitsForBuy({
+      accountId: x.accountId, owner: p.wallet, chain: p.chain, token: p.token, minOut: p.summary.min_buy_amount, buyAmount: p.summary.buy_amount,
+      valueUsd: p.valueUsd, taxBps: p.quote?.taxBps || 0, exits: x.exits, settings: await rules.settingsFor(x.accountId),
+    });
+  } catch (err) {
+    require('../config/logger').warn('trade: exits not prepared', { chain: p.chain, token: p.token, error: err.message });
+    plan = { off: err.isTradeBlocked ? err.message.replace(/\.$/, '') : `they couldn't be prepared just now (${err.message})` };
+  }
+  if (!plan) return;
+  if (plan.off) { p.summary.exits = { none: `No exits were added: ${plan.off}` }; return; }
+  p.summary.exits = plan.summary;
+  p.memeExits = plan;
+  p.checks.push({ check: 'exits', ok: true, detail: `${plan.orders.map(o => o.kind_name.toLowerCase()).join(' and ')} for the coins the buy is sure to bring, checked against the router's own hash`, source: `the Meme Router on ${plan.summary.chain_label} (hashOrder)` });
+}
+
+/** What the wallet signs: EVM calls (with exits, the router's approval after the swap), or one Solana transaction. */
+const walletCalls = p => {
+  if (p.chain === 'solana') return { chain: 'solana', transaction: p.solana.transaction, last_valid_block_height: p.solana.last_valid_block_height, bytes: p.solana.bytes, ...(p.solana.setup ? { setup: p.solana.setup } : {}) };
+  const calls = evmCalls(p);
+  if (p.memeExits?.approve) calls.calls.push(p.memeExits.approve);
+  return calls;
+};
 /** The wallet a trade on this chain is made from. */
 const walletFor = (account, chain) => (isSolana(chain) ? account.solana_wallet : account.wallet);
 
@@ -55,15 +89,21 @@ const planView = p => ({ summary: p.summary, checks: p.checks, value_usd: p.valu
 const inputOf = (account, input) => ({
   accountId: account.id, wallet: walletFor(account, input.chain), chain: isSolana(input.chain) ? 'solana' : input.chain, side: input.side, token: input.token,
   base: input.base, amountUsd: input.amount_usd, sellFraction: input.sell_fraction, acknowledgeRisks: !!input.acknowledge_risks,
-  // Exits with a Solana buy (trade/solana.js): a stop-loss and/or a take-profit in the same transaction.
-  exits: isSolana(input.chain) && input.side === 'buy' && input.exits && typeof input.exits === 'object' ? exitsOf(input.exits) : null,
+  // Exits with a buy: on Solana in the same transaction (trade/solana.js); on BNB Chain and Base, Meme Router orders.
+  exits: EXIT_CHAINS.has(String(input.chain || '').toLowerCase()) && input.side === 'buy' && input.exits && typeof input.exits === 'object' ? exitsOf(input.exits) : null,
 });
 const exitsOf = e => ({
   stop_loss: !!e.stop_loss, take_profit: !!e.take_profit,
   ...Object.fromEntries(['stop_pct', 'floor_pct', 'take_pct', 'slippage_pct', 'days'].filter(k => e[k] !== undefined && e[k] !== null && e[k] !== '').map(k => [k, Number(e[k])])),
 });
-/** The exits placed with a trade, recorded once it's made (they open when the transaction lands). */
-const recordExits = (account, p) => (p.exits?.length ? require('./solanaOrders').recordExits(account.id, p.exits) : null);
+/**
+ * The exits placed with a trade, recorded once it's made: they open when the transaction lands. On BNB Chain and
+ * Base, the orders the page asks the wallet to sign next ([] when there are none).
+ */
+async function recordExits(account, p, tradeId) {
+  if (p.exits?.length) await require('./solanaOrders').recordExits(account.id, p.exits);
+  return p.memeExits ? require('./memeOrders').recordExits(account.id, tradeId, p.memeExits) : [];
+}
 
 /**
  * Every check on a firm quote, for the page to show before the click. Nothing
@@ -130,8 +170,8 @@ async function trade(account, input) {
     [crypto.randomUUID(), account.id, p.wallet, p.chain, p.side, p.token, p.base, p.side === 'buy' ? p.valueUsd : null, p.sellFraction || null,
       json({ ...planView(p), acknowledge_risks: !!input.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount, one_click: true, timing, fees }), json(calls)],
   );
-  await recordExits(account, p);
-  return { ...present(rows[0]), fees };
+  const exitOrders = await recordExits(account, p, rows[0].id);
+  return { ...present(rows[0]), fees, ...(exitOrders.length ? { exit_orders: exitOrders } : {}) };
 }
 
 async function propose(account, input) {
@@ -179,8 +219,8 @@ async function approve(account, id) {
     [id, json({ ...planView(p), acknowledge_risks: !!row.plan?.acknowledge_risks, sell_amount: p.quote.sellAmount, expected_buy: p.quote.buyAmount }), json(calls)],
   );
   if (!rows.length) throw Object.assign(new Error('this proposal changed while it was being approved'), { status: 409 });
-  await recordExits(account, p);
-  return present(rows[0]);
+  const exitOrders = await recordExits(account, p, rows[0].id);
+  return { ...present(rows[0]), ...(exitOrders.length ? { exit_orders: exitOrders } : {}) };
 }
 
 /**

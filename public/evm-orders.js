@@ -68,7 +68,7 @@
     $('eo-list').replaceChildren(...(r.orders.length ? r.orders.map(row) : [el('tr', {}, el('td', { colspan: 6, class: 'muted' }, 'No orders yet.'))]));
   }
 
-  const STATES = { open: 'Open', triggered: 'Fired: selling', filled: 'Filled', cancelled: 'Cancelled', expired: 'Ended' };
+  const STATES = { open: 'Open', triggered: 'Fired: selling', filled: 'Filled', cancelled: 'Cancelled', expired: 'Ended', prepared: 'Waiting for its buy to land' };
   const coins = n => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
   function row(o) {
     const sym = o.symbol || short(o.token);
@@ -80,7 +80,7 @@
     if (!buy && o.delivered_native !== '0') status.push(`${o.delivered_native} ${o.native} to you`);
     if (o.last_error && ['triggered', 'open'].includes(o.state)) status.push(o.last_error);
     for (const f of o.fills || []) if (f.state !== 'failed') status.push(el('a', { href: f.tx_url, target: '_blank', rel: 'noopener' }, f.state === 'sent' ? 'fill sent' : 'fill'));
-    const live = ['open', 'triggered', 'expired'].includes(o.state);
+    const live = ['open', 'triggered', 'expired'].includes(o.state) || o.waiting_for_buy;
     const cells = status.flatMap((s, i) => (i ? [' · ', s] : [s]));
     return el('tr', {},
       el('td', {}, `${o.kind_name} (${o.chain_label})`),

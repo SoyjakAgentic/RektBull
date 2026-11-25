@@ -75,7 +75,8 @@ const MULTICALL_CHUNK = 300; // tiny view calls: about 3,000 gas each, so 300 st
 const addr = a => /^0x[0-9a-f]{40}$/.test(String(a || '').toLowerCase());
 const whole = (raw, decimals) => Number(ethers.formatUnits(BigInt(raw), decimals)); // exact digits first: 18 decimals overflow a float's
 const fmt = n => n.toLocaleString('en-US', { maximumFractionDigits: n < 1 ? 6 : 2 });
-const nat = wei => fmt(whole(wei, 18));
+// The native coin, to 9 decimals and cut off, never rounded up: a floor shown is never better than the one signed.
+const nat = wei => { const [i, f = ''] = ethers.formatEther(BigInt(wei)).split('.'); const d = f.slice(0, 9).replace(/0+$/, ''); return d ? `${i}.${d}` : i; };
 const short = a => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const refuse = (message, status = 422) => Object.assign(new TradeBlocked(message), { status });
 
@@ -346,7 +347,7 @@ async function prepare(account, body = {}) {
       ...(curve ? [`This coin is still on its four.meme curve: fills trade on the curve itself until it graduates, then through 0x.`] : []),
     ],
     costs: {
-      deposit: 'None: the order is only a signature. Your wallet pays the network fee for the approval (and the wrapping) once.',
+      deposit: 'No deposit: the order is only a signature. Your wallet pays the network fee for the approval (and the wrapping) once.',
       fee: `RektBull's ${cfg.check.feeBps / 100}% of the ${c.native} a fill ${buy ? 'spends' : 'brings'}, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.`,
       fee_wallet: cfg.check.feeWallet,
     },
@@ -397,6 +398,7 @@ async function signedBy(chain, router, owner, o, hash, signature) {
 async function sign(account, id, body = {}) {
   const row = await own(account, id);
   if (row.state !== 'prepared') return { order: view(row), calls: await fundingCalls(row) };
+  if (row.signature) return { order: view(row), calls: { chain_id: ethers.toBeHex(row.chain_id), calls: [] } }; // an exit already signed, waiting for its buy
   const signature = String(body.signature || '');
   if (!/^0x[0-9a-fA-F]{130,}$/.test(signature)) throw refuse('signature must be the wallet\'s EIP-712 signature (0x…).', 400);
   const o = tx.fromJson(row.order_json);
@@ -406,8 +408,117 @@ async function sign(account, id, body = {}) {
   if (BigInt(await read(row.chain, row.router, ROUTER, 'epochOf', [row.owner])) !== o.epoch) {
     throw refuse('You cancelled all your orders on this router since this one was prepared. Prepare it again.', 409);
   }
+  // An exit with a buy waits, signed, for its buy to land (its approval is in the buy's own batch); it's dropped if the buy didn't go through.
+  if (row.trade_id) {
+    const { rows: [t] } = await db.query('SELECT status FROM trade_proposals WHERE id = $1', [row.trade_id]);
+    if (!t || ['failed', 'cancelled', 'expired'].includes(t.status)) {
+      await db.query(`DELETE FROM meme_orders WHERE id = $1 AND state = 'prepared'`, [row.id]);
+      throw refuse('The buy didn\'t go through, so its exits weren\'t placed.', 409);
+    }
+    if (t.status !== 'confirmed') {
+      const { rows: [waiting] } = await db.query(`UPDATE meme_orders SET signature = $2, updated_at = now() WHERE id = $1 AND state = 'prepared' RETURNING *`, [row.id, signature]);
+      return { order: view(waiting || row), calls: { chain_id: ethers.toBeHex(row.chain_id), calls: [] } };
+    }
+  }
   const { rows: [done] } = await db.query(`UPDATE meme_orders SET state = 'open', signature = $2, updated_at = now() WHERE id = $1 AND state = 'prepared' RETURNING *`, [row.id, signature]);
   return { order: view(done || row), calls: await fundingCalls(done || row) };
+}
+
+/* ── Exits with a buy (trade/proposals.js) ── */
+
+/**
+ * A stop-loss and/or a take-profit with a buy on the Trade desk, for the coins
+ * the buy is sure to bring (its minimum), valued at the buy's own price. They
+ * are Meme Router orders, signed by the user's wallet right after it sends the
+ * buy (a signature only, so the buy isn't held up), and the approval of the
+ * router for them goes in the buy's own batch, after the swap. They open when
+ * the trade service confirms the buy, and are dropped if it fails.
+ *
+ * Returns null (none asked), { off: why }, or { orders, approve, summary }.
+ * Nothing is stored: recordExits() does once the trade is made.
+ */
+async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, valueUsd, taxBps = 0, exits, settings }) {
+  const kinds = ['stop_loss', 'take_profit'].filter(k => exits?.[k]);
+  if (!kinds.length) return null;
+  const cfg = config();
+  if (cfg.off) return { off: cfg.off };
+  if (!CHAINS[chain]) return { off: 'exits with a buy are on BNB Chain, Base and Solana.' };
+  const router = cfg.routers[chain];
+  if (!router) return { off: `orders on ${CHAINS[chain].label} aren't open yet.` };
+  const check = await routerCheck(chain, router);
+  if (!check.ok) return { off: check.why };
+  if (taxBps) return { off: `this coin taxes transfers (${taxBps / 100}%, 0x), so an order can't be filled exactly.` };
+  const c = CHAINS[chain];
+  owner = String(owner).toLowerCase();
+  token = String(token).toLowerCase();
+  const amountIn = BigInt(minOut);
+  const expected = BigInt(buyAmount);
+  if (amountIn <= 0n || expected <= 0n) return { off: 'the buy has no minimum to cover.' };
+  // What the coins the buy is sure to bring cost, at this buy's price.
+  const coveredUsd = Number(valueUsd) * Number(amountIn * 1_000_000n / expected) / 1_000_000;
+  if (coveredUsd < MIN_ORDER_USD) return { off: `an order needs at least $${MIN_ORDER_USD} (RektBull pays each fill's network fee out of its 1%), and the coins this buy is sure to bring cost $${coveredUsd.toFixed(2)}.` };
+  const refOut = BigInt(Math.floor(coveredUsd / await nativeUsd(chain) * 1e18));
+  const days = num(exits.days, 1, MAX_DAYS, MAX_DAYS, 'days');
+  const validUntil = Date.now() + days * 86400_000;
+  const [decimals, symbol, epoch, allowance] = await Promise.all([
+    read(chain, token, ERC20, 'decimals').then(Number), symbolOf(chain, token),
+    read(chain, router, ROUTER, 'epochOf', [owner]), read(chain, token, ERC20, 'allowance', [owner, router]).then(BigInt),
+  ]);
+  const net = netOf(check.feeBps);
+  const orders = [];
+  for (const kind of kinds) {
+    const t = require('./solanaOrders').terms(kind, refOut, exits, settings, net);
+    if (t.minOut <= 0n) return { off: 'that floor rounds to nothing.' };
+    const o = tx.order({ account: owner, executor: cfg.executor, tokenIn: token, tokenOut: NATIVE, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000), epoch, salt: BigInt('0x' + crypto.randomBytes(32).toString('hex')) });
+    orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said });
+  }
+  // The router's own hash of the first: a layout that drifted from the contract's is caught before anyone signs.
+  if (String(await read(chain, router, ROUTER, 'hashOrder', [orders[0].order])).toLowerCase() !== orders[0].hash.toLowerCase()) {
+    return { off: 'the router hashes these orders differently, so RektBull won\'t ask you to sign them.' };
+  }
+  // The approval: these coins for each exit, plus what's left of the account's other live orders on them (an approval
+  // replaces the one before it). None when the router may already take that much.
+  const { rows: [live] } = await db.query(
+    `SELECT COALESCE(sum(amount_in - filled_in), 0)::text AS left FROM meme_orders
+      WHERE account_id = $1 AND chain = $2 AND router = $3 AND token_in = $4 AND valid_until > now()
+        AND (state IN ('open', 'triggered') OR (state = 'prepared' AND trade_id IS NOT NULL AND signature IS NOT NULL))`,
+    [accountId, chain, router, token]);
+  const approveAmount = amountIn * BigInt(kinds.length) + BigInt(live.left);
+  const approve = allowance >= approveAmount ? null : { step: 'exit_approve', ...tx.approveCall(token, router, approveAmount) };
+  const amountWhole = whole(amountIn, decimals);
+  return {
+    chain, router, executor: cfg.executor, token, symbol, decimals, validUntil, approve,
+    orders,
+    summary: {
+      chain_label: c.label, native: c.native,
+      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_native: nat(o.triggerOut), floor_native: nat(o.minOut), ...o.said })),
+      covers: `the ${fmt(amountWhole)} ${symbol} this buy is sure to bring (its minimum); anything it brings above that isn't covered`,
+      how: `Your wallet signs ${orders.length > 1 ? 'them' : 'it'} right after it sends the buy (a signature, nothing is sent)${approve ? ', and the approval of RektBull\'s Meme Router for these coins is in the buy\'s own batch, after the swap' : ''}. ${orders.length > 1 ? 'They open' : 'It opens'} when the buy lands.`,
+      worst_case: [
+        ...orders.map(o => worstCase({ kind: o.kind, amountWhole, symbol, minOut: o.minOut, validUntil, c })[0]),
+        `Nothing else of yours can be touched: the approval covers only these coins, and the router sends what they sell for only to your wallet, in the same transaction. RektBull never holds them.`,
+        ...(orders.length > 1 ? ['The two orders sell the same coins: once one has sold them, the other has nothing left to sell (cancel it on the Trade desk).'] : []),
+        'To stop them: cancel them on the Trade desk (your wallet sends the cancel to the router), or revoke the approval in your wallet.',
+      ],
+      costs: { deposit: 'No deposit: an order is only a signature.', fee: `RektBull's ${check.feeBps / 100}% of the ${c.native} an exit brings, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.` },
+    },
+  };
+}
+
+/** The trade was made with exits: their rows, prepared, waiting for the user's signatures and for the buy. What the page asks the wallet to sign. */
+async function recordExits(accountId, tradeId, plan) {
+  if (!plan?.orders?.length) return [];
+  const c = CHAINS[plan.chain];
+  const out = [];
+  for (const o of plan.orders) {
+    const { rows: [row] } = await db.query(
+      `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, trade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
+      [accountId, plan.chain, c.chainId, plan.router, o.order.account.toLowerCase(), o.kind, plan.token, plan.symbol, plan.decimals, plan.token, NATIVE, o.order.amountIn.toString(), o.minOut.toString(),
+        o.triggerOut?.toString() ?? null, o.refOut.toString(), plan.executor, new Date(plan.validUntil), JSON.stringify(tx.toJson(o.order)), o.hash.toLowerCase(), tradeId]);
+    out.push({ id: Number(row.id), kind: o.kind, kind_name: o.kind_name, chain_id: ethers.toBeHex(c.chainId), typed_data: tx.typedData(c.chainId, plan.router, o.order) });
+  }
+  return out;
 }
 
 /**
@@ -444,7 +555,7 @@ async function fundingCalls(row) {
 async function cancel(account, id) {
   const row = await own(account, id);
   if (['filled', 'cancelled'].includes(row.state)) return { order: view(row), done: true };
-  if (row.state === 'prepared') {
+  if (row.state === 'prepared' && !row.signature) {
     await db.query(`DELETE FROM meme_orders WHERE id = $1 AND state = 'prepared'`, [row.id]);
     return { order: { ...view(row), state: 'cancelled' }, done: true };
   }
@@ -475,7 +586,7 @@ async function cancelAll(account, body = {}) {
 /** After the wallet sent a cancel (or any time): the order's state from the router. */
 async function refresh(account, id) {
   const row = await own(account, id);
-  if (!['open', 'triggered', 'expired'].includes(row.state)) return view(row);
+  if (!['open', 'triggered', 'expired'].includes(row.state) && !(row.state === 'prepared' && row.signature)) return view(row);
   return view(await settle(row));
 }
 
@@ -509,7 +620,8 @@ async function own(account, id) {
 
 /** The account's orders, newest first, with their fills. */
 async function list(account) {
-  const { rows } = await db.query(`SELECT * FROM meme_orders WHERE account_id = $1 AND state <> 'prepared' ORDER BY created_at DESC LIMIT 100`, [account.id]);
+  // Exits signed with a buy show while they wait for it to land.
+  const { rows } = await db.query(`SELECT * FROM meme_orders WHERE account_id = $1 AND (state <> 'prepared' OR signature IS NOT NULL) ORDER BY created_at DESC LIMIT 100`, [account.id]);
   const { rows: fills } = rows.length ? await db.query('SELECT * FROM meme_order_fills WHERE order_id = ANY($1::bigint[]) ORDER BY created_at', [rows.map(r => r.id)]) : { rows: [] };
   const cfg = config();
   return {
@@ -534,6 +646,7 @@ function view(r) {
     id: Number(r.id), chain: r.chain, chain_label: c.label, native: c.native, kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state,
     token: r.token, symbol: r.symbol, valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
     last_error: r.last_error, order_hash: r.order_hash, router: r.router, created_at: r.created_at,
+    ...(r.trade_id ? { trade_id: r.trade_id, waiting_for_buy: r.state === 'prepared' } : {}),
   };
   if (isBuy(r)) {
     return {
@@ -577,7 +690,13 @@ async function alert(row, severity, id, title, text, source = 'RektBull\'s order
  */
 let lastReadBack = 0;
 async function reconcile({ force = false } = {}) {
-  await db.query(`DELETE FROM meme_orders WHERE state = 'prepared' AND created_at < now() - make_interval(secs => $1)`, [PREPARED_TTL_MS / 1000]);
+  await db.query(`DELETE FROM meme_orders WHERE state = 'prepared' AND created_at < now() - make_interval(secs => $1) AND (trade_id IS NULL OR signature IS NULL)`, [PREPARED_TTL_MS / 1000]);
+  // Exits with a buy: opened once the buy is confirmed onchain, dropped if it failed (nothing was approved or bought).
+  await db.query(`DELETE FROM meme_orders m USING trade_proposals t WHERE m.trade_id = t.id AND m.state = 'prepared' AND t.status IN ('failed', 'cancelled', 'expired')`);
+  const { rows: opened } = await db.query(
+    `UPDATE meme_orders m SET state = 'open', updated_at = now() FROM trade_proposals t
+      WHERE m.trade_id = t.id AND m.state = 'prepared' AND m.signature IS NOT NULL AND t.status = 'confirmed' RETURNING m.id`);
+  if (opened.length) logger.info('meme orders: exits opened with their buys', { orders: opened.length });
   const { rows: ended } = await db.query(
     `UPDATE meme_orders o SET state = 'expired', updated_at = now() WHERE state IN ('open', 'triggered') AND valid_until < now()
        AND NOT EXISTS (SELECT 1 FROM meme_order_fills f WHERE f.order_id = o.id AND f.state = 'sent') RETURNING *`);
@@ -862,7 +981,7 @@ async function tick() {
 
 module.exports = {
   KINDS, CHAINS, MIN_ORDER_USD,
-  config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, tick, fundingCalls,
+  config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, tick, fundingCalls, exitsForBuy, recordExits,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills, _route: route,
   _setProvider: fn => { providerFor = fn || rpcProvider; providers.clear(); },
   _setExecutor: fn => { testExecutor = fn; },
