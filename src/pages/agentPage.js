@@ -86,7 +86,7 @@ const PAGES = {
     description: 'An AI agent that watches the meme coins you bought for insiders selling, honeypot flags, pulled liquidity and your stop-loss, with a sell ready to sign.',
     lead: 'the alerts that come before a meme coin goes to zero',
     checks: [
-      ['Launch-bundle and insider wallets: did they sell what they bought at launch?', 'The bundle check (block explorer transfers), then their balances read onchain every 6 hours; on Solana, their sales seen within seconds on RektBull\'s stream (Yellowstone gRPC) while it\'s live'],
+      ['Launch-bundle and insider wallets: did they sell what they bought at launch?', 'The bundle check (block explorer transfers), then their balances read onchain every 6 hours; their sales seen within seconds on RektBull\'s streams while they\'re live: Yellowstone gRPC on Solana, the chain\'s WebSocket on BNB Chain and Base'],
       ['Was liquidity pulled from its pools?', 'DexScreener, compared with the last check'],
       ['Did it become a honeypot, add a tax, or gain owner powers?', 'GoPlus token security'],
       ['Is it past your take-profit or stop-loss?', 'DexScreener\'s price against what it cost you, with your Trade desk settings'],

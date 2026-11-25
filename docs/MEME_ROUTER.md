@@ -334,11 +334,31 @@ upgrade on 5 November 2026; BNB Chain: every 0.45 s since Fermi, 14 January
 - **Coins on a four.meme curve:** four.meme's events don't index the coin, so the
   stream subscribes the coin's own Transfers instead. After one, it reads the
   curve's quote for each order on the coin, at most once a second.
-- **Meme Watch:** for coins with an open Meme Watch exit, the stream subscribes
-  Transfers out of their launch-bundle wallets (Meme Watch's groups, 100 wallets
-  a filter). Moves inside a group don't count. Each sale is recorded once
-  (`meme_insider_sells`, migration 043). When a group's sales since the stream
-  started watching reach 20% of what it bought, the coin's exits fire.
+- **Meme Watch (streamed alerts built 25 November 2026):**
+  - **What's watched:** every BNB Chain and Base coin in an enabled Meme
+    Watch, not only those with an exit. The stream subscribes Transfers out of
+    their launch-bundle wallets (Meme Watch's groups, 100 wallets a filter).
+  - **How many:** at most `max_insider_coins` a chain (50 by default; admin
+    panel, "Meme Watch coins per chain"). Coins with an open Meme Watch exit
+    come first, then those the most users watch. The rest stay with the
+    6-hour check, and the Health tab says how many.
+  - **Sales:** moves inside a group don't count. Each sale is recorded once
+    (`meme_insider_sells`, migration 043).
+  - **Alerts,** like Solana's (`services/insiderWatch.js`), to every account
+    watching the coin:
+    - the group's first sale seen: high, once per group;
+    - each 20% of what it bought gone: critical, with the 6-hour check's own
+      title and key (`meme:<chain>:<coin>:insiders:<funder>:<n>`), so nobody is
+      told twice.
+  - **What each alert says:** the wallet, the share of the supply it sent and
+    where, and how much of what the group bought has left since the stream
+    started watching. Each names its source (the chain's WebSocket and
+    transaction, and the supply from the chain's RPC) and links a sell on the
+    Trade desk for the user's wallet to sign. Nothing is sold for them.
+  - **Exits:** at 20%, the coin's Meme Watch exits fire too.
+  - **No Meme Router needed:** these run even with the order service off,
+    before the Meme Router is deployed. Only the price and curve subscriptions
+    need it.
 - **A price from the stream is confirmed by the fill's own quote** before anything
   is sent: a stop-loss only if the route's price is at or under its trigger
   (2% leeway), a take-profit or limit buy only if at or over it. A trigger the
@@ -370,8 +390,11 @@ Tests: `test/memeStream.test.js`:
   - an order not watched far from its trigger, and watched near it;
   - a stream price the quote doesn't confirm, sending nothing;
   - a real fall, filled at once;
-  - Meme Watch's insider sales firing its exit (moves inside the group and
+  - Meme Watch's insider sales: the first-sale alert and the 20% alert with
+    the 6-hour check's key, and the exit firing (moves inside the group and
     repeated logs not counted);
+  - a watched coin with no exit, and the coin cap with its health note;
+  - Meme Watch still watched with the order service off;
   - the budget dropping the pool but keeping the insiders;
   - the switch closing the connection.
 
