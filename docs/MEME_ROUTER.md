@@ -98,10 +98,18 @@ it is given (Permit2-style) can't be told apart by a call, and through it
 anyone could spend approvals given to the router: review every venue's
 functions for that before deploying (the re-review's N-1).
 
-**Exchanges, per chain** (fixed at deployment): 0x's AllowanceHolder
-everywhere (any token with a pool, graduated curve tokens included), four.meme's
-TokenManager2 on BNB Chain, and Virtuals' Bonding contract with its FRouter on
-Base.
+**Exchanges, per chain** (fixed at deployment, `src/trade/memeRouterParams.js`):
+- **Everywhere:** 0x's AllowanceHolder (any token with a pool, graduated curve
+  tokens included).
+- **BNB Chain:** four.meme's TokenManager2.
+- **Base:** Virtuals' BondingV5 (called) and FRouterV3 (approved), with VIRTUAL
+  as a base asset beside WETH and USDC. Virtuals' old Bonding isn't one: nothing
+  launches or is bought on it, and holders still sell there from their own
+  wallet on the Trade desk.
+
+The same file gives the constructor's arguments for each chain. The checks on
+copies of the chains deploy from it, the order service checks the deployed
+router against it, and the deployment must use it.
 
 ## Tests
 
@@ -367,8 +375,62 @@ Tests: `test/memeStream.test.js`:
   - the budget dropping the pool but keeping the insiders;
   - the switch closing the connection.
 
-**Not yet:** coins on a Virtuals curve on Base (0x can't route them; the
-router has no Virtuals venue until the check on a copy of Base below).
+**Virtuals curve coins on Base (built 25 November 2026).** Asked for by the
+owner on 25 November 2026, before the router is deployed, because its exchanges
+can't be added afterwards.
+- **Orders are in VIRTUAL,** because Virtuals' curve trades in it: a sale's
+  `tokenOut` and a limit buy's `tokenIn` are VIRTUAL. The router takes its 1% in
+  VIRTUAL. Prices, floors, worst cases and alerts all say VIRTUAL, and the
+  triggers use VIRTUAL's price (DefiLlama).
+  - A limit buy needs the VIRTUAL already in the wallet: it can't be wrapped
+    from ETH, so a wallet that holds too little is told when placing the order.
+  - The user's wallet approves the router for it; nothing is wrapped.
+- **A fill** calls BondingV5's `buy` or `sell` (with a 5-minute deadline), and
+  the router approves FRouterV3 for exactly that fill's input.
+  - A sale passes all its coins, since the fee is taken on the VIRTUAL that
+    comes out, with Virtuals' own minimum set to the floor grossed up for the fee.
+  - A buy passes 99% of its VIRTUAL, with the user's limit as Virtuals' minimum.
+  - Quotes come from FRouterV3's `getAmountsOut`, after Virtuals' taxes
+    (`launchpads.curveBuyQuote` / `curveSellQuote`).
+  - Once the coin graduates, fills go through 0x, still in VIRTUAL.
+- **Refused, with the reason:**
+  - while Virtuals' anti-sniper tax is running or about to start on the coin;
+  - a coin on Virtuals' old curve;
+  - a router deployed without Virtuals.
+- **Virtuals' contracts are upgradeable proxies** (EIP-1967). Their admin can
+  replace the code, so `memeRouterParams.js` records the implementations that
+  were checked, and the order service reads them again every 10 minutes. If
+  either changes, orders on Virtuals curve coins stop, both new ones and fills
+  of open ones, and say why, until the new code is reviewed and the file
+  updated.
+  - An upgrade can't take a user's coins through the router: the router
+    approves a venue only for a fill's own input, resets the approval, and
+    checks what reaches the user against the signed minimum.
+  - An upgrade could still make fills misbehave, which is why the service stops.
+  - **The owner's decision (25 November 2026):** keep Virtuals in the router,
+    with this automatic pause on upgrades, rather than leave it out. (Leaving it
+    out was the alternative, since venues can't be added after deployment.)
+- **The stream** (triggers over WebSocket) watches a coin on Virtuals' curve as
+  it does a four.meme one: by the coin's own Transfers, then the curve's quote.
+
+**The check on a copy of Base** (`contracts/scripts/memeRouterVirtualsCheck.js`,
+run 25 November 2026 against Base mainnet):
+1. The router deploys with the arguments above. Its constructor refuses a venue
+   that answers like a token, and BondingV5 and FRouterV3 pass.
+2. A signed limit buy of 50 VIRTUAL, filled by the executor on BondingV5, gave
+   the user more than their limit. The fee wallet got 0.5 VIRTUAL, and the
+   router kept nothing.
+3. A fill under the user's limit was refused by the router (`BelowLimit`).
+4. Selling all of it back for VIRTUAL paid exactly 1% to the fee wallet.
+5. Both proxies' implementations matched the ones recorded.
+6. Every 4-byte constant in FRouterV3's code was tried as a function, from the
+   router and from a stranger, on a snapshot that was rolled back. Of 73, none
+   that changes state answered; the 10 that answered were all reads. So the
+   router's approval of FRouterV3 during a fill can't be used by anyone else.
+
+Run it again before deploying, and whenever Virtuals upgrades either contract:
+`npx hardhat run scripts/memeRouterVirtualsCheck.js --network baseMainnetFork`.
+Tests: `test/virtualsOrders.test.js`.
 
 ## What's next
 
@@ -377,9 +439,12 @@ router has no Virtuals venue until the check on a copy of Base below).
    code).
 2. **The trade service**: built (above). At launch: the executor's KMS key,
    funded with a little ETH and BNB, and migration 041.
-3. **A Virtuals check on a copy of Base**, like the four.meme one.
+3. **A Virtuals check on a copy of Base**: done (above). Run it again before
+   deploying.
 4. **Deployment** from the owner's hardware wallet, per chain, with the
-   pre-flight and verify steps of `docs/ROUTER_DEPLOYMENT.md`.
+   pre-flight and verify steps of `docs/ROUTER_DEPLOYMENT.md`, and the
+   constructor arguments from `src/trade/memeRouterParams.js`
+   (`constructorArgs(chain, feeWallet)`).
 
 ## Solana: Turnkey, evaluated (11 November 2026)
 

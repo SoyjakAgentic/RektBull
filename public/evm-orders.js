@@ -39,7 +39,8 @@
     $('eo-share-wrap').hidden = kind === 'limit_buy';
     $('eo-spend-wrap').hidden = kind !== 'limit_buy';
     $('eo-dip-wrap').hidden = kind !== 'limit_buy';
-    $('eo-spend-label').textContent = `${NATIVE[$('eo-chain').value].coin} to spend`;
+    // On Base, a coin still on Virtuals' curve is bought with VIRTUAL (what the curve trades in); the plan says which.
+    $('eo-spend-label').textContent = $('eo-chain').value === 'base' ? 'ETH to spend (VIRTUAL for a coin on Virtuals\' curve)' : `${NATIVE[$('eo-chain').value].coin} to spend`;
     if (kind === 'meme_watch_exit' && $('eo-floor').value === '35') $('eo-floor').value = '50';
     if (kind === 'stop_loss' && $('eo-floor').value === '50') $('eo-floor').value = '35';
     $('eo-explain').textContent = EXPLAIN[kind];

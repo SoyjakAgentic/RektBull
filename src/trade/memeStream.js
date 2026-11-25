@@ -19,9 +19,10 @@
  *   by the pool's id. Which side of the pool the coin is on is settled the first
  *   time, against DexScreener's price; a pool whose events don't agree with it
  *   within 30% isn't used (it stays on polling).
- * - A coin still on its four.meme curve: its own Transfer events (four.meme's
- *   events don't index the coin), and on one, the curve's quote for each order
- *   on it, at most once a second.
+ * - A coin still on a launchpad's curve (four.meme on BNB Chain, Virtuals'
+ *   BondingV5 on Base): its own Transfer events (the launchpads' events don't
+ *   index the coin), and on one, the curve's quote for each order on it, at
+ *   most once a second.
  * - Meme Watch: for coins with an open Meme Watch exit, Transfers out of their
  *   launch-bundle wallets (Meme Watch's groups). Each is recorded once
  *   (meme_insider_sells); when a group's sales since the stream started watching
@@ -130,7 +131,7 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
     const near = new Map(); // token -> { distance, rows }
     for (const row of rows.filter(r => ['stop_loss', 'take_profit', 'limit_buy'].includes(r.kind))) {
       const pair = seen.pairs[row.token];
-      const c = orders.checkPrice(row, pair?.price_usd, seen.native_usd, 'plan');
+      const c = orders.checkPrice(row, pair?.price_usd, orders.quoteOfRow(row).virtual ? seen.virtual_usd : seen.native_usd, 'plan');
       if (c.distance === null || c.distance === undefined || c.distance > s.arm_pct / 100) continue;
       const cur = near.get(row.token) || { distance: Infinity, rows: [], pair };
       cur.distance = Math.min(cur.distance, c.distance);
@@ -139,10 +140,12 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
     }
     const ranked = [...near.entries()].sort((a, b) => a[1].distance - b[1].distance).slice(0, s.max_pools);
     for (const [token, n] of ranked) {
-      const curve = await orders.onFourMemeCurve(chain, token, { fourMeme: chain === 'bsc' }).catch(() => false);
+      const check = await orders.routerCheck(chain, orders.config().routers[chain]).catch(() => null);
+      const curve = check?.ok ? await orders.curveOf(chain, token, check).catch(() => null) : null;
+      if (curve?.unsupported) continue; // nothing can fill there: no subscription
       if (curve) {
         filters[`curve:${token}`] = { address: token, topics: [T.transfer] };
-        watches[`curve:${token}`] = { type: 'curve', chain, token };
+        watches[`curve:${token}`] = { type: 'curve', chain, token, curve };
         continue;
       }
       const p = n.pair;
@@ -156,7 +159,7 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
       const prev = st.watches[chain]?.[key];
       watches[key] = {
         type: 'pool', chain, token, pool: p.pair.toLowerCase(), v4, decimals: n.rows[0].decimals, quote_decimals: dQ,
-        ref: p.price_native, quote_usd: p.price_usd / p.price_native, native_usd: seen.native_usd, dex: p.dex,
+        ref: p.price_native, quote_usd: p.price_usd / p.price_native, native_usd: seen.native_usd, virtual_usd: seen.virtual_usd, dex: p.dex,
         orient: prev?.pool === p.pair.toLowerCase() ? prev.orient : null,
       };
     }
@@ -275,7 +278,7 @@ async function onPrice(chain, key, w, log) {
   const source = `the pool's own ${log.topics[0] === T.swapV4 ? 'Swap event (Uniswap v4)' : log.topics[0] === T.syncV2 || log.topics[0] === T.syncSolidly ? 'Sync event' : 'Swap event'}, pushed over the chain's WebSocket (transaction ${String(log.transactionHash).slice(0, 10)}…); confirmed by the fill's own quote before anything is sent`;
   const fired = [];
   for (const row of openRows(chain, w.token, ['stop_loss', 'take_profit', 'limit_buy'])) {
-    const c = orders.checkPrice(row, priceUsd, w.native_usd, source);
+    const c = orders.checkPrice(row, priceUsd, orders.quoteOfRow(row).virtual ? w.virtual_usd : w.native_usd, source);
     if (c.reason) {
       const ok = await orders.fire(row.id, { ...c.reason, stream: true, pool: w.pool, block: log.blockNumber ? Number(log.blockNumber) : null });
       fired.push(ok);
@@ -288,27 +291,24 @@ async function onCurve(chain, w) {
   const last = st.lastCurve.get(w.token) || 0;
   if (Date.now() - last < CURVE_DEBOUNCE_MS) return;
   st.lastCurve.set(w.token, Date.now());
-  const lp = require('../services/launchpads');
   const fired = [];
   for (const row of openRows(chain, w.token, ['stop_loss', 'take_profit', 'limit_buy'])) {
     const left = BigInt(row.amount_in) - BigInt(row.filled_in);
     if (left <= 0n) continue;
     const trigger = BigInt(row.trigger_out) * left / BigInt(row.amount_in);
-    const source = 'four.meme\'s helper contract (the curve\'s quote), read after the coin traded (its Transfer, pushed over the chain\'s WebSocket)';
+    const q = orders.quoteOfRow(row);
+    const source = `${w.curve.name}'s quote, read after the coin traded (its Transfer, pushed over the chain's WebSocket)`;
     let reason = null;
     if (orders.isBuy(row)) {
-      const coins = (await lp.fourMemeBuyQuote(row.token, tx.toTrade(left, 100, false))).amount;
+      const coins = (await orders.buyQuote(chain, row.token, tx.toTrade(left, 100, false), w.curve)).out;
       if (coins >= trigger) reason = { coins_now: Number(ethers.formatUnits(coins, row.decimals)), coins_at_limit: Number(ethers.formatUnits(trigger, row.decimals)), source };
     } else {
-      const amount = left - left % lp.FOURMEME_SELL_UNIT;
+      const amount = left - left % w.curve.sellUnit;
       if (amount <= 0n) continue;
-      const funds = (await lp.fourMemeSellQuote(row.token, amount)).funds * left / amount;
-      if (row.kind === 'stop_loss' ? funds <= trigger : funds >= trigger) reason = { value_native: ethers.formatEther(funds), trigger_native: ethers.formatEther(trigger), source };
+      const out = (await orders.sellQuote(chain, row.token, amount, w.curve)).out * left / amount;
+      if (row.kind === 'stop_loss' ? out <= trigger : out >= trigger) reason = { value: `${ethers.formatEther(out)} ${q.symbol}`, trigger: `${ethers.formatEther(trigger)} ${q.symbol}`, source };
     }
-    if (reason) {
-      const ok = await orders.fire(row.id, { ...reason, stream: true });
-      fired.push(ok);
-    }
+    if (reason) fired.push(await orders.fire(row.id, { ...reason, stream: true }));
   }
   await fireAndFill(fired);
 }

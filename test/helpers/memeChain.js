@@ -5,6 +5,8 @@
  */
 const { ethers } = require('ethers');
 const tx = require('../../src/trade/memeOrderTx');
+const lp = require('../../src/services/launchpads');
+const params = require('../../src/trade/memeRouterParams');
 
 const E18 = 10n ** 18n;
 const ROUTER_BASE = '0x' + '1'.repeat(40);
@@ -29,12 +31,25 @@ function standIn() {
     epoch: new Map(), cancelled: new Set(), filled: new Map(),
     receipts: new Map(), sent: [], calls: [],
     onFill: null, // (order, fill) => throws a revert, or returns
+    storage: new Map(), // `${address}:${slot}` -> value (Virtuals' proxies: their implementations, as checked, unless a test changes them)
   };
-  const routers = { [ROUTER_BASE]: { chainId: 8453, wrapped: WETH, venues: [AH] }, [ROUTER_BSC]: { chainId: 56, wrapped: WBNB, venues: [AH, TM2] } };
+  // The routers, deployed as memeRouterParams.js says (Base: 0x, Virtuals' BondingV5 and FRouterV3; VIRTUAL a base asset).
+  const routers = {
+    [ROUTER_BASE]: { chainId: 8453, wrapped: WETH, venues: params.PARAMS.base.venues, bases: params.PARAMS.base.bases },
+    [ROUTER_BSC]: { chainId: 56, wrapped: WBNB, venues: [AH, TM2], bases: params.PARAMS.bsc.bases },
+  };
+  s.routers = routers;
+  const IMPL = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
   const revert = (name, args) => Object.assign(new Error(`reverted: ${name}`), { data: tx.ROUTER.encodeErrorResult(name, args) });
   s.provider = chainId => ({
     getCode: async a => (routers[a.toLowerCase()] || s.tokens.has(a.toLowerCase()) ? '0x6080' : '0x'),
     getBalance: async a => s.native.get(a.toLowerCase()) ?? 0n,
+    getStorage: async (a, slot) => {
+      const k = `${a.toLowerCase()}:${slot}`;
+      if (s.storage.has(k)) return s.storage.get(k);
+      const impl = slot === IMPL && params.PARAMS.base.implementations[a.toLowerCase()];
+      return impl ? ethers.zeroPadValue(impl, 32) : ethers.ZeroHash;
+    },
     getFeeData: async () => ({ maxFeePerGas: 1_000_000_000n, gasPrice: 1_000_000_000n }),
     getTransactionReceipt: async h => s.receipts.get(h) || null,
     broadcastTransaction: async raw => { s.sent.push({ chainId, raw }); },
@@ -64,6 +79,7 @@ function standIn() {
           case 'FEE_WALLET': return out(FEE_WALLET);
           case 'WRAPPED_NATIVE': return out(r.wrapped);
           case 'isVenue': return out(r.venues.includes(c.args[0].toLowerCase()));
+          case 'isBase': return out(r.bases.includes(c.args[0].toLowerCase()) || c.args[0].toLowerCase() === tx.NATIVE.toLowerCase());
           case 'epochOf': return out(s.epoch.get(c.args[0].toLowerCase()) ?? 0n);
           case 'hashOrder': return out(tx.hash(r.chainId, to, tx.order(c.args[0].toObject())));
           case 'cancelled': return out(s.cancelled.has(c.args[0].toLowerCase()));
@@ -98,4 +114,4 @@ function standIn() {
   return s;
 }
 
-module.exports = { standIn, E18, ROUTER_BASE, ROUTER_BSC, AH, TM2, WETH, WBNB, BULL, FOUR, FEE_WALLET, net, MULTICALL3, MC };
+module.exports = { lp, standIn, E18, ROUTER_BASE, ROUTER_BSC, AH, TM2, WETH, WBNB, BULL, FOUR, FEE_WALLET, net, MULTICALL3, MC };

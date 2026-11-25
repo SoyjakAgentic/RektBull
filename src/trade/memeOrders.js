@@ -51,7 +51,7 @@ const NATIVE = tx.NATIVE.toLowerCase();
 const CHAINS = {
   base: {
     chainId: 8453, label: 'Base', native: 'ETH', wrapped: TRADE_CHAINS.base.bases.WETH.address, wrappedName: 'WETH', priceId: 'coingecko:ethereum',
-    allowanceHolder: TRADE_CHAINS.base.allowanceHolder, explorerTx: TRADE_CHAINS.base.explorerTx,
+    allowanceHolder: TRADE_CHAINS.base.allowanceHolder, explorerTx: TRADE_CHAINS.base.explorerTx, virtuals: true,
   },
   bsc: {
     chainId: 56, label: 'BNB Chain', native: 'BNB', wrapped: TRADE_CHAINS.bsc.bases.WBNB.address, wrappedName: 'WBNB', priceId: 'coingecko:binancecoin',
@@ -131,26 +131,45 @@ async function readMany(chain, calls) {
 
 /**
  * The router as deployed, kept 10 minutes: code at the address, a fee of at
- * most 1%, the chain's wrapped native coin, 0x's AllowanceHolder as a venue,
- * and on BNB Chain whether four.meme's TokenManager2 is one too. The router
- * has no owner and can't be changed, so this only catches a wrong address.
+ * most 1%, the chain's wrapped native coin, 0x's AllowanceHolder as a venue;
+ * on BNB Chain whether four.meme's TokenManager2 is one too; on Base whether
+ * Virtuals' BondingV5 and FRouterV3 are, with VIRTUAL as a base asset, and
+ * whether Virtuals' code is still what was checked (both are upgradeable
+ * proxies: memeRouterParams.js). The router has no owner and can't be
+ * changed, so this only catches a wrong address, and Virtuals' upgrades.
  */
 async function routerCheck(chain, router) {
   return cached(`meme:router:${chain}:${router}`, 600, async () => {
     const c = CHAINS[chain];
+    const lp = require('../services/launchpads');
     const code = await provider(chain).getCode(router);
     if (!code || code === '0x') return { ok: false, why: `RektBull's Meme Router isn't deployed at ${router} on ${c.label}.` };
     const [feeBps, feeWallet, wrapped, zeroexVenue, fourMeme] = await Promise.all([
       read(chain, router, ROUTER, 'FEE_BPS'), read(chain, router, ROUTER, 'FEE_WALLET'), read(chain, router, ROUTER, 'WRAPPED_NATIVE'),
       read(chain, router, ROUTER, 'isVenue', [c.allowanceHolder]),
-      c.fourMeme ? read(chain, router, ROUTER, 'isVenue', [require('../services/launchpads').FOURMEME.tokenManager]) : false,
+      c.fourMeme ? read(chain, router, ROUTER, 'isVenue', [lp.FOURMEME.tokenManager]) : false,
     ]);
     if (Number(feeBps) > 100) return { ok: false, why: `The Meme Router on ${c.label} charges ${Number(feeBps) / 100}%, more than RektBull's 1%: not used.` };
     if (String(wrapped).toLowerCase() !== c.wrapped.toLowerCase()) return { ok: false, why: `The Meme Router on ${c.label} names another wrapped ${c.native}: not used.` };
     if (!zeroexVenue) return { ok: false, why: `The Meme Router on ${c.label} doesn't allow 0x's AllowanceHolder: not used.` };
-    return { ok: true, feeBps: Number(feeBps), feeWallet: String(feeWallet).toLowerCase(), fourMeme: !!fourMeme };
+    let virtuals = false, virtualsWhy = null;
+    if (c.virtuals) {
+      const [bonding, frouter, base] = await Promise.all([
+        read(chain, router, ROUTER, 'isVenue', [lp.ADDR.bondingV5]), read(chain, router, ROUTER, 'isVenue', [lp.ADDR.frouterV3]), read(chain, router, ROUTER, 'isBase', [lp.VIRTUAL]).catch(() => false)]);
+      const expected = require('./memeRouterParams').PARAMS[chain].implementations || {};
+      const changed = [];
+      for (const [proxy, impl] of Object.entries(expected)) {
+        const now = '0x' + String(await provider(chain).getStorage(proxy, IMPLEMENTATION_SLOT)).slice(-40);
+        if (now.toLowerCase() !== impl.toLowerCase()) changed.push(proxy === lp.ADDR.bondingV5 ? 'BondingV5' : 'FRouterV3');
+      }
+      if (!(bonding && frouter && base)) virtualsWhy = `the Meme Router on ${c.label} wasn't deployed with Virtuals' curve (BondingV5, FRouterV3, and VIRTUAL as a base asset)`;
+      else if (changed.length) virtualsWhy = `Virtuals has upgraded ${changed.join(' and ')} since RektBull checked them, so orders on Virtuals curve coins wait until the new code is reviewed`;
+      else virtuals = true;
+    }
+    return { ok: true, feeBps: Number(feeBps), feeWallet: String(feeWallet).toLowerCase(), fourMeme: !!fourMeme, virtuals, virtualsWhy };
   });
 }
+const IMPLEMENTATION_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc'; // EIP-1967
 
 /** The configuration for a chain, checked against it; throws a refusal saying why when orders can't be used. */
 async function ready(chain) {
@@ -164,32 +183,67 @@ async function ready(chain) {
 
 /* ── Prices and routes ── */
 
-/** Is the coin on a four.meme curve priced in BNB, traded by the TokenManager2 the router allows? */
-async function onFourMemeCurve(chain, token, check) {
-  if (chain !== 'bsc' || !check.fourMeme) return false;
+/**
+ * The launchpad curve a coin is still on, or null: four.meme's (BNB Chain, priced in BNB) or Virtuals' BondingV5
+ * (Base, priced in VIRTUAL). { kind, name, pad, sellUnit }, or with `unsupported` (why) when the router can't trade
+ * on it: Virtuals' old curve, a router deployed without Virtuals, or Virtuals' code upgraded since it was checked.
+ */
+async function curveOf(chain, token, check) {
   const lp = require('../services/launchpads');
-  const pad = await lp.identify('bsc', token).catch(() => null);
-  return pad?.launchpad === 'fourmeme' && pad.state === 'curve' && pad.quote === 'bnb' && pad.token_manager === lp.FOURMEME.tokenManager;
+  if (chain === 'bsc' && check.fourMeme) {
+    const pad = await lp.identify('bsc', token).catch(() => null);
+    if (pad?.launchpad === 'fourmeme' && pad.state === 'curve' && pad.quote === 'bnb' && pad.token_manager === lp.FOURMEME.tokenManager) {
+      return { kind: 'fourmeme', name: 'four.meme\'s curve', pad, sellUnit: lp.FOURMEME_SELL_UNIT };
+    }
+    return null;
+  }
+  if (chain === 'base' && CHAINS.base.virtuals) {
+    const pad = await lp.identify('base', token).catch(() => null);
+    if (pad?.launchpad !== 'virtuals' || pad.state !== 'curve') return null;
+    if (pad.version !== 5 || pad.bonding !== lp.ADDR.bondingV5 || pad.frouter !== lp.ADDR.frouterV3) {
+      return { kind: 'virtuals', unsupported: 'This coin is on Virtuals\' old bonding curve, which orders don\'t trade on (nothing launches or is bought there). Sell it from your own wallet on the Trade desk.' };
+    }
+    if (!check.virtuals) return { kind: 'virtuals', unsupported: `Orders on Virtuals curve coins aren't open: ${check.virtualsWhy || 'the router can\'t trade on Virtuals\' curve'}.` };
+    return { kind: 'virtuals', name: 'Virtuals\' curve (BondingV5)', pad, sellUnit: 1n };
+  }
+  return null;
 }
+
+/**
+ * What orders on a coin are priced in: on Virtuals' curve, VIRTUAL (a sale pays it out, a buy spends it); everywhere
+ * else the native coin (a sale pays out ETH or BNB, a buy spends WETH or WBNB from the user's wallet).
+ */
+function quoteAsset(chain, curve) {
+  const c = CHAINS[chain];
+  if (curve?.kind === 'virtuals') {
+    const lp = require('../services/launchpads');
+    return { virtual: true, out: lp.VIRTUAL, in: lp.VIRTUAL, symbol: 'VIRTUAL', spendName: 'VIRTUAL', priceId: 'coingecko:virtual-protocol' };
+  }
+  return { virtual: false, out: NATIVE, in: c.wrapped.toLowerCase(), symbol: c.native, spendName: c.wrappedName, priceId: c.priceId };
+}
+/** The same, for an order already placed (from the coins it trades). */
+function quoteOfRow(row) {
+  const lp = require('../services/launchpads');
+  return quoteAsset(row.chain, (isBuy(row) ? row.token_in : row.token_out) === lp.VIRTUAL ? { kind: 'virtuals' } : null);
+}
+const usdOf = q => require('../providers/prices').usdPrice(q.priceId);
 
 const noRoute = err => { if (err.isTradeBlocked) throw refuse(err.message, 503); throw err; };
 
-/** What `amount` of the coin sells for now, in the native coin: { out, route, taxBps }. four.meme's is after its fee. */
+/** What `amount` of the coin sells for now, in what its orders are priced in: { out, route, taxBps }. A curve's is after its fee. */
 async function sellQuote(chain, token, amount, curve) {
-  if (curve) {
-    const q = await require('../services/launchpads').fourMemeSellQuote(token, amount);
-    return { out: q.funds, route: 'four.meme', taxBps: 0 };
-  }
+  const lp = require('../services/launchpads');
+  if (curve?.kind === 'fourmeme') return { out: (await lp.fourMemeSellQuote(token, amount)).funds, route: 'four.meme', taxBps: 0 };
+  if (curve?.kind === 'virtuals') return { out: await lp.curveSellQuote(token, amount, curve.pad), route: 'Virtuals\' curve', taxBps: 0 };
   const q = await zeroex.quote({ chainId: CHAINS[chain].chainId, sellToken: token, buyToken: NATIVE, sellAmount: amount, indicative: true }).catch(noRoute);
   return { out: q.buyAmount, route: '0x', taxBps: q.taxBps };
 }
 
-/** What `spend` of the wrapped native coin buys now: { out, route, taxBps }. */
+/** What `spend` (the wrapped native coin, or VIRTUAL on Virtuals' curve) buys now: { out, route, taxBps }. */
 async function buyQuote(chain, token, spend, curve) {
-  if (curve) {
-    const q = await require('../services/launchpads').fourMemeBuyQuote(token, spend);
-    return { out: q.amount, route: 'four.meme', taxBps: 0 };
-  }
+  const lp = require('../services/launchpads');
+  if (curve?.kind === 'fourmeme') return { out: (await lp.fourMemeBuyQuote(token, spend)).amount, route: 'four.meme', taxBps: 0 };
+  if (curve?.kind === 'virtuals') return { out: await lp.curveBuyQuote(token, spend, curve.pad), route: 'Virtuals\' curve', taxBps: 0 };
   const q = await zeroex.quote({ chainId: CHAINS[chain].chainId, sellToken: CHAINS[chain].wrapped, buyToken: token, sellAmount: spend, indicative: true }).catch(noRoute);
   return { out: q.buyAmount, route: '0x', taxBps: q.taxBps };
 }
@@ -206,7 +260,8 @@ const num = (v, lo, hi, dflt, name) => {
   return n;
 };
 const netOf = feeBps => gross => BigInt(gross) - BigInt(gross) * BigInt(feeBps) / 10000n;
-const SELL_UNIT = () => require('../services/launchpads').FOURMEME_SELL_UNIT;
+const quoteSource = route => (route === 'four.meme' ? 'four.meme\'s helper contract (the coin is on its curve)'
+  : route === 'Virtuals\' curve' ? 'Virtuals\' FRouterV3 (getAmountsOut: the coin is on its curve; Virtuals\' taxes from its factory)' : '0x price');
 
 async function memeWatchOn(accountId) {
   if (require('../admin/agentStates').isOff('meme_watch')) return false;
@@ -221,13 +276,13 @@ async function symbolOf(chain, token) {
 }
 
 /** A sale's worst case, in plain words, shown before the user signs. */
-function worstCase({ kind, amountWhole, symbol, minOut, validUntil, c }) {
+function worstCase({ kind, amountWhole, symbol, minOut, validUntil, q }) {
   const date = new Date(validUntil).toISOString().slice(0, 10);
   const what = `your ${fmt(amountWhole)} ${symbol}`;
   return [
     kind === 'take_profit'
-      ? `Worst case, even if RektBull were hacked: ${what} are sold for ${nat(minOut)} ${c.native} after the 1% fee (your target less your slippage), at a moment RektBull picks before ${date}. That is more than they would sell for now.`
-      : `Worst case, even if RektBull were hacked: ${what} are sold for ${nat(minOut)} ${c.native} after the 1% fee (your floor), at a moment RektBull picks before ${date}, even if the market is higher then.`,
+      ? `Worst case, even if RektBull were hacked: ${what} are sold for ${nat(minOut)} ${q.symbol} after the 1% fee (your target less your slippage), at a moment RektBull picks before ${date}. That is more than they would sell for now.`
+      : `Worst case, even if RektBull were hacked: ${what} are sold for ${nat(minOut)} ${q.symbol} after the 1% fee (your floor), at a moment RektBull picks before ${date}, even if the market is higher then.`,
     `Nothing else of yours can be touched: your wallet approves the Meme Router for these coins only, and the router sends what they sell for only to your wallet, in the same transaction. RektBull never holds them.`,
     'If the price falls straight past your floor, the order can\'t fill below it: you keep the coins, and RektBull tells you.',
     'To stop it: cancel it here (your wallet sends the cancel to the router), or revoke the approval in your wallet. Either works at once, even while RektBull is paused.',
@@ -235,12 +290,13 @@ function worstCase({ kind, amountWhole, symbol, minOut, validUntil, c }) {
 }
 
 /** A limit buy's worst case, in plain words. */
-function worstCaseBuy({ spend, minCoins, symbol, validUntil, c }) {
+function worstCaseBuy({ spend, minCoins, symbol, validUntil, c, q }) {
   const date = new Date(validUntil).toISOString().slice(0, 10);
   return [
-    `Worst case, even if RektBull were hacked: your ${spend} ${c.wrappedName} buys ${fmt(minCoins)} ${symbol} (your limit less your slippage), the 1% fee included, at a moment RektBull picks before ${date}, even if the price is lower then.`,
-    `Nothing else of yours can be touched: your wallet approves the Meme Router for this ${c.wrappedName} only, and the router sends the coins only to your wallet, in the same transaction. RektBull never holds them.`,
-    `If the price never comes down to your limit, nothing is bought, and your ${c.wrappedName} stays in your wallet (you can unwrap it into ${c.native} any time).`,
+    `Worst case, even if RektBull were hacked: your ${spend} ${q.spendName} buys ${fmt(minCoins)} ${symbol} (your limit less your slippage), the 1% fee included, at a moment RektBull picks before ${date}, even if the price is lower then.`,
+    `Nothing else of yours can be touched: your wallet approves the Meme Router for this ${q.spendName} only, and the router sends the coins only to your wallet, in the same transaction. RektBull never holds them.`,
+    q.virtual ? 'If the price never comes down to your limit, nothing is bought, and your VIRTUAL stays in your wallet.'
+      : `If the price never comes down to your limit, nothing is bought, and your ${q.spendName} stays in your wallet (you can unwrap it into ${c.native} any time).`,
     'Before each fill, RektBull runs its token check again: a critical risk stops the buy, and you are told.',
     'To stop it: cancel it here (your wallet sends the cancel to the router), or revoke the approval in your wallet.',
   ];
@@ -270,8 +326,14 @@ async function prepare(account, body = {}) {
   const settings = await require('./rules').settingsFor(account.id);
   const decimals = Number(await read(chain, token, ERC20, 'decimals').catch(() => { throw refuse(`That isn't a token on ${c.label}.`); }));
   const symbol = await symbolOf(chain, token);
-  const curve = await onFourMemeCurve(chain, token, cfg.check);
-  const usd = await nativeUsd(chain);
+  const curve = await curveOf(chain, token, cfg.check);
+  if (curve?.unsupported) throw refuse(curve.unsupported, 409);
+  const anti = curve?.kind === 'virtuals' ? curve.pad.curve?.anti_sniper : null;
+  if (anti?.ends_at || anti?.starts_at) {
+    throw refuse(`Virtuals' anti-sniper tax is ${anti.ends_at ? `running on this coin until ${anti.ends_at}` : `about to start on this coin (${anti.starts_at})`}: a fill now would pay it. Place the order once it's over.`, 409);
+  }
+  const q0 = quoteAsset(chain, curve); // what this order is priced in: the native coin, or VIRTUAL on Virtuals' curve
+  const usd = await usdOf(q0);
   const validUntil = Date.now() + days * 86400_000;
   const net = netOf(cfg.check.feeBps);
   const checks = [];
@@ -285,33 +347,38 @@ async function prepare(account, body = {}) {
     const spendUsd = Math.round(spend * usd * 100) / 100;
     if (spendUsd > settings.max_trade_usd) throw refuse(`$${spendUsd} is over your per-trade amount of $${settings.max_trade_usd}. Change it in your trading settings.`);
     if (spendUsd < MIN_ORDER_USD) throw refuse(`An order needs at least $${MIN_ORDER_USD} (this is $${spendUsd}): RektBull pays each fill's network fee out of its 1%.`);
-    checks.push({ check: 'per_trade_amount', ok: true, detail: `$${spendUsd} of your $${settings.max_trade_usd} per trade`, source: `your trading settings; ${c.native}'s price from DefiLlama` });
+    checks.push({ check: 'per_trade_amount', ok: true, detail: `$${spendUsd} of your $${settings.max_trade_usd} per trade`, source: `your trading settings; ${q0.symbol}'s price from DefiLlama` });
+    if (q0.virtual) {
+      // VIRTUAL can't be wrapped from ETH in the wallet: the user needs it already.
+      const have = BigInt(await read(chain, q0.in, ERC20, 'balanceOf', [owner]));
+      if (have < amountIn) throw refuse(`Your wallet holds ${nat(have)} VIRTUAL, and this buy spends ${spend}. Orders on a Virtuals curve coin are in VIRTUAL (its curve trades in it): get VIRTUAL first, on the Trade desk.`);
+    }
     await buyChecks(chain, token, body, checks);
     const toTrade = tx.toTrade(amountIn, cfg.check.feeBps, false);
     const q = await buyQuote(chain, token, toTrade, curve);
-    if (!q.out) throw refuse(`There is no route to buy this coin with ${c.wrappedName} just now (${q.route}).`);
+    if (!q.out) throw refuse(`There is no route to buy this coin with ${q0.spendName} just now (${q.route}).`);
     if (q.taxBps) throw refuse(`This coin taxes transfers (${q.taxBps / 100}%, 0x), so an order can't be filled exactly. Trade it from your own wallet on the Trade desk.`);
-    const back = await sellQuote(chain, token, curve ? q.out - q.out % SELL_UNIT() : q.out, curve);
+    const back = await sellQuote(chain, token, curve ? q.out - q.out % curve.sellUnit : q.out, curve);
     if (!back.out) throw refuse('There is no route to sell this coin back: it may be a honeypot. Not placing a buy.');
     const lossPct = Number((amountIn - back.out) * 10000n / amountIn) / 100;
     if (lossPct > settings.max_round_trip_loss_pct) throw refuse(`Selling straight back would lose ${lossPct.toFixed(1)}%, above your ${settings.max_round_trip_loss_pct}% limit: the token may tax transfers, or its pool is thin.`);
-    checks.push({ check: 'sell_back', ok: true, detail: `selling straight back loses ${lossPct.toFixed(1)}% (fees included; limit ${settings.max_round_trip_loss_pct}%)`, source: q.route === 'four.meme' ? 'four.meme\'s helper contract' : '0x price' });
+    checks.push({ check: 'sell_back', ok: true, detail: `selling straight back loses ${lossPct.toFixed(1)}% (fees included; limit ${settings.max_round_trip_loss_pct}%)`, source: quoteSource(q.route) });
     refOut = q.out;
     const trigger = refOut * 10000n / BigInt(Math.round((100 - dip) * 100));
     const minOut = trigger * BigInt(Math.round((100 - slip) * 100)) / 10000n;
     if (minOut <= 0n) throw refuse('That limit rounds to no coins; spend more.', 400);
     t = { triggerOut: trigger, minOut, said: { spend, dip_pct: dip, slippage_pct: slip } };
-    order = { tokenIn: c.wrapped, tokenOut: token, amountIn };
-    extra = { spendUsd, worst: worstCaseBuy({ spend, minCoins: whole(minOut, decimals), symbol, validUntil, c }) };
+    order = { tokenIn: q0.in, tokenOut: token, amountIn };
+    extra = { spendUsd, worst: worstCaseBuy({ spend, minCoins: whole(minOut, decimals), symbol, validUntil, c, q: q0 }) };
   } else {
     const share = num(body.share_pct, 1, 100, 100, 'share_pct');
     const held = BigInt(await read(chain, token, ERC20, 'balanceOf', [owner]));
     if (held === 0n) throw refuse('Your wallet holds none of this coin.');
     let amountIn = held * BigInt(Math.round(share * 100)) / 10000n;
-    if (curve) amountIn -= amountIn % SELL_UNIT(); // four.meme sells whole multiples of 10^9 units only
+    if (curve) amountIn -= amountIn % curve.sellUnit; // four.meme sells whole multiples of 10^9 units only
     if (amountIn === 0n) throw refuse('That share of your holding rounds to nothing.');
     const q = await sellQuote(chain, token, amountIn, curve);
-    if (!q.out) throw refuse(`There is no route to sell this coin for ${c.native} just now (${q.route}), so an order couldn't be filled.`);
+    if (!q.out) throw refuse(`There is no route to sell this coin for ${q0.symbol} just now (${q.route}), so an order couldn't be filled.`);
     if (q.taxBps) throw refuse(`This coin taxes transfers (${q.taxBps / 100}%, 0x), so an order can't be filled exactly. Sell it from your own wallet on the Trade desk.`);
     refOut = q.out;
     const valueUsd = Math.round(whole(refOut, 18) * usd * 100) / 100;
@@ -319,9 +386,9 @@ async function prepare(account, body = {}) {
     t = require('./solanaOrders').terms(kind, refOut, body, settings, net);
     if (t.minOut <= 0n) throw refuse('That floor rounds to nothing; choose a higher one.', 400);
     checks.push({ check: 'holding', ok: true, detail: `${fmt(whole(amountIn, decimals))} of the ${fmt(whole(held, decimals))} ${symbol} in your wallet`, source: `${c.label} RPC (balanceOf)` });
-    checks.push({ check: 'route', ok: true, detail: `they would sell for ${nat(refOut)} ${c.native} now ($${valueUsd})`, source: q.route === 'four.meme' ? 'four.meme\'s helper contract (the coin is on its curve)' : '0x price' });
-    order = { tokenIn: token, tokenOut: NATIVE, amountIn };
-    extra = { worst: worstCase({ kind, amountWhole: whole(amountIn, decimals), symbol, minOut: t.minOut, validUntil, c }) };
+    checks.push({ check: 'route', ok: true, detail: `they would sell for ${nat(refOut)} ${q0.symbol} now ($${valueUsd})`, source: quoteSource(q.route) });
+    order = { tokenIn: token, tokenOut: q0.out, amountIn };
+    extra = { worst: worstCase({ kind, amountWhole: whole(amountIn, decimals), symbol, minOut: t.minOut, validUntil, q: q0 }) };
   }
 
   const epoch = await read(chain, cfg.router, ROUTER, 'epochOf', [owner]);
@@ -342,13 +409,15 @@ async function prepare(account, body = {}) {
     terms: t.said,
     worst_case: extra.worst,
     notes: [
-      buy ? `After you sign, your wallet wraps the ${c.native} it needs into ${c.wrappedName} (if it hasn't enough) and approves the Meme Router for exactly what your buys on ${c.label} spend.`
+      buy ? (q0.virtual ? 'After you sign, your wallet approves the Meme Router for exactly the VIRTUAL your buys on Virtuals curve coins spend.'
+        : `After you sign, your wallet wraps the ${c.native} it needs into ${c.wrappedName} (if it hasn't enough) and approves the Meme Router for exactly what your buys on ${c.label} spend.`)
         : `After you sign, your wallet approves the Meme Router for exactly what your orders on this coin sell (unless it already has).`,
-      ...(curve ? [`This coin is still on its four.meme curve: fills trade on the curve itself until it graduates, then through 0x.`] : []),
+      ...(curve?.kind === 'fourmeme' ? ['This coin is still on its four.meme curve: fills trade on the curve itself until it graduates, then through 0x.'] : []),
+      ...(curve?.kind === 'virtuals' ? [`This coin is still on Virtuals' bonding curve, which trades in VIRTUAL, so this order is in VIRTUAL: ${buy ? 'it spends VIRTUAL' : 'its sale pays out VIRTUAL'}. Fills trade on the curve itself (Virtuals' BondingV5) until the coin graduates, then through 0x, still in VIRTUAL. Virtuals' own tax (${curve.pad.curve?.[buy ? 'buy_tax_pct' : 'sell_tax_pct'] ?? 1}% now) is in the prices shown.`] : []),
     ],
     costs: {
       deposit: 'No deposit: the order is only a signature. Your wallet pays the network fee for the approval (and the wrapping) once.',
-      fee: `RektBull's ${cfg.check.feeBps / 100}% of the ${c.native} a fill ${buy ? 'spends' : 'brings'}, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.`,
+      fee: `RektBull's ${cfg.check.feeBps / 100}% of the ${q0.symbol} a fill ${buy ? 'spends' : 'brings'}, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.`,
       fee_wallet: cfg.check.feeWallet,
     },
     checks,
@@ -448,6 +517,10 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
   const check = await routerCheck(chain, router);
   if (!check.ok) return { off: check.why };
   if (taxBps) return { off: `this coin taxes transfers (${taxBps / 100}%, 0x), so an order can't be filled exactly.` };
+  // A coin on Virtuals' curve: its exits are in VIRTUAL, what the curve trades in.
+  const curve = await curveOf(chain, String(token).toLowerCase(), check);
+  if (curve?.unsupported) return { off: curve.unsupported.replace(/\.$/, '') };
+  const q = quoteAsset(chain, curve);
   const c = CHAINS[chain];
   owner = String(owner).toLowerCase();
   token = String(token).toLowerCase();
@@ -457,7 +530,7 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
   // What the coins the buy is sure to bring cost, at this buy's price.
   const coveredUsd = Number(valueUsd) * Number(amountIn * 1_000_000n / expected) / 1_000_000;
   if (coveredUsd < MIN_ORDER_USD) return { off: `an order needs at least $${MIN_ORDER_USD} (RektBull pays each fill's network fee out of its 1%), and the coins this buy is sure to bring cost $${coveredUsd.toFixed(2)}.` };
-  const refOut = BigInt(Math.floor(coveredUsd / await nativeUsd(chain) * 1e18));
+  const refOut = BigInt(Math.floor(coveredUsd / await usdOf(q) * 1e18)); // in what the exits pay out: ETH, BNB or VIRTUAL
   const days = num(exits.days, 1, MAX_DAYS, MAX_DAYS, 'days');
   const validUntil = Date.now() + days * 86400_000;
   const [decimals, symbol, epoch, allowance] = await Promise.all([
@@ -469,7 +542,7 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
   for (const kind of kinds) {
     const t = require('./solanaOrders').terms(kind, refOut, exits, settings, net);
     if (t.minOut <= 0n) return { off: 'that floor rounds to nothing.' };
-    const o = tx.order({ account: owner, executor: cfg.executor, tokenIn: token, tokenOut: NATIVE, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000), epoch, salt: BigInt('0x' + crypto.randomBytes(32).toString('hex')) });
+    const o = tx.order({ account: owner, executor: cfg.executor, tokenIn: token, tokenOut: q.out, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000), epoch, salt: BigInt('0x' + crypto.randomBytes(32).toString('hex')) });
     orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said });
   }
   // The router's own hash of the first: a layout that drifted from the contract's is caught before anyone signs.
@@ -490,17 +563,17 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
     chain, router, executor: cfg.executor, token, symbol, decimals, validUntil, approve,
     orders,
     summary: {
-      chain_label: c.label, native: c.native,
+      chain_label: c.label, native: q.symbol, ...(curve?.kind === 'virtuals' ? { note: 'The coin is on Virtuals\' curve, which trades in VIRTUAL: these exits pay out VIRTUAL.' } : {}),
       orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_native: nat(o.triggerOut), floor_native: nat(o.minOut), ...o.said })),
       covers: `the ${fmt(amountWhole)} ${symbol} this buy is sure to bring (its minimum); anything it brings above that isn't covered`,
       how: `Your wallet signs ${orders.length > 1 ? 'them' : 'it'} right after it sends the buy (a signature, nothing is sent)${approve ? ', and the approval of RektBull\'s Meme Router for these coins is in the buy\'s own batch, after the swap' : ''}. ${orders.length > 1 ? 'They open' : 'It opens'} when the buy lands.`,
       worst_case: [
-        ...orders.map(o => worstCase({ kind: o.kind, amountWhole, symbol, minOut: o.minOut, validUntil, c })[0]),
+        ...orders.map(o => worstCase({ kind: o.kind, amountWhole, symbol, minOut: o.minOut, validUntil, q })[0]),
         `Nothing else of yours can be touched: the approval covers only these coins, and the router sends what they sell for only to your wallet, in the same transaction. RektBull never holds them.`,
         ...(orders.length > 1 ? ['The two orders sell the same coins: once one has sold them, the other has nothing left to sell (cancel it on the Trade desk).'] : []),
         'To stop them: cancel them on the Trade desk (your wallet sends the cancel to the router), or revoke the approval in your wallet.',
       ],
-      costs: { deposit: 'No deposit: an order is only a signature.', fee: `RektBull's ${check.feeBps / 100}% of the ${c.native} an exit brings, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.` },
+      costs: { deposit: 'No deposit: an order is only a signature.', fee: `RektBull's ${check.feeBps / 100}% of the ${q.symbol} an exit brings, taken by the router. Nothing if it never fills. RektBull pays each fill's network fee.` },
     },
   };
 }
@@ -539,14 +612,14 @@ async function fundingCalls(row) {
     read(row.chain, row.token_in, ERC20, 'allowance', [row.owner, row.router]).then(BigInt),
     read(row.chain, row.token_in, ERC20, 'balanceOf', [row.owner]).then(BigInt),
   ]);
-  if (isBuy(row) && balance < need) {
+  if (isBuy(row) && balance < need && !quoteOfRow(row).virtual) {
     const wrap = need - balance;
     const have = await provider(row.chain).getBalance(row.owner);
     if (have < wrap) throw refuse(`Your wallet holds ${nat(have)} ${c.native}, and your buys need ${nat(wrap)} more ${c.wrappedName}. Add ${c.native} and try again; the order stays open.`);
     calls.push({ ...tx.wrapCall(c.wrapped, wrap), label: `Wrap ${nat(wrap)} ${c.native} into ${c.wrappedName}` });
   }
   if (allowance < need) {
-    calls.push({ ...tx.approveCall(row.token_in, row.router, need), label: `Approve the Meme Router for ${isBuy(row) ? `${nat(need)} ${c.wrappedName}` : `${fmt(whole(need, row.decimals))} ${row.symbol || 'coins'}`}` });
+    calls.push({ ...tx.approveCall(row.token_in, row.router, need), label: `Approve the Meme Router for ${isBuy(row) ? `${nat(need)} ${quoteOfRow(row).spendName}` : `${fmt(whole(need, row.decimals))} ${row.symbol || 'coins'}`}` });
   }
   return { chain_id: ethers.toBeHex(c.chainId), calls };
 }
@@ -633,7 +706,8 @@ async function list(account) {
 
 function fillView(r, f) {
   const c = CHAINS[r.chain];
-  const fee = f.fee ? (f.fee_on_output ? `${nat(f.fee)} ${c.native}` : isBuy(r) ? `${nat(f.fee)} ${c.wrappedName}` : `${fmt(whole(f.fee, r.decimals))} ${r.symbol || 'coins'}`) : null;
+  const q = quoteOfRow(r);
+  const fee = f.fee ? (f.fee_on_output ? `${nat(f.fee)} ${q.symbol}` : isBuy(r) ? `${nat(f.fee)} ${q.spendName}` : `${fmt(whole(f.fee, r.decimals))} ${r.symbol || 'coins'}`) : null;
   return {
     tx_hash: f.tx_hash, state: f.state, route: f.route, fee, error: f.error, at: f.created_at, tx_url: c.explorerTx(f.tx_hash),
     ...(isBuy(r) ? { spent_native: nat(f.amount_in), coins: f.delivered ? whole(f.delivered, r.decimals) : null } : { sold_whole: whole(f.amount_in, r.decimals), delivered_native: f.delivered ? nat(f.delivered) : null }),
@@ -643,7 +717,7 @@ function fillView(r, f) {
 function view(r) {
   const c = CHAINS[r.chain];
   const common = {
-    id: Number(r.id), chain: r.chain, chain_label: c.label, native: c.native, kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state,
+    id: Number(r.id), chain: r.chain, chain_label: c.label, native: quoteOfRow(r).symbol, kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state,
     token: r.token, symbol: r.symbol, valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
     last_error: r.last_error, order_hash: r.order_hash, router: r.router, created_at: r.created_at,
     ...(r.trade_id ? { trade_id: r.trade_id, waiting_for_buy: r.state === 'prepared' } : {}),
@@ -774,14 +848,17 @@ async function triggers() {
   for (const chain of [...new Set(rows.map(r => r.chain))]) {
     const mine = rows.filter(r => r.chain === chain);
     const tokens = [...new Set(mine.map(r => r.token))];
-    const [pairs, usd] = await Promise.all([
+    const virtual = mine.some(r => quoteOfRow(r).virtual);
+    const [pairs, usd, virtualUsd] = await Promise.all([
       cached(`meme:orders:prices:${chain}:${crypto.createHash('sha1').update(tokens.join(',')).digest('hex')}`, 10, () => require('../providers/dexscreener').pairs(chain, tokens)),
       nativeUsd(chain),
+      virtual ? usdOf(quoteAsset(chain, { kind: 'virtuals' })) : null,
     ]);
-    lastSeen[chain] = { at: Date.now(), native_usd: usd, pairs };
-    const source = `DexScreener (the coin's most liquid pair) and DefiLlama (${CHAINS[chain].native})`;
+    lastSeen[chain] = { at: Date.now(), native_usd: usd, virtual_usd: virtualUsd, pairs };
     for (const row of mine) {
-      const c = checkPrice(row, pairs[row.token]?.price_usd, usd, source);
+      const q = quoteOfRow(row);
+      const source = `DexScreener (the coin's most liquid pair) and DefiLlama (${q.symbol})`;
+      const c = checkPrice(row, pairs[row.token]?.price_usd, q.virtual ? virtualUsd : usd, source);
       if (c.reason) await fire(row.id, c.reason);
     }
   }
@@ -816,10 +893,10 @@ async function confirmFills() {
     const source = `${c.label} transaction ${f.tx_hash.slice(0, 10)}…, the Meme Router's Filled event`;
     if (isBuy(o)) {
       await alert(o, 'high', `fill:${f.tx_hash}`, o.state === 'filled' ? 'bought' : 'bought in part',
-        `Bought ${fmt(whole(ev.amountOut, o.decimals))} ${o.symbol || 'coins'}, sent to your wallet, for ${nat(ev.amountIn)} of your ${c.wrappedName} (RektBull's fee: ${nat(ev.fee)} ${c.wrappedName}, included). What wasn't used went back to your wallet.`, source);
+        `Bought ${fmt(whole(ev.amountOut, o.decimals))} ${o.symbol || 'coins'}, sent to your wallet, for ${nat(ev.amountIn)} of your ${quoteOfRow(o).spendName} (RektBull's fee: ${nat(ev.fee)} ${quoteOfRow(o).spendName}, included). What wasn't used went back to your wallet.`, source);
     } else {
       await alert(o, 'high', `fill:${f.tx_hash}`, o.state === 'filled' ? 'sold' : 'sold in part',
-        `Sold ${fmt(whole(ev.amountIn, o.decimals))} ${o.symbol || 'coins'} for ${nat(ev.amountOut)} ${c.native}, sent to your wallet (RektBull's fee: ${nat(ev.fee)} ${c.native}).`, source);
+        `Sold ${fmt(whole(ev.amountIn, o.decimals))} ${o.symbol || 'coins'} for ${nat(ev.amountOut)} ${quoteOfRow(o).symbol}, sent to your wallet (RektBull's fee: ${nat(ev.fee)} ${quoteOfRow(o).symbol}).`, source);
     }
   }
 }
@@ -828,13 +905,31 @@ async function confirmFills() {
  * The route for a fill, with the router as the trader: { venue, spender, venueCalldata, unwrapIn, quotedOut, minAmountOut, route }.
  * quotedOut and minAmountOut are what reaches the user (after the fee on a sale).
  */
-async function route(row, cfg, amount, minimum) {
+async function route(row, cfg, amount, minimum, curve = undefined) {
   const c = CHAINS[row.chain];
   const buy = isBuy(row);
   const toTrade = tx.toTrade(amount, cfg.check.feeBps, !buy);
   const net = netOf(cfg.check.feeBps);
-  if (await onFourMemeCurve(row.chain, row.token, cfg.check)) {
-    const lp = require('../services/launchpads');
+  const lp = require('../services/launchpads');
+  if (curve === undefined) curve = await curveOf(row.chain, row.token, cfg.check);
+  // An order is traded on a curve only in what that curve is priced in (an order placed in ETH stays on 0x).
+  const q = quoteOfRow(row);
+  if (curve?.kind === 'virtuals' && q.virtual) {
+    if (curve.unsupported) throw refuse(curve.unsupported);
+    // Virtuals' BondingV5, called by the router, with FRouterV3 approved for exactly this fill's VIRTUAL or coins.
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+    if (buy) {
+      const out = await lp.curveBuyQuote(row.token, toTrade, curve.pad);
+      return { venue: lp.ADDR.bondingV5, spender: lp.ADDR.frouterV3, unwrapIn: false, quotedOut: out, minAmountOut: 0n, route: 'Virtuals\' curve',
+        venueCalldata: lp.BONDING_V5.encodeFunctionData('buy', [toTrade, row.token, minimum, deadline]) };
+    }
+    // Virtuals' own minimum: what leaves the user their price after the router's fee (the router checks it again).
+    const minOut = (minimum * 10000n + BigInt(10000 - cfg.check.feeBps) - 1n) / BigInt(10000 - cfg.check.feeBps);
+    const out = await lp.curveSellQuote(row.token, toTrade, curve.pad);
+    return { venue: lp.ADDR.bondingV5, spender: lp.ADDR.frouterV3, unwrapIn: false, quotedOut: net(out), minAmountOut: 0n, route: 'Virtuals\' curve',
+      venueCalldata: lp.BONDING_V5.encodeFunctionData('sell', [toTrade, row.token, minOut, deadline]) };
+  }
+  if (curve?.kind === 'fourmeme' && !q.virtual) {
     if (buy) {
       // The curve is bought with BNB: the router unwraps the user's WBNB for it (unwrapIn) and wraps back what's unused.
       const q = await lp.fourMemeBuyQuote(row.token, toTrade);
@@ -847,13 +942,14 @@ async function route(row, cfg, amount, minimum) {
     return { venue: lp.FOURMEME.tokenManager, spender: lp.FOURMEME.tokenManager, unwrapIn: false, quotedOut: net(q.funds), minAmountOut: 0n, route: 'four.meme',
       venueCalldata: lp.TOKEN_MANAGER.encodeFunctionData('sellToken(uint256,address,uint256,uint256)', [0n, row.token, toTrade, minFunds]) };
   }
-  const q = await zeroex.quote({ chainId: c.chainId, sellToken: row.token_in, buyToken: buy ? row.token : NATIVE, sellAmount: toTrade, taker: row.router, slippageBps: FILL_SLIPPAGE_BPS, fundedInBatch: true });
+  // 0x: the order's own coins (its sale's output is the native coin, or VIRTUAL for a coin that left Virtuals' curve).
+  const zx = await zeroex.quote({ chainId: c.chainId, sellToken: row.token_in, buyToken: buy ? row.token : row.token_out, sellAmount: toTrade, taker: row.router, slippageBps: FILL_SLIPPAGE_BPS, fundedInBatch: true });
   // Only through 0x's AllowanceHolder, the venue fixed in the router, and with no native coin sent along.
-  if (String(q.transaction?.to || '').toLowerCase() !== c.allowanceHolder.toLowerCase()) throw refuse(`0x's quote names ${q.transaction?.to}, not its AllowanceHolder.`);
-  if (BigInt(q.transaction.value || 0) !== 0n) throw refuse('0x\'s quote sends native coin along, which a fill never does.');
-  if (q.sellAmount !== toTrade) throw refuse('0x quoted a different amount than the fill trades.');
-  return { venue: c.allowanceHolder, spender: c.allowanceHolder, unwrapIn: false, venueCalldata: q.transaction.data, route: '0x',
-    quotedOut: buy ? q.buyAmount : net(q.buyAmount), minAmountOut: buy ? q.minBuyAmount : net(q.minBuyAmount) };
+  if (String(zx.transaction?.to || '').toLowerCase() !== c.allowanceHolder.toLowerCase()) throw refuse(`0x's quote names ${zx.transaction?.to}, not its AllowanceHolder.`);
+  if (BigInt(zx.transaction.value || 0) !== 0n) throw refuse('0x\'s quote sends native coin along, which a fill never does.');
+  if (zx.sellAmount !== toTrade) throw refuse('0x quoted a different amount than the fill trades.');
+  return { venue: c.allowanceHolder, spender: c.allowanceHolder, unwrapIn: false, venueCalldata: zx.transaction.data, route: '0x',
+    quotedOut: buy ? zx.buyAmount : net(zx.buyAmount), minAmountOut: buy ? zx.minBuyAmount : net(zx.minBuyAmount) };
 }
 
 /** One fill of a triggered order. Records what happened; throws only on a bug. */
@@ -861,7 +957,8 @@ async function attempt(row, cfg, exec) {
   const buy = isBuy(row);
   const c = CHAINS[row.chain];
   const name = row.symbol || 'coins';
-  const TITLES = { below_floor: buy ? 'it can\'t fill at your limit' : 'it can\'t fill at your floor', nothing: buy ? `it has no ${c.wrappedName} to buy with` : 'it has nothing to sell', risk: 'RektBull\'s token check stopped it' };
+  const q = quoteOfRow(row);
+  const TITLES = { below_floor: buy ? 'it can\'t fill at your limit' : 'it can\'t fill at your floor', nothing: buy ? `it has no ${q.spendName} to buy with` : 'it has nothing to sell', risk: 'RektBull\'s token check stopped it' };
   const later = async (error, ms, alertId = null, alertText = null) => {
     await db.query(`UPDATE meme_orders SET last_error = $2, last_attempt_at = now(), next_attempt_at = now() + make_interval(secs => $3), attempts = attempts + 1, updated_at = now() WHERE id = $1`, [row.id, error.slice(0, 500), ms / 1000]);
     if (alertId) await alert(row, 'high', alertId, TITLES[alertId], alertText);
@@ -875,10 +972,11 @@ async function attempt(row, cfg, exec) {
   let amount = o.amountIn - filled;
   if (held < amount) amount = held;
   if (allowed < amount) amount = allowed;
-  if (!buy && await onFourMemeCurve(row.chain, row.token, cfg.check)) amount -= amount % SELL_UNIT();
+  const curve = await curveOf(row.chain, row.token, cfg.check);
+  if (!buy && curve?.kind === 'fourmeme' && !q.virtual) amount -= amount % curve.sellUnit;
   if (amount <= 0n) {
     const text = buy
-      ? (held === 0n ? `Your wallet's ${c.wrappedName} is gone (unwrapped or spent).` : `The approval for your ${c.wrappedName} was revoked or used up.`)
+      ? (held === 0n ? `Your wallet's ${q.spendName} is gone (${q.virtual ? 'spent or moved' : 'unwrapped or spent'}).` : `The approval for your ${q.spendName} was revoked or used up.`)
       : (held === 0n ? 'Your wallet no longer holds these coins.' : 'The approval for these coins was revoked or used up.');
     return later(`nothing to ${buy ? 'buy with' : 'sell'}: ${text}`, RETRY_MS.nothing, 'nothing', `${text} The order stays open until its end date; approve again from the Trade desk, or cancel it there.`);
   }
@@ -893,7 +991,7 @@ async function attempt(row, cfg, exec) {
   }
   let r;
   try {
-    r = await route(row, cfg, amount, minimum);
+    r = await route(row, cfg, amount, minimum, curve);
   } catch (err) {
     if (!err.isTradeBlocked) throw err;
     return later(`no route: ${err.message}`, RETRY_MS.failed);
@@ -911,10 +1009,10 @@ async function attempt(row, cfg, exec) {
     }
   }
   const below = got => (buy
-    ? `It fired, but ${nat(amount)} ${c.wrappedName} would buy about ${fmt(whole(got, row.decimals))} ${name}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the router won't let it fill. It keeps trying while it's open.`
-    : `It fired, but ${fmt(whole(amount, row.decimals))} ${name} would sell for about ${nat(got)} ${c.native}, below your floor of ${nat(minimum)} ${c.native} after the fee, so the router won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
+    ? `It fired, but ${nat(amount)} ${q.spendName} would buy about ${fmt(whole(got, row.decimals))} ${name}, fewer than your limit of ${fmt(whole(minimum, row.decimals))}, so the router won't let it fill. It keeps trying while it's open.`
+    : `It fired, but ${fmt(whole(amount, row.decimals))} ${name} would sell for about ${nat(got)} ${q.symbol}, below your floor of ${nat(minimum)} ${q.symbol} after the fee, so the router won't let it fill. It keeps trying while it's open; you can also sell from your own wallet on the Trade desk.`);
   if (r.quotedOut < minimum) {
-    return later(`below the ${buy ? 'limit' : 'floor'}: ${r.route} quotes ${buy ? `${fmt(whole(r.quotedOut, row.decimals))} coins` : `${nat(r.quotedOut)} ${c.native} after the fee`}, ${buy ? fmt(whole(minimum, row.decimals)) : nat(minimum)} needed`,
+    return later(`below the ${buy ? 'limit' : 'floor'}: ${r.route} quotes ${buy ? `${fmt(whole(r.quotedOut, row.decimals))} coins` : `${nat(r.quotedOut)} ${q.symbol} after the fee`}, ${buy ? fmt(whole(minimum, row.decimals)) : nat(minimum)} needed`,
       RETRY_MS.below_floor, 'below_floor', below(r.quotedOut));
   }
   const call = tx.fillCall(row.router, o, row.signature, { amountIn: amount, venue: r.venue, spender: r.spender, venueCalldata: r.venueCalldata, unwrapIn: r.unwrapIn, minAmountOut: r.minAmountOut });
@@ -1044,7 +1142,7 @@ async function fillNow() {
 module.exports = {
   KINDS, CHAINS, MIN_ORDER_USD,
   config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, tick, fundingCalls, exitsForBuy, recordExits,
-  checkPrice, fire, fillNow, lastSeen: chain => lastSeen[chain] || null, read, onFourMemeCurve, nativeUsd, isBuy,
+  checkPrice, fire, fillNow, lastSeen: chain => lastSeen[chain] || null, read, curveOf, quoteOfRow, quoteAsset, sellQuote, buyQuote, nativeUsd, isBuy,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills, _route: route,
   _setProvider: fn => { providerFor = fn || rpcProvider; providers.clear(); },
   _setExecutor: fn => { testExecutor = fn; },
