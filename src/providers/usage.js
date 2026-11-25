@@ -83,6 +83,24 @@ async function track(provider, fn) {
   }
 }
 
+/**
+ * Counts n calls at once, already made: a stream's pushed messages (trade/memeStream.js), which a provider
+ * bills as requests. Recorded in one write, so a busy stream doesn't write once a message.
+ */
+function add(provider, n) {
+  if (!(n > 0)) return;
+  const key = `${provider}|${today()}`;
+  counts.set(key, (counts.get(key) || 0) + n);
+  if (!env.databaseUrl) return;
+  db.query(
+    `INSERT INTO provider_usage (provider, day, calls, errors, last_call_at) VALUES ($1, $2, $3, 0, now())
+     ON CONFLICT (provider, day) DO UPDATE SET calls = provider_usage.calls + $3, last_call_at = now()`,
+    [provider, today(), n],
+  ).catch(err => logger.warn('provider usage write failed', { provider, error: err.message }));
+}
+/** Calls counted today for a provider, in this process. */
+const countToday = provider => counts.get(`${provider}|${today()}`) || 0;
+
 async function report(days = 7) {
   const { rows } = await db.query(
     `SELECT provider, day, calls, errors FROM provider_usage WHERE day > current_date - $1::int ORDER BY day DESC, provider`,
@@ -91,4 +109,4 @@ async function report(days = 7) {
   return rows.map(r => ({ ...r, limit: limitFor(r.provider) || null }));
 }
 
-module.exports = { track, level, report, limitFor, adminFor, ProviderLimitError, _counts: counts };
+module.exports = { track, add, countToday, level, report, limitFor, adminFor, ProviderLimitError, _counts: counts };

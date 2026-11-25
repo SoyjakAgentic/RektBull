@@ -78,6 +78,8 @@ async function main() {
       await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
       await require('./hyperliquid/auto').tick(); // automatic perps orders (does nothing unless HL_AUTO_ENABLED)
     }), env.tradeTickMs);
+    // Their triggers over WebSocket (trade/memeStream.js): does nothing until its URLs are set and it's switched on in the admin panel.
+    require('./trade/memeStream').start();
     logger.info('trade service started');
   }
   if (role === 'worker' || role === 'trade') {

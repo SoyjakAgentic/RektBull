@@ -53,6 +53,19 @@
       }, ACTION[st])))))]));
   }
 
+  /** The WebSocket triggers for orders on BNB Chain and Base: the switch, the budget, the cap, how near the trigger. */
+  function memeStream(m) {
+    const s = m.settings;
+    const num = (k, label) => el('label', { class: 'inline' }, `${label} `, el('input', { type: 'number', step: '1', 'data-k': k, value: s[k], size: '8' }));
+    const wrap = el('div', {},
+      el('p', { class: 'small' }, m.configured ? `${m.health.state}: ${m.health.note}` : 'Not set up: MEME_STREAM_WS_BASE and MEME_STREAM_WS_BSC (the provider\'s WebSocket URLs, in the environment\'s secret settings).'),
+      el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': 'on', checked: !!s.on }), ' On'), ' ',
+      num('daily_budget', 'Pushed logs a day'), ' ', num('max_pools', 'Pools per chain'), ' ', num('arm_pct', 'Watch orders within (%) of their trigger'), el('br'));
+    const read = () => Object.fromEntries([...wrap.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.type === 'checkbox' ? i.checked : Number(i.value)]));
+    wrap.append(el('button', { class: 'btn', type: 'button', onclick: () => change('meme-stream-msg', 'Order triggers over WebSocket: new settings', 'PUT', '/v1/admin/meme-stream', read()) }, 'Save'));
+    $('meme-stream').replaceChildren(wrap);
+  }
+
   function forecasts(f) {
     const s = f.settings;
     const box = (k, label) => el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': k, checked: !!s[k] }), ` ${label}`);
@@ -302,6 +315,7 @@
       regions(await api('GET', '/v1/admin/regions'));
       rewards(await api('GET', '/v1/admin/rewards'));
       forecasts(await api('GET', '/v1/admin/forecasts'));
+      memeStream(await api('GET', '/v1/admin/meme-stream'));
       showTab(tab);
     } catch (err) {
       $('panel').hidden = true;

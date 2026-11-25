@@ -40,6 +40,13 @@
           <p id="stops-msg" class="msg"></p>
         </section>
 
+        <section class="card" id="meme-stream-card">
+          <h2>Order triggers over WebSocket (BNB Chain and Base)</h2>
+          <p class="muted small">Orders on BNB Chain and Base fire on the chain's own events, within about a block, instead of the trade pass's polling (up to about 25 seconds). Each event pushed is a request on the RPC plan, so only orders near their trigger are watched, up to a cap per chain, within a daily budget; at the budget, prices go back to polling until the next day. A price from the stream is confirmed by the fill's own quote before anything is sent. Starts off.</p>
+          <div id="meme-stream"></div>
+          <p id="meme-stream-msg" class="msg"></p>
+        </section>
+
         <section class="card" id="switches-card">
           <h2>Services</h2>
           <p class="muted small">Pause any service without a deploy, or pause it and hide it from the site's menus, pages and search. Pausing stops new work only: selling, closing, cancelling, withdrawing, redeeming and revoking always stay open, and a paused paid check is refused before any charge. AI agents, the emergency stops and the AI forecasts and picks have their own switches.</p>

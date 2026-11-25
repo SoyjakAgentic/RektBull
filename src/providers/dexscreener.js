@@ -82,6 +82,9 @@ async function pairs(chain, tokens) {
         buys_24h: sum(p => p.txns?.h24?.buys), sells_24h: sum(p => p.txns?.h24?.sells),
         created_at: created.length ? new Date(Math.min(...created)).toISOString() : null,
         pair: top.pairAddress || null, symbol: top.baseToken?.symbol || null, name: top.baseToken?.name || null,
+        // The pair itself, for reading its price from the chain (trade/memeStream.js): which exchange, its version, and what it's priced in.
+        dex: top.dexId || null, labels: top.labels || [], price_native: top.priceNative ? Number(top.priceNative) : null,
+        quote: top.quoteToken?.address ? (chain === 'solana' ? top.quoteToken.address : String(top.quoteToken.address).toLowerCase()) : null, quote_symbol: top.quoteToken?.symbol || null,
       };
     }
   }

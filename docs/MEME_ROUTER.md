@@ -301,6 +301,72 @@ Tests: `test/evmBuyWithExits.test.js` (the Trade desk's real buy on Base with
 the stand-in chain of `test/helpers/memeChain.js`) and
 `test/browser/evmBuyWithExits.js` (the page, with a wallet that really signs).
 
+**Triggers over WebSocket (built 25 November 2026).** Asked for by the owner
+on 25 November 2026, after sizing against Chainstack's Growth plan (20 million
+requests a month; each pushed log is one). The trade pass fires orders on
+DexScreener's price, kept 10 seconds and read every 15, so up to about 25 seconds
+late. `src/trade/memeStream.js` fires them on the chain's own events instead,
+about a block after they happen (Base: a block every 0.2 s since its Denim
+upgrade on 5 November 2026; BNB Chain: every 0.45 s since Fermi, 14 January
+2026). It fills them at once, without waiting for the next pass.
+- **Narrow on purpose.** Only orders within 15% of their trigger (`arm_pct`, by the
+  trade pass's last DexScreener price) are watched, at most 10 pools per chain
+  (`max_pools`), the closest first. New blocks are never subscribed: at these
+  block times that alone would be about 13 million requests a month on Base.
+- **The price is read from the pool's own event**, with no further call:
+  - Sync, for Uniswap v2 and PancakeSwap v2 pools, and Aerodrome's form;
+  - Swap, for v3 pools (Uniswap and Aerodrome's concentrated pools), and
+    PancakeSwap v3's form;
+  - Swap on Uniswap v4's PoolManager, filtered by the pool's id (the PoolManager
+    is at `0x4985…2b2b` on Base and `0x28e2…e9df` on BNB Chain, checked onchain).
+
+  Which side of the pool the coin is on is settled by the first event, against
+  DexScreener's price. A pool whose events don't agree within 30% isn't used
+  and stays on polling.
+- **Coins on a four.meme curve:** four.meme's events don't index the coin, so the
+  stream subscribes the coin's own Transfers instead. After one, it reads the
+  curve's quote for each order on the coin, at most once a second.
+- **Meme Watch:** for coins with an open Meme Watch exit, the stream subscribes
+  Transfers out of their launch-bundle wallets (Meme Watch's groups, 100 wallets
+  a filter). Moves inside a group don't count. Each sale is recorded once
+  (`meme_insider_sells`, migration 043). When a group's sales since the stream
+  started watching reach 20% of what it bought, the coin's exits fire.
+- **A price from the stream is confirmed by the fill's own quote** before anything
+  is sent: a stop-loss only if the route's price is at or under its trigger
+  (2% leeway), a take-profit or limit buy only if at or over it. A trigger the
+  quote doesn't confirm goes back to watching, and nobody is alerted. So a
+  misread event can't sell anyone's coins early. The user's floor is checked by
+  the router as always.
+- **A daily budget** (`daily_budget`, 150,000 pushed logs, about 4.5 million a
+  month): at it, price and curve subscriptions stop until the next UTC day. The
+  insiders' stay, since they're rare. Every subscribe and pushed log is counted
+  as the provider bills it, and recorded in `provider_usage` as `ws:<host>` once
+  a minute.
+- **Nothing depends on it.** The trade pass keeps polling, and catches whatever
+  happened while the stream was down. The client reconnects by itself (1 s,
+  doubling to 30 s) and subscribes again, and asks the chain id every 4 minutes,
+  because Chainstack closes a connection idle for an hour.
+- **One instance streams** (a Postgres advisory lock); any other waits on standby.
+- **Off until set up:** the provider's WebSocket URLs (`MEME_STREAM_WS_BASE`,
+  `MEME_STREAM_WS_BSC`; the key is in the URL, so they go in the environment's
+  secret settings), and the switch in the admin panel (Controls, "Order
+  triggers over WebSocket"), which starts off. The admin panel's Health tab
+  shows the stream and today's count against the budget.
+
+Tests: `test/memeStream.test.js`:
+- pool prices from every event form;
+- a pool that doesn't agree with DexScreener, not used;
+- the stream client's subscribes, routing, counts and reconnects, on a
+  stand-in WebSocket;
+- end to end on the real database with the stand-in chain:
+  - an order not watched far from its trigger, and watched near it;
+  - a stream price the quote doesn't confirm, sending nothing;
+  - a real fall, filled at once;
+  - Meme Watch's insider sales firing its exit (moves inside the group and
+    repeated logs not counted);
+  - the budget dropping the pool but keeping the insiders;
+  - the switch closing the connection.
+
 **Not yet:** coins on a Virtuals curve on Base (0x can't route them; the
 router has no Virtuals venue until the check on a copy of Base below).
 

@@ -22,7 +22,7 @@ async function status() {
     db.query(`SELECT kind, count(*)::int AS n FROM alert_channels WHERE disabled_at > now() - interval '7 days' GROUP BY kind`),
   ]);
   const services = (await require('./providers').list()).filter(p => p.errors_today > 0 || p.off).map(p => ({ name: p.name, errors_today: p.errors_today, calls_today: p.calls_today, last_error: p.last_error, off: p.off }));
-  const streams = [await require('../services/pumpStream').health()];
+  const streams = [await require('../services/pumpStream').health(), await require('../trade/memeStream').health()];
   const problems = [
     ...streams.filter(s => s.state === 'down').map(s => `${s.name}: down`),
     ...jobList.filter(j => j.state === 'late' || j.state === 'failing').map(j => `${j.name}: ${j.state === 'late' ? 'hasn\'t run' : 'failing'}`),
