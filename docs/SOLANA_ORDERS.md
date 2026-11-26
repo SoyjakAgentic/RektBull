@@ -412,6 +412,12 @@ doesn't exist, nothing is sent, and the user is told and shown "Set up" on the
 Orders card (`POST /v1/solana/orders/setup`, a transaction they sign). The order
 fills once it's done. So a stop-loss is never silently stuck.
 
+**A copy's stop-loss** (built 26 November 2026, docs/WALLET_TRACKER.md
+"Copying a buy"): a stop-loss placed with a copy of a followed wallet's buy
+can also fire when that wallet sells the coin (`copy_wallet`,
+`copySellSignal`). It's the same order, at the same floor; only the trigger is
+added, off-chain.
+
 **Recorded only when the trade is made.** A preview shows the exits and their
 worst case but stores nothing. The trade (one click, or a proposal approved)
 records the orders as prepared. They open once the transaction lands, and are

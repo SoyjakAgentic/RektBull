@@ -143,4 +143,29 @@ test('exits with a buy on Base: valued at the buy\'s price, approved in its batc
   orders._setProvider(name => chain.provider(orders.CHAINS[name].chainId));
   // On Ethereum there's no Meme Router: exits aren't asked for at all.
   assert.equal((await proposals.preview(account, buy({ chain: 'ethereum', base: 'USDC', token: BULL }))).plan.summary.exits, undefined);
+
+  // 8. A copy of a followed wallet's buy: its stop-loss also sells when that wallet sells, at the market, never
+  // below its floor. Only a wallet the account follows; other open stop-losses on the coin don't fire.
+  const COPIED = '0x' + '5c'.repeat(20);
+  const copyBuy = buy({ exits: { stop_loss: true, take_profit: true, copy_wallet: COPIED } });
+  const unfollowed = (await proposals.preview(account, copyBuy)).plan.summary.exits;
+  assert.match(unfollowed.copy_note, /won't sell with that wallet: you don't follow it/);
+  assert.ok(unfollowed.orders.every(o => !o.sells_with));
+  await db.query(`INSERT INTO followed_wallets (account_id, address, family) VALUES ($1, $2, 'evm')`, [account.id, COPIED]);
+  const cx = (await proposals.preview(account, copyBuy)).plan.summary.exits;
+  assert.deepEqual(cx.orders.map(o => [o.kind, o.sells_with || null]), [['stop_loss', COPIED], ['take_profit', null]], 'only the stop-loss sells with it');
+  assert.ok(cx.worst_case.some(w => /also sells, at the market and never below its floor, when 0x5c5c…5c5c sells BULL/.test(w)));
+  const t8 = await proposals.trade(account, copyBuy);
+  await proposals.submitted(account, t8.id, '0x' + 'ef'.repeat(32));
+  for (const o of t8.exit_orders) await orders.sign(account, o.id, { signature: await sign(o) });
+  await db.query(`UPDATE trade_proposals SET status = 'confirmed' WHERE id = $1`, [t8.id]);
+  await orders._reconcile({ force: true });
+  const mine = (await orders.list(account)).orders.filter(o => t8.exit_orders.some(x => x.id === o.id));
+  assert.deepEqual(mine.map(o => [o.kind, o.state, o.sells_with]).sort(), [['stop_loss', 'open', COPIED], ['take_profit', 'open', null]]);
+  assert.equal(await orders.copySellSignal('base', '0x' + '77'.repeat(20), BULL, {}), 0, 'another wallet\'s sale: nothing');
+  assert.equal(await orders.copySellSignal('bsc', COPIED, BULL, {}), 0, 'another chain: nothing');
+  assert.equal(await orders.copySellSignal('base', COPIED.toUpperCase().replace('0X', '0x'), BULL, { copy: { wallet: COPIED, tx: '0x01' } }), 1, 'the copy\'s stop-loss fires, nothing else');
+  const fired = (await orders.list(account)).orders.find(o => o.id === t8.exit_orders[0].id);
+  assert.equal(fired.state, 'triggered'); assert.equal(fired.trigger_reason.copy.wallet, COPIED);
+  assert.equal(await orders.copySellSignal('base', COPIED, BULL, {}), 0, 'fired once');
 });

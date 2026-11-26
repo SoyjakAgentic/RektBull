@@ -282,6 +282,11 @@ one order or all of them. `contracts/test/memeOrdersService.test.js` runs the
 service's own order, hash, signature, fill, approval, cancel, cancel-all,
 wrap and `Filled` decoding against the router itself.
 
+**A copy's stop-loss** (built 26 November 2026, docs/WALLET_TRACKER.md
+"Copying a buy"): a stop-loss placed with a copy of a followed wallet's buy can
+also fire when that wallet sells the coin (`copy_wallet`, `copySellSignal`). It's
+the same signed order, at the same floor; only the trigger is added, off-chain.
+
 **Exits with a buy (built 25 November 2026).** Asked for by the owner on 24
 November 2026 ("start exits with the buy on BNB Chain and Base"), as on Solana.
 On the Trade desk, a buy on BNB Chain or Base can carry a stop-loss and/or a

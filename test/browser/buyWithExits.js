@@ -94,8 +94,22 @@ const SIGNATURE = '5'.repeat(88);
     // A sale has no exits option.
     await page.selectOption('#side', 'sell');
     assert.equal(await page.isVisible('#exits-wrap'), false);
+
+    // A copy from a followed wallet's alert: the buy prefilled with the copy settings; the wallet still signs it.
+    const COPIED = 'Cop1edWa11et1111111111111111111111111111111';
+    await page.goto(`${base}/trade?chain=solana&token=${PUMP}&side=buy&amount=2&copy=${COPIED}&stop=30&take=80&sell_with=1#trade-card`);
+    await page.click('#wallets button:has-text("Test Solana")');
+    await page.locator('#copy-banner').waitFor();
+    assert.match(await page.textContent('#copy-banner'), /Copying Cop1ed…1111's buy with your copy settings.*your wallet signs the buy, and RektBull never buys for you/);
+    await page.waitForFunction(() => document.getElementById('go').textContent === 'Copy: buy $2');
+    assert.deepEqual([await page.isChecked('#x-stop'), await page.inputValue('#x-stop-pct'), await page.isChecked('#x-take'), await page.inputValue('#x-take-pct'), await page.isChecked('#x-copy')], [true, '30', true, '80', true]);
+    await page.waitForFunction(() => /Exits, in the same transaction/.test(document.getElementById('plan').textContent));
+    assert.equal(asked.filter(Boolean).at(-1).copy_wallet, COPIED, 'the stop-loss sells with the copied wallet');
+    // Selling with it needs the stop-loss.
+    await page.uncheck('#x-stop');
+    assert.equal(await page.isDisabled('#x-copy'), true);
     assert.deepEqual(errors, []);
-    console.log('ok: exits with a Solana buy: hidden while orders are off; sent with the preview when ticked; shown in the plan, with what was left out');
+    console.log('ok: exits with a Solana buy: hidden while orders are off; sent with the preview when ticked; shown in the plan, with what was left out; a copy prefilled from its alert');
   } finally {
     await browser.close();
     app.close();

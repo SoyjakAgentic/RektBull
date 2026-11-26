@@ -97,7 +97,7 @@
     const live = ['open', 'triggered', 'expired'].includes(o.state) || o.waiting_for_buy;
     const cells = status.flatMap((s, i) => (i ? [' · ', s] : [s]));
     return el('tr', {},
-      el('td', {}, `${o.trail_pct ? 'Trailing stop' : o.kind_name}${o.step ? ` (step ${o.step} of ${o.steps})` : ''} (${o.chain_label})`),
+      el('td', {}, `${o.trail_pct ? 'Trailing stop' : o.kind_name}${o.step ? ` (step ${o.step} of ${o.steps})` : ''}${o.sells_with ? `, also when ${short(o.sells_with)} sells` : ''} (${o.chain_label})`),
       el('td', {}, buy ? `${o.spend_native} ${o.native} of ${sym}` : `${o.amount_whole.toLocaleString('en-US')} ${sym}`),
       el('td', {}, fired),
       el('td', {}, buy ? `at least ${coins(o.min_coins)} ${sym}` : `${o.floor_native} ${o.native}`),

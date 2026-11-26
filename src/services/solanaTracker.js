@@ -146,17 +146,18 @@ async function handle(tx, t) {
      VALUES ('solana', $1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (chain, tx_hash, wallet, token, side) DO NOTHING RETURNING id`,
     [d.wallet, d.tx, d.block, d.side, d.token, d.symbol, d.amount_whole, JSON.stringify(d.other), d.usd]);
   if (!rows.length) return 0; // seen already
+  if (d.side === 'sell') await wt.copySold(d); // the copies' stop-losses that sell with this wallet, alerted or not
   const now = Date.now();
   if (now - window.at > 60000) { window.at = now; window.sent = 0; }
   if (window.sent >= ALERTS_PER_MINUTE) { logger.warn('solana tracker: too many trades at once; recorded, not alerted', { wallet: d.wallet }); return 0; }
   window.sent++;
   const checks = d.side === 'buy' ? await wt.checksFor('solana', d.token) : null;
   const { rows: followers } = await db.query(
-    `SELECT f.account_id, f.label FROM followed_wallets f
+    `SELECT f.account_id, f.label, f.copy_usd, f.copy_stop_pct, f.copy_take_pct, f.copy_sell_with FROM followed_wallets f
      LEFT JOIN agent_settings s ON s.account_id = f.account_id AND s.agent = 'wallet_tracker'
      WHERE f.address = $1 AND COALESCE(s.enabled, true)`, [d.wallet]);
   let n = 0;
-  for (const f of followers) n += await require('./myAgents').raise(f.account_id, [wt.alertFor(d, f.label, checks)]);
+  for (const f of followers) n += await require('./myAgents').raise(f.account_id, [wt.alertFor(d, f, checks)]);
   return n;
 }
 

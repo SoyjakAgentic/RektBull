@@ -176,4 +176,22 @@ test('the trade records its exits as prepared orders; preview records nothing', 
   const placed = decode(tr.calls.transaction).ixs.find(i => i.program === PROGRAM);
   assert.ok(placed, 'the order is in the transaction the wallet gets');
   assert.equal(rows[0].order_address, await op.orderOf(PROGRAM, USER, placed.data.readBigUInt64LE(8)), 'the row is the order in that transaction');
+
+  // A copy of a followed wallet's buy: its stop-loss also sells when that wallet sells (the Wallet Tracker's signal).
+  const COPIED = 'Cop1edWa11et1111111111111111111111111111111';
+  const copyInput = { ...input, exits: { ...input.exits, copy_wallet: COPIED } };
+  assert.match((await proposals.preview(account, copyInput)).plan.summary.exits.copy_note, /you don't follow it/);
+  await db.query(`INSERT INTO followed_wallets (account_id, address, family) VALUES ($1, $2, 'solana')`, [account.id, COPIED]);
+  const cpv = await proposals.preview(account, copyInput);
+  assert.equal(cpv.plan.summary.exits.orders[0].sells_with, COPIED);
+  assert.ok(cpv.plan.summary.exits.worst_case.some(w => /also sells, at the market and never below its floor, when Cop1…1111 sells/.test(w)));
+  await proposals.trade(account, copyInput);
+  const { rows: [cp] } = await db.query(`SELECT id, copy_wallet FROM solana_orders WHERE copy_wallet IS NOT NULL`);
+  assert.equal(cp.copy_wallet, COPIED);
+  await db.query(`UPDATE solana_orders SET state = 'open'`);
+  const orders = require('../src/trade/solanaOrders');
+  assert.equal(await orders.copySellSignal(USER, PUMP, {}), 0, 'another wallet\'s sale: nothing');
+  assert.equal(await orders.copySellSignal(COPIED, PUMP, { copy: { wallet: COPIED } }), 1, 'only the copy\'s stop-loss fires');
+  const { rows: states } = await db.query(`SELECT copy_wallet, state FROM solana_orders ORDER BY id`);
+  assert.deepEqual(states.map(r => r.state), ['open', 'triggered']);
 });

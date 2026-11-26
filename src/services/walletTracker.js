@@ -35,6 +35,13 @@
  *
  * Solana addresses are recognised and stored the same way (migration 025),
  * but followed only once RektBull trades on Solana.
+ *
+ * Copying a buy (docs/WALLET_TRACKER.md, "Copying a buy"): a followed wallet
+ * can carry copy settings, a preset amount and the exits. Its buy alerts then
+ * carry a copy of the buy prefilled on the Trade desk, for the user's own
+ * wallet to sign: RektBull never buys from an alert. The copy's stop-loss can
+ * also sell when this wallet sells the coin (copySold, below): at the market,
+ * never below the stop's own floor, which is the order the user signed.
  */
 const { ethers } = require('ethers');
 const db = require('../config/db');
@@ -112,6 +119,47 @@ async function follow(accountId, { address, label } = {}) {
   return list(accountId);
 }
 
+/** The most and least a copy's preset may be: the Trade desk's own checks still run on the buy itself. */
+const COPY_USD = { min: 5, max: 10000 };
+const COPY_FIELDS = ['copy_usd', 'copy_stop_pct', 'copy_take_pct', 'copy_sell_with'];
+const copyOf = f => (f && f.copy_usd !== null && f.copy_usd !== undefined ? {
+  usd: Number(f.copy_usd), stop_pct: f.copy_stop_pct === null ? null : Number(f.copy_stop_pct),
+  take_pct: f.copy_take_pct === null || f.copy_take_pct === undefined ? null : Number(f.copy_take_pct), sell_with: !!f.copy_sell_with,
+} : null);
+
+/**
+ * A followed wallet's copy settings: { usd, stop_pct, take_pct?, sell_with }, or { usd: null } to stop offering
+ * copies. Every copy carries a stop-loss: "sell when they sell" is that stop-loss's second trigger.
+ */
+async function setCopy(accountId, id, body = {}) {
+  let v = [null, null, null, true];
+  if (body.usd !== null && body.usd !== undefined && body.usd !== '') {
+    const usd = Number(body.usd);
+    if (!(usd >= COPY_USD.min && usd <= COPY_USD.max)) throw new TrackerRefused(`A copy's amount must be $${COPY_USD.min} to $${COPY_USD.max.toLocaleString('en-US')}.`);
+    const stop = Number(body.stop_pct);
+    if (!(stop >= 1 && stop <= 90)) throw new TrackerRefused('Every copy carries a stop-loss: stop_pct must be 1 to 90 (percent below what the buy cost).');
+    let take = null;
+    if (body.take_pct !== null && body.take_pct !== undefined && body.take_pct !== '') {
+      take = Number(body.take_pct);
+      if (!(take >= 1 && take <= 1000)) throw new TrackerRefused('take_pct must be 1 to 1,000 (percent above what the buy cost).');
+    }
+    v = [usd, stop, take, body.sell_with !== false];
+  }
+  const { rowCount } = await db.query(
+    `UPDATE followed_wallets SET copy_usd = $3, copy_stop_pct = $4, copy_take_pct = $5, copy_sell_with = $6 WHERE id = $1 AND account_id = $2`,
+    [Number(id) || 0, accountId, ...v]);
+  if (!rowCount) throw new TrackerRefused('not found', 404);
+  return list(accountId);
+}
+
+/** A wallet this account follows, as stored (for a copy's exits): its address, or null. */
+async function followed(accountId, address) {
+  if (!address) return null;
+  const a = /^0x/i.test(address) ? lower(address) : String(address);
+  const { rows: [f] } = await db.query('SELECT address FROM followed_wallets WHERE account_id = $1 AND address = $2', [accountId, a]);
+  return f ? f.address : null;
+}
+
 async function unfollow(accountId, id) {
   const { rowCount } = await db.query('DELETE FROM followed_wallets WHERE id = $1 AND account_id = $2', [Number(id) || 0, accountId]);
   if (!rowCount) throw new TrackerRefused('not found', 404);
@@ -123,6 +171,12 @@ const SOLANA = { label: 'Solana', explorerTx: sig => `https://solscan.io/tx/${si
 const chainOf = c => (c === 'solana' ? SOLANA : TRADE_CHAINS[c]);
 
 const tradeLink = (chain, token) => `/trade?chain=${chain}&token=${token}&side=buy#trade-card`;
+/** A buy alert's copy: the Trade desk prefilled with the follower's settings. The user's wallet still signs it. */
+function copyLink(chain, token, wallet, c) {
+  const q = { chain, token, side: 'buy', amount: String(c.usd), copy: wallet, stop: String(c.stop_pct), sell_with: c.sell_with ? '1' : '0' };
+  if (c.take_pct) q.take = String(c.take_pct);
+  return `/trade?${new URLSearchParams(q)}#trade-card`;
+}
 const tokenLink = (chain, token) => `/token?chain=${chain}&token=${token}`;
 
 function presentTrade(t, label) {
@@ -137,14 +191,15 @@ function presentTrade(t, label) {
 async function list(accountId) {
   const [{ pro, limit }, wallets] = await Promise.all([
     limitFor(accountId),
-    db.query('SELECT id, address, family, label, created_at FROM followed_wallets WHERE account_id = $1 ORDER BY created_at', [accountId]),
+    db.query(`SELECT id, address, family, label, created_at, ${COPY_FIELDS.join(', ')} FROM followed_wallets WHERE account_id = $1 ORDER BY created_at`, [accountId]),
   ]);
   const { rows: trades } = await db.query(
     `SELECT t.*, f.label FROM wallet_trades t JOIN followed_wallets f ON f.address = t.wallet AND f.account_id = $1
      WHERE t.seen_at >= f.created_at ORDER BY t.seen_at DESC, t.id DESC LIMIT 50`, [accountId]);
   const on = await require('./myAgents').isOn(accountId, 'wallet_tracker');
   return {
-    wallets: wallets.rows, limit, free_limit: FREE_WALLETS, pro_limit: PRO_WALLETS, safety_pro: pro, alerts_on: on,
+    wallets: wallets.rows.map(w => ({ id: w.id, address: w.address, family: w.family, label: w.label, created_at: w.created_at, copy: copyOf(w) })),
+    copy_limits: { min_usd: COPY_USD.min, max_usd: COPY_USD.max }, limit, free_limit: FREE_WALLETS, pro_limit: PRO_WALLETS, safety_pro: pro, alerts_on: on,
     chains: [...CHAINS.map(c => TRADE_CHAINS[c].label), ...(require('../providers/yellowstone').configured() ? ['Solana'] : [])],
     trades: trades.map(t => presentTrade(t, t.label)),
     source: 'Token transfers read from each chain every few seconds (ERC-20 Transfer events); on Solana, each followed wallet\'s transactions as the chain confirms them (Yellowstone gRPC). A check that couldn\'t run says why',
@@ -293,8 +348,10 @@ async function checksFor(chain, token) {
 const money = n => (n === null || n === undefined ? null : n >= 1000 ? `$${Math.round(n).toLocaleString('en-US')}` : `$${n.toFixed(2)}`);
 const num = n => (n === null ? 'an amount it couldn\'t read' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1000 ? Math.round(n).toLocaleString('en-US') : String(Number(n.toPrecision(4))));
 
-/** The alert for one trade, for one follower. */
-function alertFor(d, label, checks) {
+/** The alert for one trade, for one follower (`f`: their label and copy settings, or just a label). */
+function alertFor(d, f, checks) {
+  const label = f && typeof f === 'object' ? f.label : f || null;
+  const copy = d.side === 'buy' && f && typeof f === 'object' ? copyOf(f) : null;
   const who = label || short(d.wallet);
   const sym = d.symbol || short(d.token);
   const chainName = chainOf(d.chain).label;
@@ -308,12 +365,13 @@ function alertFor(d, label, checks) {
   return {
     wallet: d.wallet, kind: 'wallet_trade',
     severity: d.side === 'buy' && checks?.verdict === 'critical' ? 'high' : 'medium',
-    title: `${who} ${verb} ${sym} on ${chainName}${d.side === 'buy' && checks?.verdict === 'critical' ? ' (token check: critical)' : ''}`,
+    title: `${who} ${verb} ${sym} on ${chainName}${d.side === 'buy' && checks?.verdict === 'critical' ? ' (token check: critical)' : ''}${copy ? `: copy it for $${copy.usd}?` : ''}`,
     detail: {
       reasons, side: d.side, label: label || null,
       token: { chain: d.chain, token: d.token, symbol: d.symbol }, amount: d.amount_whole, other: d.other, usd: d.usd,
       tx: d.tx, tx_url: chainOf(d.chain).explorerTx(d.tx),
-      link: d.side === 'buy' ? tradeLink(d.chain, d.token) : tokenLink(d.chain, d.token),
+      link: copy ? copyLink(d.chain, d.token, d.wallet, copy) : d.side === 'buy' ? tradeLink(d.chain, d.token) : tokenLink(d.chain, d.token),
+      ...(copy ? { copy } : {}),
       ...(checks ? { checks: { verdict: checks.verdict, bundle: checks.bundle } } : {}),
     },
     dedupe: `wt:${d.chain}:${d.tx}:${d.wallet}:${d.token}:${d.side}`,
@@ -333,7 +391,7 @@ async function walletsWatched() {
 
 async function followersOf(address) {
   const { rows } = await db.query(
-    `SELECT f.account_id, f.label FROM followed_wallets f
+    `SELECT f.account_id, f.label, ${COPY_FIELDS.map(c => `f.${c}`).join(', ')} FROM followed_wallets f
      LEFT JOIN agent_settings s ON s.account_id = f.account_id AND s.agent = 'wallet_tracker'
      WHERE f.address = $1 AND COALESCE(s.enabled, true)`, [address]);
   return rows;
@@ -383,18 +441,36 @@ async function tickChain(chain, wallets, budget) {
       [chain, d.wallet, d.tx, d.block, d.side, d.token, d.symbol, d.amount_whole, JSON.stringify(d.other), d.usd]);
     if (rows.length) fresh.push(d);
   }
+  // Every sale fires the copies' stop-losses that sell with this wallet, alerted or not.
+  for (const d of fresh.filter(x => x.side === 'sell')) await copySold(d);
   const toAlert = fresh.slice(0, Math.max(0, budget.left));
   budget.left -= toAlert.length;
   if (fresh.length > toAlert.length) logger.warn('wallet tracker: too many trades at once; recorded, not alerted', { chain, not_alerted: fresh.length - toAlert.length });
   const buys = [...new Set(toAlert.filter(d => d.side === 'buy').map(d => d.token))];
   const checks = Object.fromEntries(await pool(buys, 4, async token => [token, await checksFor(chain, token)]));
   for (const d of toAlert) {
-    for (const f of await followersOf(d.wallet)) await require('./myAgents').raise(f.account_id, [alertFor(d, f.label, checks[d.token] || null)]);
+    for (const f of await followersOf(d.wallet)) await require('./myAgents').raise(f.account_id, [alertFor(d, f, checks[d.token] || null)]);
   }
   await db.query(
     `INSERT INTO wallet_tracker_cursors (chain, block, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (chain) DO UPDATE SET block = EXCLUDED.block, updated_at = now()`, [chain, head]);
   return { chain, blocks: head - from + 1, trades: fresh.length };
+}
+
+/**
+ * A followed wallet sold a coin: the stop-losses placed with copies of its buys that sell with it fire (on Solana
+ * in the order program, on BNB Chain and Base in the Meme Router). They sell at the market, never below their own
+ * floor. Only wallets someone follows are read, so a copy's stop-loss sells with the wallet while it's followed.
+ */
+async function copySold(d) {
+  const reason = { copy: { wallet: d.wallet, tx: d.tx, tx_url: chainOf(d.chain)?.explorerTx(d.tx) || null }, text: `${short(d.wallet)} sold ${d.symbol || short(d.token)}` };
+  try {
+    if (d.chain === 'solana') return await require('../trade/solanaOrders').copySellSignal(d.wallet, d.token, reason);
+    if (['base', 'bsc'].includes(d.chain)) return await require('../trade/memeOrders').copySellSignal(d.chain, d.wallet, d.token, reason);
+  } catch (err) {
+    logger.warn('wallet tracker: copy stop-losses not fired', { chain: d.chain, wallet: d.wallet, token: d.token, error: err.message });
+  }
+  return 0;
 }
 
 /** One pass over every chain (the worker runs it every few seconds). */
@@ -411,6 +487,6 @@ async function tick() {
 }
 
 module.exports = {
-  follow, unfollow, list, tick, tickChain, tradesIn, describe, alertFor, checksFor, parseAddress, transferLogs,
+  follow, unfollow, setCopy, followed, copySold, list, tick, tickChain, tradesIn, describe, alertFor, checksFor, parseAddress, transferLogs,
   TrackerRefused, CHAINS, QUOTE, FREE_WALLETS, PRO_WALLETS, MAX_BEHIND_S, KEEP_DAYS, ALERTS_PER_TICK,
 };

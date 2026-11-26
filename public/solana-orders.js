@@ -86,7 +86,7 @@
     if (o.last_error && ['triggered', 'open'].includes(o.state)) status.push(o.last_error);
     const live = ['open', 'triggered', 'expired'].includes(o.state);
     return el('tr', {},
-      el('td', {}, el('a', { href: o.order_url, target: '_blank', rel: 'noopener' }, `${o.trail_pct ? 'Trailing stop' : o.kind_name}${o.step ? ` (step ${o.step} of ${o.steps})` : ''}`)),
+      el('td', {}, el('a', { href: o.order_url, target: '_blank', rel: 'noopener' }, `${o.trail_pct ? 'Trailing stop' : o.kind_name}${o.step ? ` (step ${o.step} of ${o.steps})` : ''}${o.sells_with ? `, also when ${short(o.sells_with)} sells` : ''}`)),
       el('td', {}, buy ? `${o.spend_sol} SOL of ${sym}` : `${o.amount_whole.toLocaleString('en-US')} ${sym}`),
       el('td', {}, fired),
       el('td', {}, buy ? `at least ${coins(o.min_coins)} ${sym}` : `${o.floor_sol} SOL`),
