@@ -58,7 +58,7 @@ test('Channel Poster: setup, drafts, approval, expiry', { skip: !DB && 'set TEST
 
   /* ── /start explains the bot; the bot added to a channel ── */
   await dm(OWNER, '/start');
-  assert.match(lastSent(), /^This is RektBull's bot\. It does three things:.*Channel Poster.*never DMs first\.$/s);
+  assert.match(lastSent(), /^This is RektBull's bot\. It does four things:.*Hyperliquid perps.*Channel Poster.*never DMs first\.$/s);
   assert.equal(await hook({ my_chat_member: { chat: CHANNEL, from: OWNER, old_chat_member: { status: 'left' }, new_chat_member: { status: 'administrator', can_post_messages: true, user: { id: 99 } } } }), 200);
   assert.equal(sent.at(-1).chat, String(OWNER.id));
   assert.match(lastSent(), /^Channel Poster is connected to Bull Lend News\./);

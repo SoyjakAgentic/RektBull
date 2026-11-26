@@ -188,6 +188,19 @@ router.delete('/v1/hyperliquid/auto/intents/:id', requireEvmWallet, refusal(asyn
   res.json(await auto.cancel(req.account, req.params.id));
 }));
 
+/* ── from Telegram (telegram/perps.js): "Trade from Telegram", switched on here, with the wallet signed in ── */
+
+router.get('/v1/hyperliquid/telegram', requireEvmWallet, refusal(async (req, res) => res.json(await require('../telegram/perps').status(req.account.id))));
+router.put('/v1/hyperliquid/telegram', requireEvmWallet, refusal(async (req, res) => {
+  const tg = require('../telegram/perps');
+  const on = req.body?.enabled === true;
+  if (on) regions.refuseAutoIfBlocked(req, 'hyperliquid'); // switching it off is never blocked
+  try { res.json(await tg.setEnabled(req.account, on)); } catch (err) {
+    if (err instanceof tg.TgRefused) return res.status(409).json({ error: 'refused', message: err.message });
+    throw err;
+  }
+}));
+
 /* ── copy trading (hyperliquid/copy.js): automatic trading that follows a trader the user chose ── */
 
 router.get('/v1/hyperliquid/copy', requireEvmWallet, refusal(async (req, res) => res.json(await copy.overview(req.account))));

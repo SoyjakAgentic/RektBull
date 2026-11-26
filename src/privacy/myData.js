@@ -35,6 +35,7 @@ const TABLES = {
   followed_wallets: 'SELECT address, family, label, created_at FROM followed_wallets WHERE account_id = $1 ORDER BY created_at',
   monitor_alerts: 'SELECT wallet, kind, severity, title, detail, created_at, read_at FROM monitor_alerts WHERE account_id = $1 ORDER BY created_at',
   alert_channels: 'SELECT kind, label, target, min_severity, verified_at, disabled_at FROM alert_channels WHERE account_id = $1',
+  telegram_trading: 'SELECT enabled, updated_at FROM telegram_trading WHERE account_id = $1',
   contract_audits: 'SELECT run_id, chain, address, created_at FROM audit_reports WHERE account_id = $1 ORDER BY created_at',
   ai_agents: 'SELECT agent, enabled, every_hours, settings, last_run_at, last_result, last_error, updated_at FROM agent_settings WHERE account_id = $1 ORDER BY agent',
   extension_links: 'SELECT label, created_at, expires_at, last_used_at, revoked_at FROM extension_tokens WHERE account_id = $1',
@@ -75,6 +76,8 @@ async function deleteMine(account, { confirm } = {}) {
     const run = async (name, sql) => { removed[name] = (await c.query(sql, [account.id])).rowCount; };
     await run('alert_channels', 'DELETE FROM alert_channels WHERE account_id = $1'); // with their deliveries
     await run('alert_link_codes', 'DELETE FROM alert_link_codes WHERE account_id = $1');
+    await run('telegram_trading', 'DELETE FROM telegram_trading WHERE account_id = $1');
+    await run('telegram_pending', 'DELETE FROM telegram_pending WHERE account_id = $1');
     await run('monitor_alerts', 'DELETE FROM monitor_alerts WHERE account_id = $1');
     await run('monitored_wallets', 'DELETE FROM monitored_wallets WHERE account_id = $1');
     await run('followed_wallets', 'DELETE FROM followed_wallets WHERE account_id = $1');

@@ -33,11 +33,33 @@
     say('auto-status', g
       ? `On until ${new Date(g.valid_until).toLocaleString()}: at most ${usd(g.max_trade_usd)} a trade and ${usd(g.max_day_usd)} opened in 24 hours (${usd(st.used_24h_usd)} used), up to ${g.max_leverage}x, ${g.markets ? g.markets.join(', ') : 'any deep market'}.`
       : st.grant ? `Off (${st.grant.status}).` : 'Off.', g ? 'ok' : '');
+    loadTelegram(!!g).catch(err => say('tg-msg', `Telegram trading couldn't be read: ${err.message}`, 'bad'));
     $('auto-intents').querySelector('tbody').replaceChildren(...(st.intents.length ? st.intents.map(i => el('tr', {},
       el('td', {}, new Date(i.created_at).toLocaleString()),
       el('td', {}, describe(i), i.reason ? el('div', { class: 'sub' }, i.reason) : ''),
       el('td', {}, outcome(i)),
       el('td', {}, i.status === 'queued' ? el('button', { onclick: () => cancel(i.id) }, 'Cancel') : ''))) : [el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'No automatic orders yet.'))]));
+  }
+
+  /* Trade from Telegram (telegram/perps.js): commands that queue automatic orders within these limits. */
+  async function loadTelegram(on) {
+    $('tg-wrap').hidden = !on;
+    if (!on) return;
+    const t = await api('GET', '/v1/hyperliquid/telegram');
+    $('tg-on').checked = t.enabled;
+    $('tg-on').disabled = !t.linked;
+    $('tg-note').textContent = t.linked
+      ? `${t.risk} Commands: ${t.commands.join(', ')}.`
+      : 'Link Telegram for alerts first (Connect Telegram on the AI agents page), then you can trade from it.';
+  }
+  async function setTelegram() {
+    const on = $('tg-on').checked;
+    if (on && !window.confirm('Trade from Telegram? Anyone who gets into your Telegram could open and close positions within your automatic-trading limits (never withdraw). Every open needs a tap on Confirm.')) { $('tg-on').checked = false; return; }
+    try {
+      const t = await api('PUT', '/v1/hyperliquid/telegram', { enabled: on });
+      $('tg-on').checked = t.enabled;
+      say('tg-msg', t.enabled ? 'On: send /perps to the RektBull bot to start.' : 'Off: Telegram commands no longer trade.', 'ok');
+    } catch (err) { $('tg-on').checked = !on; say('tg-msg', err.message, 'bad'); }
   }
 
   async function grant() {
@@ -75,5 +97,6 @@
 
   $('auto-grant').addEventListener('click', grant);
   $('auto-revoke').addEventListener('click', revoke);
+  $('tg-on').addEventListener('change', setTelegram);
   RB.state.hlAuto = { load };
 })();
