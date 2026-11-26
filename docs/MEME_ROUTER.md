@@ -365,6 +365,9 @@ upgrade on 5 November 2026; BNB Chain: every 0.45 s since Fermi, 14 January
   quote doesn't confirm goes back to watching, and nobody is alerted. So a
   misread event can't sell anyone's coins early. The user's floor is checked by
   the router as always.
+- **Wallet rankings on BNB Chain:** four.meme's trades, on the same
+  connection, with a daily budget of their own (`rankings_daily_budget`,
+  50,000; see docs/WALLET_TRACKER.md and docs/COST_LIMITS.md).
 - **A daily budget** (`daily_budget`, 150,000 pushed logs, about 4.5 million a
   month): at it, price and curve subscriptions stop until the next UTC day. The
   insiders' stay, since they're rare. Every subscribe and pushed log is counted

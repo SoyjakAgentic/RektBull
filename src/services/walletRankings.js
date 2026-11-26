@@ -35,15 +35,29 @@
  * minute; open positions stay in the worker's memory (at most MAX_POSITIONS,
  * the least recent dropped first). Public onchain facts about wallets, not
  * about RektBull's users; deleted after 35 days.
+ *
+ * BNB Chain (added 25 November 2026, the owner's option A): the same rules on
+ * four.meme's bonding curves, from the trade service's WebSocket stream
+ * (trade/memeStream.js), under a daily budget of its own (`rankings_daily_budget`,
+ * 50,000 events: docs/COST_LIMITS.md). One ranker per chain (forChain): BNB
+ * amounts are kept in gwei, nine decimals like lamports. The functions exported
+ * at the top level are Solana's, as before.
  */
 const db = require('../config/db');
 const env = require('../config/env');
 const logger = require('../config/logger');
 const { cached } = require('../lib/cache');
 
-const LAMPORTS = 1e9;
+const LAMPORTS = 1e9; // and gwei: nine decimals for SOL and BNB alike
+// Each chain's coin, launchpad, explorer and price; and where its trades come from.
+const CHAINS = {
+  solana: { unit: 'SOL', min_first_buy: 0.05 * LAMPORTS, priceId: 'coingecko:solana', explorer: 'https://solscan.io/account/', venue: 'pump.fun',
+    source: 'Every buy and sell on pump.fun\'s bonding curves, and on PumpSwap once a coin moves there, read from the chain as it confirms them (Yellowstone gRPC); SOL\'s price from DefiLlama' },
+  bsc: { unit: 'BNB', min_first_buy: 0.01 * LAMPORTS, priceId: 'coingecko:binancecoin', explorer: 'https://bscscan.com/address/', venue: 'four.meme',
+    source: 'Every buy and sell on four.meme\'s bonding curves (BNB-quoted coins), read from TokenManager2\'s TokenPurchase and TokenSale events as BNB Chain pushes them (WebSocket), within a daily budget; BNB\'s price from DefiLlama' },
+};
 const RULES = {
-  min_first_buy_lamports: 0.05 * LAMPORTS,
+  min_first_buy_lamports: 0.05 * LAMPORTS, // Solana's; each chain's is CHAINS[chain].min_first_buy
   snipe_seconds: 2,
   closed_share: 0.99,
   open_days: 7,
@@ -57,6 +71,15 @@ const MAX_CREATES = 50_000;
 const WINDOWS = { '7d': 7, '30d': 30 };
 const TOP = 50;
 
+const MAX_AMM_KNOWN = 5000;
+const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
+/** Moves a key to the end of a Map (the most recently used), so the oldest is first to go. */
+const touch = (map, k, v) => { map.delete(k); map.set(k, v); };
+
+/** One chain's ranker: its own positions, day sums and counts, in the memory of the process that streams it. */
+function createRanker(chain) {
+const minFirstBuy = CHAINS[chain].min_first_buy;
+let creators = new Map(); // mint -> its creator, where a creation event names it apart from the trades (four.meme)
 let positions = new Map(); // `${wallet}:${mint}` -> { b, c, s, p, r, at, snipe }
 let days = new Map(); // `${wallet}|${day}` -> sums written at the next flush
 let trades = new Map(); // wallet -> trades today (bot detection), reset each UTC day
@@ -64,24 +87,20 @@ let tradesDay = null;
 let creates = new Map(); // mint -> creation time (s), for the snipe rule
 let amm = new Map(); // PumpSwap pool -> { mint, at }: graduated coins, the most recent last
 let ammOverflow = 0;
-const MAX_AMM_KNOWN = 5000;
 
 function reset() {
-  positions = new Map(); days = new Map(); trades = new Map(); creates = new Map(); amm = new Map(); tradesDay = null; ammOverflow = 0;
+  positions = new Map(); days = new Map(); trades = new Map(); creates = new Map(); creators = new Map(); amm = new Map(); tradesDay = null; ammOverflow = 0;
 }
 
-const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
 function sums(wallet, day) {
   const k = `${wallet}|${day}`;
   let d = days.get(k);
   if (!d) { d = { wallet, day, realised: 0, cost: 0, proceeds: 0, coins: 0, wins: 0, losses: 0, snipes: 0, best: 0 }; days.set(k, d); }
   return d;
 }
-/** Moves a key to the end of a Map (the most recently used), so the oldest is first to go. */
-const touch = (map, k, v) => { map.delete(k); map.set(k, v); };
-
 /**
- * One pump.fun event (pumpStream.decodeEvent), SOL-quoted only. Pure memory:
+ * One trade event: pump.fun's (pumpStream.decodeEvent, SOL-quoted only), or four.meme's as the stream gives it
+ * ({ type: 'create', mint, creator } and { type: 'trade', … } in gwei, BNB-quoted only). Pure memory:
  * the database is only touched by flush().
  */
 function onEvent(e, now = Date.now()) {
@@ -89,6 +108,7 @@ function onEvent(e, now = Date.now()) {
   if (e.type === 'create') {
     touch(creates, e.mint, e.timestamp);
     while (creates.size > MAX_CREATES) creates.delete(creates.keys().next().value);
+    if (e.creator) { touch(creators, e.mint, e.creator); while (creators.size > MAX_CREATES) creators.delete(creators.keys().next().value); }
     return;
   }
   if (e.type === 'complete') return; // the curve is full: its migration to PumpSwap follows
@@ -109,7 +129,8 @@ function onEvent(e, now = Date.now()) {
   const day = dayOf(at);
   if (day !== tradesDay) { trades = new Map(); tradesDay = day; }
   trades.set(e.user, (trades.get(e.user) || 0) + 1);
-  if (e.creator && e.user === e.creator) return; // a coin's creator trading their own coin
+  const creator = e.creator || creators.get(e.mint);
+  if (creator && e.user === creator) return; // a coin's creator trading their own coin
   const fees = e.net ? 0 : Number(e.fee || 0n) + Number(e.creator_fee || 0n); // PumpSwap's amounts are the user's own, fees in
   const sol = Number(e.sol_amount);
   const tokens = Number(e.token_amount);
@@ -119,7 +140,7 @@ function onEvent(e, now = Date.now()) {
   if (e.is_buy) {
     const cost = sol + fees;
     if (!pos) {
-      if (cost < RULES.min_first_buy_lamports) return;
+      if (cost < minFirstBuy) return;
       const born = creates.get(e.mint);
       pos = { b: 0, c: 0, s: 0, p: 0, r: 0, at, snipe: born !== undefined && e.timestamp - born <= RULES.snipe_seconds };
     }
@@ -180,7 +201,7 @@ async function flush(now = Date.now()) {
   const L = x => Math.round(x);
   await db.query(
     `INSERT INTO wallet_pnl_daily (chain, wallet, day, realised, cost, proceeds, coins, wins, losses, snipes, best, trades, bot)
-     SELECT 'solana', w, d::date, r, c, p, n, wi, lo, sn, be, t, t > $12
+     SELECT $13, w, d::date, r, c, p, n, wi, lo, sn, be, t, t > $12
        FROM unnest($1::text[], $2::text[], $3::bigint[], $4::bigint[], $5::bigint[], $6::int[], $7::int[], $8::int[], $9::int[], $10::bigint[], $11::int[])
          AS x(w, d, r, c, p, n, wi, lo, sn, be, t)
      ON CONFLICT (chain, wallet, day) DO UPDATE SET
@@ -190,61 +211,85 @@ async function flush(now = Date.now()) {
        snipes = wallet_pnl_daily.snipes + EXCLUDED.snipes, best = GREATEST(wallet_pnl_daily.best, EXCLUDED.best),
        trades = GREATEST(wallet_pnl_daily.trades, EXCLUDED.trades), bot = wallet_pnl_daily.bot OR EXCLUDED.bot, updated_at = now()`,
     [col(r => r.wallet), col(r => r.day), col(r => L(r.realised)), col(r => L(r.cost)), col(r => L(r.proceeds)), col(r => r.coins), col(r => r.wins), col(r => r.losses), col(r => r.snipes), col(r => L(r.best)),
-      col(r => (r.day === tradesDay ? trades.get(r.wallet) || 0 : 0)), RULES.bot_trades_per_day],
+      col(r => (r.day === tradesDay ? trades.get(r.wallet) || 0 : 0)), RULES.bot_trades_per_day, chain],
   );
   return rows.length;
 }
 
+return { onEvent, flush, prune, reset, pools, poolSummary, _state: () => ({ positions, days, trades, creates, creators, amm }) };
+}
+
+const rankers = { solana: createRanker('solana') };
+/** A chain's ranker ('solana' or 'bsc'), made the first time it's asked for. */
+const forChain = chain => {
+  if (!CHAINS[chain]) throw new Error(`no wallet rankings for ${chain}`);
+  return rankers[chain] || (rankers[chain] = createRanker(chain));
+};
+const solanaRanker = rankers.solana;
+
 /* ── The ranking (web role) ── */
 
-const sol = l => Math.round(Number(l) / LAMPORTS * 1000) / 1000;
+const sol = l => Math.round(Number(l) / LAMPORTS * 1000) / 1000; // SOL or BNB, from lamports or gwei
 
 /**
  * The top wallets by realised profit over a window ('7d' or '30d'), kept five
  * minutes: { window, rules, wallets: [...], source }.
  */
-async function top(windowName = '7d') {
+async function top(windowName = '7d', chain = 'solana') {
   const w = WINDOWS[windowName] ? windowName : '7d';
-  return cached(`wallets:top:solana:${w}`, 300, async () => {
+  if (!CHAINS[chain]) chain = 'solana';
+  const C = CHAINS[chain];
+  return cached(`wallets:top:${chain}:${w}`, 300, async () => {
     const { rows } = await db.query(
       `SELECT wallet, sum(realised)::bigint AS realised, sum(cost)::bigint AS cost, sum(coins)::int AS coins, sum(wins)::int AS wins, sum(losses)::int AS losses,
               sum(snipes)::int AS snipes, max(best)::bigint AS best, max(day) AS last_day
          FROM wallet_pnl_daily
-        WHERE chain = 'solana' AND day > current_date - $1::int
+        WHERE chain = $4 AND day > current_date - $1::int
         GROUP BY wallet
        HAVING sum(coins) >= $2 AND NOT bool_or(bot) AND sum(snipes) <= sum(coins) AND sum(realised) > 0
         ORDER BY sum(realised) DESC LIMIT $3`,
-      [WINDOWS[w], RULES.min_coins, TOP]);
-    const solUsd = await require('../providers/prices').usdPrice('coingecko:solana').catch(() => null);
-    const { rows: [since] } = await db.query(`SELECT min(day) AS first FROM wallet_pnl_daily WHERE chain = 'solana'`);
+      [WINDOWS[w], RULES.min_coins, TOP, chain]);
+    const solUsd = await require('../providers/prices').usdPrice(C.priceId).catch(() => null);
+    const { rows: [since] } = await db.query(`SELECT min(day) AS first FROM wallet_pnl_daily WHERE chain = $1`, [chain]);
     return {
-      window: w, days: WINDOWS[w], counted_since: since?.first || null, sol_usd: solUsd,
-      stream: require('../providers/yellowstone').configured(), // without it nothing is counted
-      rules: describe(),
-      source: 'Every buy and sell on pump.fun\'s bonding curves, read from the chain as it confirms them (Yellowstone gRPC); SOL\'s price from DefiLlama',
+      chain, unit: C.unit, venue: C.venue, window: w, days: WINDOWS[w], counted_since: since?.first || null, sol_usd: chain === 'solana' ? solUsd : undefined, unit_usd: solUsd,
+      // without its stream nothing is counted
+      stream: chain === 'solana' ? require('../providers/yellowstone').configured() : require('../trade/memeStream').rankingsOn(),
+      rules: describe(chain),
+      source: C.source,
       wallets: rows.map((r, i) => ({
         rank: i + 1, wallet: r.wallet,
-        realised_sol: sol(r.realised), realised_usd: solUsd ? Math.round(Number(r.realised) / LAMPORTS * solUsd) : null,
+        realised_native: sol(r.realised), ...(chain === 'solana' ? { realised_sol: sol(r.realised) } : {}), realised_usd: solUsd ? Math.round(Number(r.realised) / LAMPORTS * solUsd) : null,
         return_pct: Number(r.cost) > 0 ? Math.round(Number(r.realised) / Number(r.cost) * 1000) / 10 : null,
         coins: r.coins, wins: r.wins, losses: r.losses, win_rate_pct: r.coins ? Math.round(r.wins / r.coins * 100) : null,
-        best_coin_sol: sol(r.best), best_share_pct: Number(r.realised) > 0 ? Math.min(100, Math.round(Number(r.best) / Number(r.realised) * 100)) : null,
+        best_coin_native: sol(r.best), ...(chain === 'solana' ? { best_coin_sol: sol(r.best) } : {}), best_share_pct: Number(r.realised) > 0 ? Math.min(100, Math.round(Number(r.best) / Number(r.realised) * 100)) : null,
         snipes: r.snipes, last_active: r.last_day,
-        solscan: `https://solscan.io/account/${r.wallet}`,
+        explorer: `${C.explorer}${r.wallet}`, ...(chain === 'solana' ? { solscan: `${C.explorer}${r.wallet}` } : {}),
       })),
     };
   });
 }
 
 /** The rules in plain words, shown with the ranking. */
-function describe() {
+function describe(chain = 'solana') {
+  const C = CHAINS[chain] || CHAINS.solana;
   return [
-    'Realised profit only: SOL a wallet got back from selling a coin, less what that part cost, after pump.fun\'s and the creator\'s fees. Coins still held don\'t count.',
-    'Only trades RektBull saw: positions bought on pump.fun\'s bonding curves, and their sales there or, once the coin moves, on PumpSwap. A coin bought before RektBull watched, or bought first on PumpSwap, isn\'t counted.',
+    chain === 'bsc'
+      ? 'Realised profit only: BNB a wallet got back from selling a coin, less what that part cost, after four.meme\'s fee. Coins still held don\'t count.'
+      : 'Realised profit only: SOL a wallet got back from selling a coin, less what that part cost, after pump.fun\'s and the creator\'s fees. Coins still held don\'t count.',
+    chain === 'bsc'
+      ? 'Only trades RektBull saw: positions bought on four.meme\'s bonding curves (coins priced in BNB), and their sales there. A coin bought before RektBull watched, or sold after it moved to PancakeSwap, isn\'t counted; on a busy day the stream\'s daily budget can run out, and trades after it aren\'t counted either.'
+      : 'Only trades RektBull saw: positions bought on pump.fun\'s bonding curves, and their sales there or, once the coin moves, on PumpSwap. A coin bought before RektBull watched, or bought first on PumpSwap, isn\'t counted.',
     `A coin counts once ${Math.round(RULES.closed_share * 100)}% of what was bought is sold; a position still open after ${RULES.open_days} days is dropped.`,
-    `Left out: a coin's creator trading it; positions that started under ${RULES.min_first_buy_lamports / LAMPORTS} SOL; buys within ${RULES.snipe_seconds} seconds of a coin's creation (snipes, shown apart).`,
+    `Left out: a coin's creator trading it; positions that started under ${C.min_first_buy / LAMPORTS} ${C.unit}; buys within ${RULES.snipe_seconds} seconds of a coin's creation (snipes, shown apart).`,
     `Ranked: at least ${RULES.min_coins} coins closed in the window, and a profit. Left out: wallets with over ${RULES.bot_trades_per_day} trades in a day (bots), or more snipes than counted coins.`,
     'Past profit says nothing sure about the next trade: copying a wallet buys after it, at a worse price.',
   ];
 }
 
-module.exports = { RULES, FLUSH_MS, WINDOWS, onEvent, flush, prune, reset, top, describe, pools, poolSummary, _state: () => ({ positions, days, trades, creates, amm }) };
+module.exports = {
+  RULES, CHAINS, FLUSH_MS, WINDOWS, top, describe, forChain,
+  // Solana's ranker, as before
+  onEvent: (...a) => solanaRanker.onEvent(...a), flush: (...a) => solanaRanker.flush(...a), prune: (...a) => solanaRanker.prune(...a),
+  reset: () => solanaRanker.reset(), pools: () => solanaRanker.pools(), poolSummary: () => solanaRanker.poolSummary(), _state: () => solanaRanker._state(),
+};

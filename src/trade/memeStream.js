@@ -36,6 +36,14 @@
  * - A budget: `daily_budget` pushed logs a day across both chains (150,000,
  *   about 4.5 million a month). At it, the price and curve subscriptions stop
  *   until the next UTC day; the insiders' stay (they're rare).
+ * - Wallet rankings on BNB Chain (services/walletRankings.js, the owner's
+ *   option A, 25 November 2026): four.meme's TokenManager2 trades
+ *   (TokenPurchase, TokenSale) and creations (TokenCreate), their layouts
+ *   checked against the chain's own logs that day, under a budget of their own
+ *   (`rankings_daily_budget`, 50,000 a day, counted apart from `daily_budget`).
+ *   At it, the filter is dropped until the next UTC day, so the ranking is
+ *   partial on a busy day (docs/COST_LIMITS.md). Only coins priced in BNB count.
+ *   This streams BNB Chain even with no order or Meme Watch coin on it.
  *
  * A fired order is filled at once (memeOrders.fillNow), and a price from the
  * stream is confirmed by the fill's own quote before anything is sent, so a
@@ -57,8 +65,8 @@ const tx = require('./memeOrderTx');
 const { TRADE_CHAINS } = require('./chains');
 
 const SETTINGS_KEY = 'meme_stream';
-const DEFAULTS = { on: false, daily_budget: 150000, max_pools: 10, arm_pct: 15, max_insider_coins: 50 };
-const LIMITS = { daily_budget: [1000, 20000000], max_pools: [0, 100], arm_pct: [1, 50], max_insider_coins: [0, 500] };
+const DEFAULTS = { on: false, daily_budget: 150000, max_pools: 10, arm_pct: 15, max_insider_coins: 50, rankings_daily_budget: 50000 };
+const LIMITS = { daily_budget: [1000, 20000000], max_pools: [0, 100], arm_pct: [1, 50], max_insider_coins: [0, 500], rankings_daily_budget: [0, 20000000] };
 const get = () => ({ ...DEFAULTS, ...(settings.get(SETTINGS_KEY) || {}) });
 function check(input) {
   const out = {};
@@ -87,7 +95,12 @@ const T = {
   swapPcsV3: ethers.id('Swap(address,address,int256,int256,uint160,uint128,int24,uint128,uint128)'),
   swapV4: ethers.id('Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)'),
   transfer: ethers.id('Transfer(address,address,uint256)'),
+  // four.meme's TokenManager2 (each matched against its logs on BNB Chain, 25 November 2026)
+  fmBuy: ethers.id('TokenPurchase(address,address,uint256,uint256,uint256,uint256,uint256,uint256)'),
+  fmSell: ethers.id('TokenSale(address,address,uint256,uint256,uint256,uint256,uint256,uint256)'),
+  fmCreate: ethers.id('TokenCreate(address,address,uint256,string,string,uint256,uint256,uint256)'),
 };
+const FOURMEME_TM2 = '0x5c952063c7fc8610ffdb798152d69f0b9550762b';
 // Uniswap v4's PoolManager (the same code at both, checked onchain 25 November 2026).
 const V4_POOL_MANAGER = { base: '0x498581ff718922c3f8e6a244956af099b2652b2b', bsc: '0x28e2ea090877bf75740558f6bfb36a5ffee9e9df' };
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -116,7 +129,7 @@ const priceIn = (ratio, orient, decimals, quoteDecimals) => (orient === 0 ? rati
 
 /* ── State ── */
 
-const st = { conns: {}, watches: {}, budgetHit: {}, insiderOverflow: {}, lock: null, leading: false, timer: null, pending: new Set(), bad: new Set(), lastCurve: new Map(), status: {} };
+const st = { conns: {}, watches: {}, budgetHit: {}, insiderOverflow: {}, rank: {}, rankFlush: null, lock: null, leading: false, timer: null, pending: new Set(), bad: new Set(), lastCurve: new Map(), status: {} };
 
 function track(p) {
   st.pending.add(p);
@@ -129,7 +142,7 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
   const filters = {};
   const watches = {};
   const conn = st.conns[chain];
-  const over = conn && conn.counts().total >= s.daily_budget;
+  const over = conn && conn.counts().total - rankToday(chain) >= s.daily_budget; // the rankings' events have a budget of their own
   st.budgetHit[chain] = !!over;
   // Prices: the orders closest to their trigger, within arm_pct.
   const seen = orders.lastSeen(chain);
@@ -169,6 +182,11 @@ async function planChain(chain, s, rows, groupsByToken, quoteDecimals) {
         orient: prev?.pool === p.pair.toLowerCase() ? prev.orient : null,
       };
     }
+  }
+  // Wallet rankings (BNB Chain): four.meme's trades and creations, while the day's own budget lasts.
+  if (chain === 'bsc' && s.rankings_daily_budget > 0 && rankToday(chain) < s.rankings_daily_budget) {
+    filters['rankings:fourmeme'] = { address: FOURMEME_TM2, topics: [[T.fmBuy, T.fmSell, T.fmCreate]] };
+    watches['rankings:fourmeme'] = { type: 'rankings', chain };
   }
   // Meme Watch: the launch-bundle wallets of every coin an enabled Meme Watch holds on this chain, those with an open
   // Meme Watch exit first, then those the most accounts watch; at most max_insider_coins (the rest: the 6-hour check).
@@ -227,7 +245,7 @@ async function plan() {
   // A chain is streamed for its orders (once the Meme Router is deployed there) or for Meme Watch (from day one).
   const ordersOn = !orders.config().off;
   const groups = await insiderGroups();
-  const chains = Object.keys(urls()).filter(c => (ordersOn && orders.config().routers?.[c]) || [...groups.keys()].some(k => k.startsWith(`${c}:`)));
+  const chains = Object.keys(urls()).filter(c => (ordersOn && orders.config().routers?.[c]) || [...groups.keys()].some(k => k.startsWith(`${c}:`)) || (c === 'bsc' && s.rankings_daily_budget > 0));
   const { rows } = ordersOn
     ? await db.query(`SELECT * FROM meme_orders WHERE state = 'open' AND valid_until > now() AND chain = ANY($1)`, [chains])
     : { rows: [] };
@@ -251,7 +269,8 @@ function stateNow(s = get()) {
     chains: Object.fromEntries(Object.entries(st.conns).map(([chain, c]) => {
       const w = Object.values(st.watches[chain] || {});
       return [chain, { ...c.status(), today: c.counts().total, over_budget: !!st.budgetHit[chain], pools: w.filter(x => x.type === 'pool').length, curves: w.filter(x => x.type === 'curve').length,
-        insider_filters: w.filter(x => x.type === 'insiders').length, insider_coins: new Set(w.filter(x => x.type === 'insiders').map(x => x.token)).size, insider_overflow: st.insiderOverflow[chain] || 0 }];
+        insider_filters: w.filter(x => x.type === 'insiders').length, insider_coins: new Set(w.filter(x => x.type === 'insiders').map(x => x.token)).size, insider_overflow: st.insiderOverflow[chain] || 0,
+        ...(chain === 'bsc' ? { rankings: { today: rankToday(chain), budget: s.rankings_daily_budget, over: s.rankings_daily_budget > 0 && rankToday(chain) >= s.rankings_daily_budget } } : {}) }];
     })),
     not_used: [...st.bad],
   };
@@ -265,6 +284,11 @@ function onLog(chain, key, log) {
   if (w.type === 'pool') return track(onPrice(chain, key, w, log).catch(err => logger.warn('meme stream: a price was not handled', { chain, key, error: err.message })));
   if (w.type === 'curve') return track(onCurve(chain, w).catch(err => logger.warn('meme stream: a curve trade was not handled', { chain, key, error: err.message })));
   if (w.type === 'insiders') return track(onInsider(chain, w, log).catch(err => logger.warn('meme stream: an insider transfer was not handled', { chain, key, error: err.message })));
+  if (w.type === 'rankings') {
+    // One at a time, in the order the chain pushed them: a coin's sale must never be counted before its buy.
+    st.rankQueue = (st.rankQueue || Promise.resolve()).then(() => onRanking(chain, log).catch(err => logger.warn('meme stream: a four.meme trade was not ranked', { chain, error: err.message })));
+    return track(st.rankQueue);
+  }
 }
 
 // The orders watched, from the last plan. Firing one twice is harmless: the database fires an order only while it's open
@@ -389,6 +413,50 @@ async function alertWatchers(chain, token, g, { from, to, amount, supply, soldPc
   return raised;
 }
 
+/* ── Wallet rankings on BNB Chain ── */
+
+const today = () => new Date().toISOString().slice(0, 10);
+/** The rankings' events today on a chain (counted apart from the triggers' budget). */
+function rankToday(chain) {
+  const r = st.rank[chain];
+  return r && r.day === today() ? r.n : 0;
+}
+const wordAt = (data, i) => BigInt('0x' + data.slice(2 + i * 64, 2 + (i + 1) * 64));
+const addrAt = (data, i) => ethers.getAddress('0x' + data.slice(2 + i * 64 + 24, 2 + (i + 1) * 64)).toLowerCase();
+const GWEI = 1_000_000_000n;
+/** Is the coin priced in BNB on four.meme? (launchpads.identify, once a day per coin) */
+const inBnb = token => cache.cached(`rankings:fourmeme:quote:${token}`, 86400, async () => {
+  const id = await require('../services/launchpads').identify('bsc', token);
+  return id.launchpad === 'fourmeme' && id.quote === 'bnb';
+});
+
+/** One of four.meme's events, counted against the day's budget and given to BNB Chain's ranker. */
+async function onRanking(chain, log) {
+  const s = get();
+  const r = st.rank[chain]?.day === today() ? st.rank[chain] : (st.rank[chain] = { day: today(), n: 0 });
+  if (r.n >= s.rankings_daily_budget) return; // over today's budget: the next plan drops the filter
+  r.n += 1;
+  const t0 = log.topics?.[0];
+  const data = log.data || '0x';
+  const ranker = require('../services/walletRankings').forChain(chain);
+  const now = Math.floor(Date.now() / 1000);
+  if (t0 === T.fmCreate) return ranker.onEvent({ type: 'create', creator: addrAt(data, 0), mint: addrAt(data, 1), timestamp: now });
+  if (t0 !== T.fmBuy && t0 !== T.fmSell) return;
+  const token = addrAt(data, 0);
+  if (!(await inBnb(token))) return; // coins priced in another token are left out, as on Solana
+  // TokenPurchase/TokenSale: token, account, price, amount, cost, fee, offers, funds. A buyer pays cost + fee; a seller gets cost - fee.
+  ranker.onEvent({
+    type: 'trade', mint: token, user: addrAt(data, 1), is_buy: t0 === T.fmBuy, timestamp: now,
+    token_amount: wordAt(data, 3), sol_amount: wordAt(data, 4) / GWEI, fee: wordAt(data, 5) / GWEI,
+  });
+}
+
+/** Whether BNB Chain's wallet rankings are being counted (for the ranking's page). */
+function rankingsOn() {
+  const s = get();
+  return !!(s.on && /^wss?:\/\//.test(env.memeStreamWsBsc || '') && s.rankings_daily_budget > 0);
+}
+
 /* ── Leading, starting, stopping ── */
 
 async function lead() {
@@ -424,9 +492,13 @@ function start() {
   const run = () => plan().catch(err => logger.warn('meme stream: plan failed', { error: err.message }));
   st.timer = setInterval(run, PLAN_MS);
   st.timer.unref?.();
+  // BNB Chain's wallet rankings: their day sums written once a minute, by the instance that streams.
+  const rankings = require('../services/walletRankings');
+  st.rankFlush = setInterval(() => { if (st.leading) rankings.forChain('bsc').flush().catch(err => logger.warn('wallet rankings (BNB Chain) not written', { error: err.message })); }, rankings.FLUSH_MS);
+  st.rankFlush.unref?.();
   run();
 }
-function halt() { clearInterval(st.timer); st.timer = null; stopAll(); }
+function halt() { clearInterval(st.timer); st.timer = null; clearInterval(st.rankFlush); st.rankFlush = null; stopAll(); }
 
 /** For the admin panel (the web role reads what the trade service wrote). */
 async function health(now = Date.now()) {
@@ -441,12 +513,12 @@ async function health(now = Date.now()) {
   return {
     name, state: live ? 'live' : 'down', today, budget: s.daily_budget, chains: x?.chains || {}, worker: x?.worker || null,
     note: live
-      ? `${today.toLocaleString('en-US')} of today's ${s.daily_budget.toLocaleString('en-US')} pushed logs used. ${Object.entries(x.chains).map(([c, v]) => `${c}: ${v.pools} pools, ${v.curves} curves, ${v.insider_coins ?? 0} Meme Watch coins (${v.insider_filters} insider filters${v.insider_overflow ? `; ${v.insider_overflow} more left to the 6-hour check` : ''})${v.over_budget ? ' (over budget: prices back on polling until tomorrow)' : ''}`).join('; ')}.${x.not_used?.length ? ` ${x.not_used.length} pool(s) not used (their events didn't match DexScreener's price).` : ''}`
+      ? `${today.toLocaleString('en-US')} of today's ${s.daily_budget.toLocaleString('en-US')} pushed logs used. ${Object.entries(x.chains).map(([c, v]) => `${c}: ${v.pools} pools, ${v.curves} curves, ${v.insider_coins ?? 0} Meme Watch coins (${v.insider_filters} insider filters${v.insider_overflow ? `; ${v.insider_overflow} more left to the 6-hour check` : ''})${v.over_budget ? ' (over budget: prices back on polling until tomorrow)' : ''}${v.rankings ? `; wallet rankings: ${v.rankings.today.toLocaleString('en-US')} of ${v.rankings.budget.toLocaleString('en-US')} four.meme events today${v.rankings.over ? ' (budget used: the ranking is partial until tomorrow)' : ''}` : ''}`).join('; ')}.${x.not_used?.length ? ` ${x.not_used.length} pool(s) not used (their events didn't match DexScreener's price).` : ''}`
       : 'No fresh state from the trade service: orders fire on its polling until the stream is back.',
   };
 }
 
 module.exports = {
-  DEFAULTS, LIMITS, get, check, configured, plan, start, halt, health, T, V4_POOL_MANAGER, ratioOf, priceIn, SETTINGS_KEY,
+  DEFAULTS, LIMITS, get, check, configured, plan, start, halt, health, T, V4_POOL_MANAGER, ratioOf, priceIn, SETTINGS_KEY, FOURMEME_TM2, rankingsOn,
   _state: st, _drain: () => Promise.all([...st.pending]), _onLog: onLog, _stopAll: stopAll,
 };

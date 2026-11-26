@@ -61,7 +61,7 @@
       el('p', { class: 'small' }, m.configured ? `${m.health.state}: ${m.health.note}` : 'Not set up: MEME_STREAM_WS_BASE and MEME_STREAM_WS_BSC (the provider\'s WebSocket URLs, in the environment\'s secret settings).'),
       el('label', { class: 'inline' }, el('input', { type: 'checkbox', 'data-k': 'on', checked: !!s.on }), ' On'), ' ',
       num('daily_budget', 'Pushed logs a day'), ' ', num('max_pools', 'Pools per chain'), ' ', num('arm_pct', 'Watch orders within (%) of their trigger'), ' ',
-      num('max_insider_coins', 'Meme Watch coins per chain'), el('br'));
+      num('max_insider_coins', 'Meme Watch coins per chain'), ' ', num('rankings_daily_budget', 'Wallet rankings (BNB Chain): events a day, 0 for off'), el('br'));
     const read = () => Object.fromEntries([...wrap.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.type === 'checkbox' ? i.checked : Number(i.value)]));
     wrap.append(el('button', { class: 'btn', type: 'button', onclick: () => change('meme-stream-msg', 'Order triggers over WebSocket: new settings', 'PUT', '/v1/admin/meme-stream', read()) }, 'Save'));
     $('meme-stream').replaceChildren(wrap);
