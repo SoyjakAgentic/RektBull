@@ -128,21 +128,37 @@ positions" card):
   names its source. If the candles or open orders can't be read, the proposal
   says so. With open orders unread, it doesn't propose a second stop-loss.
 
-**The automatic-order fee** (the owner, 26 November 2026). An order RektBull's
-agent places for automatic trading carries `HL_AUTO_FEE_TENTHS_BPS` (50 = 0.05%),
-instead of the 0.01% on the user's own orders.
-- **Why:** the AI places these orders, which is the service the fee pays for.
-  Users' own orders stay at 0.01% to compete with manual terminals.
-- **The approval:** the user's wallet approves it once, as the most RektBull
-  may charge per fill, when automatic trading is switched on (the Automatic
-  trading section asks for it before the agent).
-  - An automatic order doesn't open without it, and says why.
-  - A close carries it only where it's approved: a position can always be
-    closed.
-- **Where it may be carried:** the relay accepts it only on the trade
-  service's own orders (`relay.check(…, { auto: true })`). A request from the
-  Perps page can't carry it, whatever it's signed with.
-- **Points:** automatic fills earn their rebate at this rate.
+**The fees on trades RektBull decides** (the owner, 26 November 2026). Some
+automatic trades are decided by RektBull itself, not the user: the AI's, and
+copy trading's (`hl_auto_intents.source = 'agent'`). They carry:
+
+| Order | Fee | Setting |
+|---|---|---|
+| Opening (or adding) | 0.05% | `HL_AUTO_FEE_TENTHS_BPS` (50) |
+| Closing at a profit | 0.10% | `HL_AUTO_PROFIT_CLOSE_FEE_TENTHS_BPS` (100) |
+| Closing at a loss | nothing | |
+
+- **Why:** RektBull decides these trades, which is the service the fee pays
+  for, and it earns more only when the trade made money.
+- **Not on trades the user decides.** An order the user queued for the agent
+  to send (`source = 'user'`, from the page or the API), and every order the
+  user signs, carry the user's own 0.01%, even when a proposal guided them.
+  Trailing stops and limit orders the user set are the user's own.
+- **At a profit or a loss:** by Hyperliquid's own unrealized profit and loss
+  on the position when the close is sent. A take-profit trigger on a decided
+  entry carries 0.10% (it fills only at a profit); its stop-loss carries
+  nothing.
+- **The approval:** the user's wallet approves 0.10% once, as the most
+  RektBull may charge per fill, when they switch on a feature where RektBull
+  decides the trades (copy trading asks for it).
+  - A decided trade doesn't open without it, and says why.
+  - A close never waits for it: it carries the highest of RektBull's rates
+    the account has approved, or none. A position can always be closed.
+- **Where they may be carried:** the relay accepts the 0.05% only, and the
+  0.10% only on reduce-only orders, from the trade service itself
+  (`relay.check(…, { auto: true })`). A request from the Perps page can't
+  carry them, whatever it's signed with.
+- **Points:** decided fills earn their rebate at the rate charged.
 
 **The proposal fee.** An order from a proposal carries RektBull's proposal fee,
 `HL_PROPOSAL_FEE_TENTHS_BPS` (50 = 0.05%), instead of the 0.01% on the user's
@@ -278,7 +294,8 @@ the blocks refuse everyone.
 | `HL_NETWORK` | `mainnet` or `testnet` |
 | `HL_BUILDER_ADDRESS`, `HL_BUILDER_FEE_TENTHS_BPS` | The fee (PAYMENTS.md) |
 | `HL_PROPOSAL_FEE_TENTHS_BPS` | The fee on an order from a RektBull proposal (50 = 0.05%) |
-| `HL_AUTO_FEE_TENTHS_BPS` | The fee on an order RektBull's agent places for automatic trading (50 = 0.05%) |
+| `HL_AUTO_FEE_TENTHS_BPS` | The fee to open a trade RektBull decides (the AI's, copy trading's): 50 = 0.05% |
+| `HL_AUTO_PROFIT_CLOSE_FEE_TENTHS_BPS` | The fee to close a trade RektBull decided, at a profit: 100 = 0.10% (nothing at a loss) |
 | `HL_AUTO_ENABLED` | Automatic trading |
 | `HL_AGENT_ADDRESS`, `KMS_HL_AGENT_KEY_VERSION` | RektBull's agent: public address, and its KMS key (trade service only) |
 | `HL_AUTO_MAX_LEVERAGE`, `HL_AUTO_PRICE_BAND_BPS` | Leverage cap (10), price band (50 = 0.5%) |

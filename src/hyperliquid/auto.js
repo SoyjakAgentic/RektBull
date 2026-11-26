@@ -80,7 +80,7 @@ let lastNonce = 0;
 const nextNonce = () => { lastNonce = Math.max(Date.now(), lastNonce + 1); return lastNonce; };
 
 /** Signs an L1 action with the agent key (logged first) and checks it against the relay's rules. */
-async function signed(action, intent, wallet) { // RektBull's own automatic order: the relay accepts the automatic-order fee on it
+async function signed(action, intent, wallet) { // RektBull's own automatic order: the relay accepts the rates on trades RektBull decides
   const signer = await agentSigner();
   const nonce = nextNonce();
   const expiresAfter = nonce + 30000;
@@ -104,8 +104,12 @@ function status() {
   return {
     enabled: !off, why_off: off,
     agent_address: env.hlAgentAddress || null, agent_name: AGENT_NAME, max_days: MAX_DAYS,
-    // The fee on automatic orders: approved with the agent, as the most RektBull may charge per fill.
-    fee: relay.autoBuilder() ? { builder: relay.autoBuilder().b, tenths_bps: relay.autoBuilder().f, rate: H.feeRate(relay.autoBuilder().f), own_orders_rate: H.feeRate(relay.builder().f) } : null,
+    // The fees: on orders the user queues, their own rate; on trades RektBull decides (the AI's, copy trading's), 0.05% to
+    // open and 0.10% to close at a profit, nothing at a loss. The approval needed for those is the profit-close rate.
+    fee: relay.autoBuilder() ? {
+      builder: relay.builder().b, own_orders_rate: H.feeRate(relay.builder().f),
+      decided: { open_rate: H.feeRate(relay.decidedRates().open), profit_close_rate: H.feeRate(relay.decidedRates().profitClose), loss_close_rate: '0%', tenths_bps: relay.decidedRates().profitClose },
+    } : null,
     max_leverage: env.hlAutoMaxLeverage, price_band_pct: env.hlAutoPriceBandBps / 100,
     min_open_interest_usd: env.hlAutoMinOpenInterestUsd, min_day_volume_usd: env.hlAutoMinDayVolumeUsd,
     enforced_by_hyperliquid: 'The agent can place and cancel orders and change leverage, and can never withdraw or transfer funds. It ends when you revoke it or at the expiry you signed.',
@@ -260,6 +264,28 @@ async function queue(account, input, { source = 'user', reason = null } = {}) {
   return presentIntent(rows[0]);
 }
 
+/* ── the fee on each order ── */
+
+/** Did RektBull decide this trade (the AI's, copy trading's), not the user? Only those carry RektBull's higher fees. */
+const decided = intent => intent.source === 'agent';
+
+/**
+ * The builder field for an automatic order (null for none):
+ *   - an order the user queued: their own rate (0.01%), on a close only where it's approved;
+ *   - one RektBull decided: 0.05% to open; to close, 0.10% at a profit (by Hyperliquid's own unrealized profit and loss
+ *     when the close is sent), nothing at a loss, and never more than the account has approved.
+ */
+function feeFor(intent, { close, pos = null, approved = Infinity }) {
+  const own = relay.builder();
+  if (!own) return null;
+  if (!decided(intent)) return !close || approved >= own.f ? own : null;
+  if (!close) return relay.autoBuilder();
+  const profit = Number(pos?.unrealized_pnl_usd) > 0;
+  if (!profit) return null;
+  const pc = relay.profitCloseBuilder();
+  return approved >= pc.f ? pc : approved >= relay.autoBuilder().f ? relay.autoBuilder() : approved >= own.f ? own : null;
+}
+
 /* ── sending ── */
 
 async function fail(intent, message) {
@@ -293,15 +319,16 @@ async function execute(row) {
     if (acct.positions_error) return fail(intent, `${acct.positions_error}. Nothing was sent.`);
     const pos = acct.positions.find(p => p.coin === intent.coin) || null;
     const results = [];
+    let closeFee = null; // the fee a close carried, for its Points
 
     if (intent.side === 'close') {
       if (!pos) return fail(intent, `There is no ${intent.coin} position to close.`);
       const isBuy = pos.side === 'short';
       const order = H.orderWire({ asset: m.asset, isBuy, px: H.slippagePrice(mark, isBuy, band(), m.sz_decimals), sz: H.formatSize(pos.size, m.sz_decimals), reduceOnly: true, tif: 'Ioc', cloid: H.cloid() });
-      // A close carries the automatic-order fee only where it's approved (else the user's own rate, if that is):
-      // a position can always be closed (relay.js).
+      // The fee on a close (feeFor): a position can always be closed, whatever is approved (relay.js).
       const bf = relay.builder() ? (await markets.approvals(g.wallet, { ms: 0 })).builder_fee : null;
-      const b = bf?.auto_approved ? relay.autoBuilder() : bf?.approved ? relay.builder() : null;
+      const b = feeFor(intent, { close: true, pos, approved: bf?.approved_tenths_bps ?? 0 });
+      closeFee = b;
       results.push(...await send(await signed(H.orderAction([order], { builder: b }), intent, g.wallet)));
     } else {
       const refusal = markets.autoRefusal(m);
@@ -310,11 +337,17 @@ async function execute(row) {
       if (pos && pos.side !== intent.side) return fail(intent, `You hold a ${pos.side} in ${intent.coin}; an automatic ${intent.side} would close or flip it. Close it first. Nothing was sent.`);
       if (pos && pos.margin_mode !== 'isolated') return fail(intent, `You hold a cross-margin ${intent.coin} position; automatic trading only uses isolated margin. Nothing was sent.`);
       if (pos && pos.leverage > g.max_leverage) return fail(intent, `Your ${intent.coin} position uses ${pos.leverage}x, over your grant's ${g.max_leverage}x. Nothing was sent.`);
-      // An automatic order opens only with the automatic-order fee approved (0.05% by default).
-      const b = relay.autoBuilder();
+      // Opening needs its fee approved: the user's own rate on an order they queued; on one RektBull decided, RektBull's
+      // full schedule (0.05% to open, up to 0.10% to close at a profit), so its close can carry what's due.
+      const b = feeFor(intent, { close: false });
       if (b) {
         const ap = await markets.approvals(g.wallet, { ms: 0 });
-        if (!ap.builder_fee?.auto_approved) return fail(intent, `RektBull's ${H.feeRate(b.f)} fee on automatic orders isn't approved on this account${ap.builder_fee?.error ? ` (${ap.builder_fee.error})` : ''}. Approve it in the Automatic trading section of the Perps page. Nothing was sent.`);
+        const ok = decided(intent) ? ap.builder_fee?.auto_approved : ap.builder_fee?.approved;
+        if (!ok) {
+          return fail(intent, decided(intent)
+            ? `RektBull's fees on the trades it decides (${H.feeRate(relay.decidedRates().open)} to open, ${H.feeRate(relay.decidedRates().profitClose)} to close at a profit) aren't approved on this account${ap.builder_fee?.error ? ` (${ap.builder_fee.error})` : ''}. Approve them on the Perps page. Nothing was sent.`
+            : `RektBull's ${H.feeRate(b.f)} fee isn't approved on this account${ap.builder_fee?.error ? ` (${ap.builder_fee.error})` : ''}. Approve it on the Perps page. Nothing was sent.`);
+        }
       }
       if (!pos) {
         const lev = H.updateLeverageAction({ asset: m.asset, isCross: false, leverage: intent.leverage });
@@ -339,7 +372,14 @@ async function execute(row) {
           exits.push(H.orderWire({ asset: m.asset, isBuy: !isBuy, px: H.slippagePrice(Number(t), !isBuy, 0.1, m.sz_decimals), sz: fsz, reduceOnly: true, trigger: { triggerPx: t, isMarket: true, tpsl: 'tp' }, cloid: H.cloid() }));
         }
         try {
-          results.push(...(await send(await signed(H.orderAction(exits, { builder: null }), intent, g.wallet))).map(x => ({ ...x, exit: true })));
+          if (decided(intent) && intent.take_profit_pct) {
+            // On a trade RektBull decided, the take-profit closes at a profit and carries that fee; the stop-loss nothing.
+            const [tp, sl] = [exits.filter(o => o.t.trigger.tpsl === 'tp'), exits.filter(o => o.t.trigger.tpsl === 'sl')];
+            if (sl.length) results.push(...(await send(await signed(H.orderAction(sl, { builder: null }), intent, g.wallet))).map(x => ({ ...x, exit: true })));
+            results.push(...(await send(await signed(H.orderAction(tp, { builder: relay.profitCloseBuilder() }), intent, g.wallet))).map(x => ({ ...x, exit: true })));
+          } else {
+            results.push(...(await send(await signed(H.orderAction(exits, { builder: null }), intent, g.wallet))).map(x => ({ ...x, exit: true })));
+          }
         } catch (err) {
           results.push({ exit: true, error: `The position opened, but the stop or take-profit couldn't be placed: ${err.message}. Set one on the Perps page.` });
         }
@@ -352,9 +392,9 @@ async function execute(row) {
       [intent.id, refusedAll ? 'failed' : 'done', JSON.stringify(results), Math.round(filledUsd * 100) / 100, refusedAll ? results.map(x => x.error).join(' ') : null],
     );
     logger.info('automatic perps order sent', { intent: intent.id, filled_usd: filledUsd });
-    const b = relay.autoBuilder();
-    if (b && filledUsd > 0 && intent.side !== 'close') {
-      await require('../rewards/points').safeCredit({ accountId: intent.account_id, source: 'perps_auto', ref: intent.id, feeUsd: filledUsd * b.f / 100000 });
+    const charged = intent.side === 'close' ? closeFee : feeFor(intent, { close: false });
+    if (charged && filledUsd > 0) {
+      await require('../rewards/points').safeCredit({ accountId: intent.account_id, source: 'perps_auto', ref: intent.id, feeUsd: filledUsd * charged.f / 100000 });
     }
   } catch (err) {
     await fail(intent, err instanceof AutoRefused || err.isHyperliquid ? err.message : `Not sent: ${err.message}`);

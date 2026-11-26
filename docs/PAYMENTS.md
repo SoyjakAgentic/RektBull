@@ -253,13 +253,19 @@ transaction", docs.axiom.trade/perpetuals/deposit, read 16 November 2026).
   open a position unless it names RektBull's builder at exactly RektBull's
   rate, and refuses any other builder address. Orders that can only close a
   position (reduce-only) may go without it, so a position can always be closed.
-- **Automatic orders: 0.05%** (`HL_AUTO_FEE_TENTHS_BPS`, the owner,
-  26 November 2026). These are the orders RektBull's agent places for automatic
-  trading.
-  - The user approves the rate once, when switching automatic trading on.
-  - The relay accepts it only on the trade service's own orders, never from
-    the page.
-  - The user's own orders still carry 0.01%.
+- **Trades RektBull decides: 0.05% to open, 0.10% to close at a profit,
+  nothing at a loss** (`HL_AUTO_FEE_TENTHS_BPS`,
+  `HL_AUTO_PROFIT_CLOSE_FEE_TENTHS_BPS`, the owner, 26 November 2026). These are
+  the AI's and copy trading's trades, not the user's
+  ([HYPERLIQUID.md](HYPERLIQUID.md)).
+  - A performance fee without holding funds or credits: Hyperliquid takes it
+    from the closing fill, so it needs no credit balance.
+  - The user approves 0.10% once, when switching on a feature where RektBull
+    decides the trades.
+  - The relay accepts these rates only on the trade service's own orders,
+    never from the page.
+  - Orders the user decides, signed or queued for the agent, still carry 0.01%,
+    even when a proposal guided them.
 - **Orders from a RektBull proposal: 0.05%** (`HL_PROPOSAL_FEE_TENTHS_BPS`,
   the owner, 23 November 2026). This is a fix for a position the user holds:
   a stop-loss, or reducing by half ([HYPERLIQUID.md](HYPERLIQUID.md#protecting-positions-proposals-phase-1)).
