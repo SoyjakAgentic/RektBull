@@ -101,6 +101,40 @@ badly within Hyperliquid's rules: it could not withdraw or transfer. That's why
 the key stays in KMS behind the trade service's account, and why the most a
 user can lose is what they keep in that Hyperliquid account.
 
+## From Telegram
+
+The owner's call, 26 November 2026: Telegram commands can open and close
+positions, within the user's automatic-trading limits. Code:
+`src/telegram/perps.js`, through the bot's webhook (`src/alerts/channels.js`).
+
+| Command | Does |
+|---|---|
+| `/perps` | The grant, its limits and what's used, and the positions (Hyperliquid's info API) |
+| `/long BTC 100 3x sl 5 tp 10` | A long of $100 at 3x, with a 5% stop-loss and a 10% take-profit (both optional) |
+| `/short ETH 50 2x` | A short |
+| `/close BTC` | Closes the position |
+| `/stopauto` | RektBull stops using its agent at once (no signature needed) |
+
+- **Off until switched on.** "Trade from Telegram", in the Automatic trading
+  section of the Perps page (`PUT /v1/hyperliquid/telegram`), needs:
+  - a Telegram chat linked for alerts;
+  - automatic trading on.
+
+  Before it's switched on, the page says that anyone who gets into the user's
+  Telegram could trade within those limits, though never withdraw.
+- **Every open asks for a tap on Confirm.** It's good for 60 seconds and used
+  once (`telegram_pending`, migration 049). It's checked again on the tap.
+  Closing needs no confirmation: it's a way out.
+- **Through automatic trading.** Each order is an automatic order
+  (`hl_auto_intents`, `notify_chat` set). It goes through every limit and every
+  check above, and its result comes back to the chat.
+- **The fee.** The user decided the trade, so it carries their own 0.01%, not
+  the rates on trades RektBull decides.
+- **Regions.** Telegram doesn't say where a user is. So the place recorded on
+  their last visit to the Perps page is checked against both region lists
+  (`placeBlocked`), as for any automatic order. A pause of Perps in the admin
+  panel stops opens; closes still go.
+
 ## Copy trading
 
 A user follows any Hyperliquid trader's address. When the trader opens a

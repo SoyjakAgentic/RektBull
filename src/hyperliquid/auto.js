@@ -223,7 +223,7 @@ async function usedToday(accountId) {
  * stop_loss_pct?, take_profit_pct? }. Checked now against the grant; checked
  * again against the market just before it's signed.
  */
-async function queue(account, input, { source = 'user', reason = null, followId = null } = {}) {
+async function queue(account, input, { source = 'user', reason = null, followId = null, notifyChat = null } = {}) {
   const off = whyOff();
   if (off) no(off, 503, 'not_enabled');
   if (await stops.isStopped('auto_trading')) no('Automatic trading is paused by RektBull for now. You can still trade on the Perps page yourself.', 503, 'stopped');
@@ -257,9 +257,9 @@ async function queue(account, input, { source = 'user', reason = null, followId 
     }
   }
   const { rows } = await db.query(
-    `INSERT INTO hl_auto_intents (id, account_id, grant_id, coin, side, size_usd, leverage, stop_loss_pct, take_profit_pct, source, reason, follow_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [crypto.randomUUID(), account.id, g.id, coin, side, size, lev, sl, tp, source === 'agent' ? 'agent' : 'user', reason ? String(reason).slice(0, 500) : null, followId],
+    `INSERT INTO hl_auto_intents (id, account_id, grant_id, coin, side, size_usd, leverage, stop_loss_pct, take_profit_pct, source, reason, follow_id, notify_chat)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+    [crypto.randomUUID(), account.id, g.id, coin, side, size, lev, sl, tp, source === 'agent' ? 'agent' : 'user', reason ? String(reason).slice(0, 500) : null, followId, notifyChat],
   );
   return presentIntent(rows[0]);
 }
@@ -291,6 +291,13 @@ function feeFor(intent, { close, pos = null, approved = Infinity }) {
 async function fail(intent, message) {
   await db.query(`UPDATE hl_auto_intents SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, [intent.id, message]);
   logger.info('automatic perps order refused', { intent: intent.id, reason: message });
+  await finished(intent.id);
+}
+
+/** An order asked for from Telegram: its result goes back to that chat (telegram/perps.js). */
+async function finished(id) {
+  const { rows: [row] } = await db.query('SELECT * FROM hl_auto_intents WHERE id = $1 AND notify_chat IS NOT NULL', [id]);
+  if (row) await require('../telegram/perps').notify(row).catch(err => logger.warn('telegram result not sent', { error: err.message }));
 }
 
 async function send(payload) {
@@ -395,6 +402,7 @@ async function execute(row) {
       [intent.id, refusedAll ? 'failed' : 'done', JSON.stringify(results), Math.round(filledUsd * 100) / 100, refusedAll ? results.map(x => x.error).join(' ') : null],
     );
     logger.info('automatic perps order sent', { intent: intent.id, filled_usd: filledUsd });
+    await finished(intent.id);
     const charged = intent.side === 'close' ? closeFee : feeFor(intent, { close: false });
     if (charged && filledUsd > 0) {
       await require('../rewards/points').safeCredit({ accountId: intent.account_id, source: 'perps_auto', ref: intent.id, feeUsd: filledUsd * charged.f / 100000 });

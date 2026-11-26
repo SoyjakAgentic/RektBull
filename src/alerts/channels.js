@@ -89,6 +89,12 @@ async function telegramUpdate(headers, update) {
       return { ok: true };
     }
   }
+  // Confirm and Cancel taps on a perps order from Telegram (src/telegram/perps.js).
+  if (update?.callback_query?.data?.startsWith('tp:')) {
+    if (!env.databaseUrl) return { ok: true };
+    try { await require('../telegram/perps').callback(update.callback_query); } catch (err) { require('../config/logger').error('telegram perps failed', { error: err.message }); }
+    return { ok: true, perps: true };
+  }
   if (update?.channel_post || update?.callback_query) return { ok: true };
   // Groups and their members go to Group Guard (src/services/groupGuard.js). Always 200, or Telegram retries.
   const groupUpdate = update?.my_chat_member || update?.chat_member || ['group', 'supergroup'].includes((update?.message || update?.edited_message)?.chat?.type);
@@ -117,8 +123,13 @@ async function telegramUpdate(headers, update) {
     try { await require('../services/channelPoster').command(msg); } catch (err) { require('../config/logger').error('channel poster failed', { error: err.message }); }
     return { ok: true, poster: true };
   }
+  // Hyperliquid perps from Telegram: /perps, /long, /short, /close, /stopauto (src/telegram/perps.js).
+  if (env.databaseUrl && require('../telegram/perps').COMMAND.test(text)) {
+    await require('../telegram/perps').command(msg);
+    return { ok: true, perps: true };
+  }
   if (/^\/(start|help)(?:@\w+)?$/.test(text)) {
-    await reply('This is RektBull\'s bot. It does three things:\n\n1. Your alerts: link it from the AI agents or Safety page on rektbull.com.\n2. Group Guard: add it to your Telegram group as an admin to catch scam links, fake contracts and impersonators.\n3. Channel Poster: add it to your channel as an admin to get post drafts here, posted only when you approve them. /poster\n\nRektBull never asks for a seed phrase or private key, and never DMs first.');
+    await reply('This is RektBull\'s bot. It does four things:\n\n1. Your alerts: link it from the AI agents or Safety page on rektbull.com.\n2. Hyperliquid perps: with automatic trading on and "Trade from Telegram" switched on on the Perps page, /perps, /long BTC 100 3x sl 5 tp 10, /short, /close BTC and /stopauto.\n3. Group Guard: add it to your Telegram group as an admin to catch scam links, fake contracts and impersonators.\n4. Channel Poster: add it to your channel as an admin to get post drafts here, posted only when you approve them. /poster\n\nRektBull never asks for a seed phrase or private key, and never DMs first.');
     return { ok: true };
   }
   if (/^\/stop(?:@\w+)?$/.test(text)) {
