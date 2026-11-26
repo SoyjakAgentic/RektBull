@@ -43,6 +43,7 @@ const SERVICES = {
   // Desks.
   trade: { name: 'Trade desk (swaps, including Launches buys)', group: 'Trading', stops: 'Buys, and new automatic-trading permissions and intents.', open: 'Sells, cancels and revokes.', page: '/trade', shown: 'the Trade menu link, its tiles and links' },
   perps: { name: 'Perps (Hyperliquid)', group: 'Trading', stops: 'Opening or adding to positions, leverage and margin changes, and new agent approvals.', open: 'Closing, cancelling and revoking.', page: '/perps', shown: 'links to the Perps page' },
+  perps_copy: { name: 'Perps copy trading', group: 'Trading', stops: 'New copies of a trader\'s opens, and new follows.', open: 'Closing copies when the trader closes, and stopping a copy (with or without closing its positions).', shown: 'its card on the Perps page' },
   predictions: { name: 'Predictions (Polymarket)', group: 'Trading', stops: 'Buys, approvals, wallet set-up, funding and new automatic trading.', open: 'Selling, redeeming, withdrawing, stopping automatic trading, and sending what was already prepared.', page: '/predictions', shown: 'links to the Predictions page' },
   yield: { name: 'Yield moves', group: 'Find money', stops: 'Deposits and moves, and new automatic permissions.', open: 'Withdrawals to the wallet and revokes.', shown: 'its card on the Find money page' },
   claims: { name: 'Airdrop and unclaimed-funds finder', group: 'Find money', stops: 'New checks and claims.', open: 'Confirming a claim the wallet already sent.', shown: 'its cards on the Find money page' },

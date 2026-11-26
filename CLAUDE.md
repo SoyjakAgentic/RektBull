@@ -50,7 +50,8 @@
   enforced by the trade service (`src/hyperliquid/auto.js`), **not onchain**, and the page must say so,
   and that the most a user can lose is the margin in their Hyperliquid account. Every automatic order
   is immediate-or-cancel within `HL_AUTO_PRICE_BAND_BPS` of the mark, isolated margin, deep markets
-  only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed.
+  only, and passes the relay's rules (`relay.check`): no transfer or withdrawal is ever signed. Copy trading
+  (`src/hyperliquid/copy.js`) runs on it, with the same approval and limits.
   **The second exception, approved by the owner: Polymarket Session Keys** (docs/POLYMARKET.md). The
   user's own key authorizes RektBull's Session Key (KMS key) on their Deposit Wallet; Polymarket fixes
   the term at 180 days and enforces that it can trade and never withdraw. The user's stop date,

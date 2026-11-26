@@ -151,7 +151,7 @@ const presentGrant = g => g && ({
 const presentIntent = r => ({
   id: r.id, coin: r.coin, side: r.side, size_usd: r.size_usd === null ? null : Number(r.size_usd), leverage: r.leverage,
   stop_loss_pct: r.stop_loss_pct === null ? null : Number(r.stop_loss_pct), take_profit_pct: r.take_profit_pct === null ? null : Number(r.take_profit_pct),
-  source: r.source, reason: r.reason, status: r.status, result: r.result, filled_usd: r.filled_usd === null ? null : Number(r.filled_usd), error: r.error,
+  source: r.source, reason: r.reason, follow_id: r.follow_id || null, status: r.status, result: r.result, filled_usd: r.filled_usd === null ? null : Number(r.filled_usd), error: r.error,
   created_at: r.created_at, finished_at: r.finished_at,
 });
 
@@ -223,7 +223,7 @@ async function usedToday(accountId) {
  * stop_loss_pct?, take_profit_pct? }. Checked now against the grant; checked
  * again against the market just before it's signed.
  */
-async function queue(account, input, { source = 'user', reason = null } = {}) {
+async function queue(account, input, { source = 'user', reason = null, followId = null } = {}) {
   const off = whyOff();
   if (off) no(off, 503, 'not_enabled');
   if (await stops.isStopped('auto_trading')) no('Automatic trading is paused by RektBull for now. You can still trade on the Perps page yourself.', 503, 'stopped');
@@ -257,9 +257,9 @@ async function queue(account, input, { source = 'user', reason = null } = {}) {
     }
   }
   const { rows } = await db.query(
-    `INSERT INTO hl_auto_intents (id, account_id, grant_id, coin, side, size_usd, leverage, stop_loss_pct, take_profit_pct, source, reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-    [crypto.randomUUID(), account.id, g.id, coin, side, size, lev, sl, tp, source === 'agent' ? 'agent' : 'user', reason ? String(reason).slice(0, 500) : null],
+    `INSERT INTO hl_auto_intents (id, account_id, grant_id, coin, side, size_usd, leverage, stop_loss_pct, take_profit_pct, source, reason, follow_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+    [crypto.randomUUID(), account.id, g.id, coin, side, size, lev, sl, tp, source === 'agent' ? 'agent' : 'user', reason ? String(reason).slice(0, 500) : null, followId],
   );
   return presentIntent(rows[0]);
 }
@@ -442,6 +442,6 @@ async function cancel(account, id) {
 }
 
 module.exports = {
-  AGENT_NAME, MAX_DAYS, AutoRefused, status, checkLimits, grantValidUntil, grant, revoke, queue, execute, tick, overview, cancel,
+  AGENT_NAME, MAX_DAYS, MIN_ORDER_USD, AutoRefused, whyOff, activeGrant, presentIntent, status, checkLimits, grantValidUntil, grant, revoke, queue, execute, tick, overview, cancel,
   setSignerForTests, _resetNonce: () => { lastNonce = 0; },
 };
