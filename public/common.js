@@ -277,6 +277,14 @@
     if (btn) btn.addEventListener('click', () => signIn());
     const head = $('hdr-connect');
     if (head) head.addEventListener('click', headerConnect);
+    // The phone tab bar: the page you're on, and Account opens the same menu as the header's button.
+    const tabs = document.querySelector('.tabbar');
+    if (tabs) {
+      const here = location.pathname;
+      for (const a of tabs.querySelectorAll('a[data-tab]')) if (here === a.dataset.tab || here.startsWith(a.dataset.tab + '/')) a.setAttribute('aria-current', 'page');
+      const acct = $('tab-account');
+      if (acct && head) acct.addEventListener('click', e => { e.stopPropagation(); window.scrollTo({ top: 0 }); headerConnect(); });
+    }
     document.addEventListener('click', e => { const m = $('hdr-menu'); if (m && !m.hidden && !e.target.closest('.bar .acct')) closeMenu(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
     render();
