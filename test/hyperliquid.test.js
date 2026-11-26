@@ -191,7 +191,7 @@ test('info reads: markets, an account, approvals, and what happens when a part f
 
   const ap = await markets.approvals(user);
   assert.deepEqual(ap.agents, [{ name: 'rektbull-web', address: '0x' + 'aa'.repeat(20), valid_until: 1797459741057 }]);
-  assert.deepEqual(ap.builder_fee, { set: true, builder: '0x' + 'b1'.repeat(20), approved_tenths_bps: 10, needed_tenths_bps: 10, approved: true, proposal_tenths_bps: 50, proposal_approved: false }, 'the 0.01% fee is approved; the 0.05% proposal fee isn\'t yet');
+  assert.deepEqual(ap.builder_fee, { set: true, builder: '0x' + 'b1'.repeat(20), approved_tenths_bps: 10, needed_tenths_bps: 10, approved: true, proposal_tenths_bps: 50, proposal_approved: false, auto_tenths_bps: 100, auto_approved: false }, 'the 0.01% fee is approved; the 0.05% proposal fee and the fees on trades RektBull decides (up to 0.10%) aren\'t yet');
 });
 
 test('the weight budget: reads are refused before Hyperliquid would block the server', async () => {

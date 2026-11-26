@@ -13,6 +13,9 @@ const ADMIN = '0x' + 'ad'.repeat(20);
 Object.assign(process.env, { JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', ADMIN_WALLETS: ADMIN, PUBLIC_URL: 'https://rektbull.test', INDEXNOW_KEY: '0123456789abcdef0123456789abcdef', ...(DB ? { DATABASE_URL: DB } : {}) });
 
 require('../src/providers/llama').protocols = async () => []; // no network; protocol records are tested in dappPages.test.js
+// No network for the Research page's At a glance either: its hack figures come from DefiLlama, and a slow answer
+// (over its 1.5-second budget) left the block out and failed this test on CI.
+require('../src/providers/llama').hackList = async () => [];
 
 test('digest pages, the sitemap and llms.txt from the published weeks', { skip: !DB && 'set TEST_DATABASE_URL' }, async t => {
   const db = require('../src/config/db');

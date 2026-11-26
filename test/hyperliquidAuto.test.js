@@ -74,7 +74,7 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   // The stand-in Hyperliquid.
   const sent = [];
   let positions = [];
-  let builderApproved = 10;
+  let builderApproved = 10; // the user's own rate, approved
   let meta = fixture('metaAndAssetCtxs');
   let fill = { totalSz: '0.00764', avgPx: '65400' };
   hl._reset();
@@ -130,7 +130,7 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   assert.equal(entry.action.orders[0].r, false);
   const px = Number(entry.action.orders[0].p);
   assert.ok(px > 65365 && px <= 65365 * 1.005 + 1, `within 0.5% of the mark: ${px}`);
-  assert.deepEqual(entry.action.builder, { b: env.hlBuilderAddress, f: 10 });
+  assert.deepEqual(entry.action.builder, { b: env.hlBuilderAddress, f: 10 }, 'an order the user queued carries their own 0.01%: they decided it, RektBull only sends it');
   assert.equal(exits.action.orders[0].r, true, 'the stop is reduce-only');
   assert.equal(exits.action.orders[0].t.trigger.tpsl, 'sl');
   assert.ok(Number(exits.action.orders[0].t.trigger.triggerPx) < 65400);
@@ -162,7 +162,8 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   await q({ coin: 'ETH', side: 'long', size_usd: 100, leverage: 1 });
   await auto.tick();
   ov = (await call('GET', '/v1/hyperliquid/auto')).body;
-  assert.match(ov.intents[0].error, /fee isn't approved/);
+  assert.match(ov.intents[0].error, /RektBull's 0\.01% fee isn't approved on this account/);
+  assert.deepEqual([ov.fee.own_orders_rate, ov.fee.decided.open_rate, ov.fee.decided.profit_close_rate, ov.fee.decided.loss_close_rate], ['0.01%', '0.05%', '0.1%', '0%'], 'the page is told every rate');
   builderApproved = 10;
 
   // A cross-margin position already open: not touched.
@@ -178,7 +179,48 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   await auto.tick();
   const close = sent[n1];
   assert.equal(close.action.orders[0].r, true); assert.equal(close.action.orders[0].b, false); assert.equal(close.action.orders[0].s, '0.1');
+  assert.deepEqual(close.action.builder, { b: env.hlBuilderAddress, f: 10 }, 'a close the user queued: their own rate');
   positions = [];
+
+  // Trades RektBull decides (the AI's, copy trading's: source 'agent'), the owner's call of 26 November 2026:
+  // 0.05% to open, 0.10% to close at a profit, nothing at a loss.
+  const agentQ = input => auto.queue({ id: acct.id, wallet }, input, { source: 'agent', reason: 'test' });
+  const BRACKET = { coin: 'BTC', side: 'long', size_usd: 100, leverage: 2, stop_loss_pct: 5, take_profit_pct: 10 };
+  // The whole schedule must be approved first: the user's own 0.01% isn't enough.
+  await agentQ(BRACKET);
+  await auto.tick();
+  ov = (await call('GET', '/v1/hyperliquid/auto')).body;
+  assert.match(ov.intents[0].error, /RektBull's fees on the trades it decides \(0\.05% to open, 0\.1% to close at a profit\) aren't approved/);
+  builderApproved = 100;
+  fill = { totalSz: '0.0015', avgPx: '65400' }; // about $98, within the day's limit
+  const n3 = sent.length;
+  await agentQ(BRACKET);
+  await auto.tick();
+  const [, open2, sl2, tp2] = sent.slice(n3);
+  assert.deepEqual(open2.action.builder, { b: env.hlBuilderAddress, f: 50 }, 'opening: 0.05%');
+  assert.equal(sl2.action.orders[0].t.trigger.tpsl, 'sl');
+  assert.equal(sl2.action.builder, undefined, 'its stop-loss closes at a loss: nothing');
+  assert.equal(tp2.action.orders[0].t.trigger.tpsl, 'tp');
+  assert.deepEqual(tp2.action.builder, { b: env.hlBuilderAddress, f: 100 }, 'its take-profit closes at a profit: 0.10%');
+  const { rows: [rebate] } = await db.query(`SELECT fee_usd::float AS fee FROM reward_points WHERE source = 'perps_auto' ORDER BY id DESC LIMIT 1`);
+  assert.equal(Math.round(rebate.fee * 1e6), Math.round(0.0015 * 65400 * 0.0005 * 1e6), 'Points at the rate charged');
+  // Closing a trade RektBull decided: by Hyperliquid's own unrealized profit and loss when the close is sent.
+  const btc = pnl => [{ type: 'oneWay', position: { coin: 'BTC', szi: '0.0015', entryPx: '65000', positionValue: '98', unrealizedPnl: pnl, liquidationPx: null, marginUsed: '49', leverage: { type: 'isolated', value: 2 }, maxLeverage: 40, cumFunding: { sinceOpen: '0' } } }];
+  positions = btc('12');
+  await agentQ({ coin: 'BTC', side: 'close' });
+  await auto.tick();
+  assert.deepEqual(sent.at(-1).action.builder, { b: env.hlBuilderAddress, f: 100 }, 'at a profit: 0.10%');
+  positions = btc('-4');
+  await agentQ({ coin: 'BTC', side: 'close' });
+  await auto.tick();
+  assert.equal(sent.at(-1).action.orders[0].r, true);
+  assert.equal(sent.at(-1).action.builder, undefined, 'at a loss: nothing');
+  positions = btc('12');
+  builderApproved = 50;
+  await agentQ({ coin: 'BTC', side: 'close' });
+  await auto.tick();
+  assert.deepEqual(sent.at(-1).action.builder, { b: env.hlBuilderAddress, f: 50 }, 'never more than the account has approved');
+  positions = []; builderApproved = 10; fill = { totalSz: '0.00764', avgPx: '65400' };
 
   // Region blocks stop opening, never closing.
   const regions = require('../src/compliance/regions');
