@@ -160,6 +160,14 @@ const env = {
   // mark price an automatic order may fill, in basis points (also the most mark and oracle may differ).
   hlAutoMaxLeverage: Math.min(50, Math.max(1, int(process.env.HL_AUTO_MAX_LEVERAGE, 10))),
   hlAutoPriceBandBps: Math.min(500, Math.max(5, int(process.env.HL_AUTO_PRICE_BAND_BPS, 50))),
+  // Copy trading (src/hyperliquid/copy.js): off until switched on, and needs automatic trading on too. Each watched
+  // trader's positions are read every HL_COPY_POLL_MS (clearinghouseState, weight 2); at most HL_COPY_MAX_LEADERS
+  // traders are watched (docs/COST_LIMITS.md). A copy isn't opened once the price has moved HL_COPY_MAX_DRIFT_BPS
+  // against the follower since the trader's entry.
+  hlCopyEnabled: process.env.HL_COPY_ENABLED === 'true',
+  hlCopyPollMs: Math.max(5000, int(process.env.HL_COPY_POLL_MS, 15000)),
+  hlCopyMaxLeaders: Math.min(200, Math.max(1, int(process.env.HL_COPY_MAX_LEADERS, 30))),
+  hlCopyMaxDriftBps: Math.min(1000, Math.max(5, int(process.env.HL_COPY_MAX_DRIFT_BPS, 100))),
 
   // Claim fees: the share of claimed airdrops and rewards sent to RektBull, in a
   // transfer the user signs next to the claim (receive-only wallet; unset = no fee).

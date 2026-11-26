@@ -1,7 +1,7 @@
 /**
  * The Perps page (Hyperliquid) in a real Chromium: sign in, approve a
  * trading key made in the browser, place an order signed by that key, then
- * turn automatic trading on with limits and stop it. The wallet is a
+ * turn automatic trading on with limits, copy a trader, and stop both. The wallet is a
  * stand-in that signs with a test key; Hyperliquid is a stand-in that
  * records what it's sent, with market data recorded from its info API
  * (test/fixtures/hyperliquid). Needs a database:
@@ -21,7 +21,7 @@ const agentKey = ethers.Wallet.createRandom();
 const BUILDER = '0x' + 'b1'.repeat(20);
 Object.assign(process.env, {
   DATABASE_URL: DB, JWT_SECRET: 'test', NEW_WALLET_CHECK_CHAINS: '', HL_ENABLED: 'true', HL_NETWORK: 'testnet',
-  HL_AUTO_ENABLED: 'true', HL_AGENT_ADDRESS: agentKey.address, HL_BUILDER_ADDRESS: BUILDER, HL_BUILDER_FEE_TENTHS_BPS: '10',
+  HL_AUTO_ENABLED: 'true', HL_COPY_ENABLED: 'true', HL_AGENT_ADDRESS: agentKey.address, HL_BUILDER_ADDRESS: BUILDER, HL_BUILDER_FEE_TENTHS_BPS: '10',
 });
 const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'hyperliquid', `${name}.json`), 'utf8'));
 
@@ -56,6 +56,7 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     return {
       metaAndAssetCtxs: fixture('metaAndAssetCtxs'), clearinghouseState: fixture('clearinghouseState'), frontendOpenOrders: fixture('frontendOpenOrders'),
       extraAgents: agents, maxBuilderFee: feeApproved, candleSnapshot: [],
+      portfolio: [['perpMonth', { accountValueHistory: [], pnlHistory: [[1, '0.0'], [2, '1234.5']], vlm: '50000' }]],
     }[body.type];
   });
 
@@ -190,6 +191,27 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
     assert.match(grant.action.agentName, /^rektbull-auto valid_until \d+$/);
     if (process.argv[2]) await page.screenshot({ path: process.argv[2], fullPage: true });
     console.log('✔ automatic trading approved with limits');
+
+    // Copy a trader: look them up, then start; the wallet approves RektBull's fees on the trades it decides first.
+    const trader = '0x' + '5a'.repeat(20);
+    await page.locator('#copy-card').waitFor();
+    assert.match(await page.textContent('#copy-rb'), /not onchain/);
+    assert.match(await page.textContent('#copy-fee'), /0\.05% of what fills to open, 0\.1% to close at a profit, nothing at a loss/);
+    await page.fill('#c-leader', trader);
+    await page.click('#c-look');
+    await page.locator('#c-profile', { hasText: 'Account value' }).waitFor();
+    assert.match(await page.textContent('#c-profile'), /month: \$1,234\.5/);
+    await page.fill('#c-trade', '50');
+    await page.fill('#c-lev', '2');
+    await page.fill('#c-sl', '5');
+    await page.click('#c-start');
+    await page.locator('#copy-msg', { hasText: 'Copying' }).waitFor();
+    assert.equal(sent.filter(s => s.action.type === 'approveBuilderFee').at(-1).action.maxFeeRate, '0.1%', 'the approval is for the most a copy may carry');
+    assert.match(await page.textContent('#copy-follows'), /\$50 a copy, up to 2x, stop 5%/);
+    page.once('dialog', d => d.accept());
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
+    await page.locator('#copy-msg', { hasText: 'Stopped' }).waitFor();
+    console.log('✔ a trader copied, with the fee approval first, and stopped');
 
     // Stop: RektBull stops, and the wallet signs a replacement so Hyperliquid drops the agent.
     await page.click('#auto-revoke');

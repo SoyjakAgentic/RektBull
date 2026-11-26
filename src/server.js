@@ -76,6 +76,7 @@ async function main() {
       await require('./trade/memeOrders').tick(); // orders on BNB Chain and Base, through the Meme Router (off until it's deployed)
       await require('./trade/autonomous').tick(); // send and confirm automatic trades
       await require('./yield/auto').tick(); // automatic yield rebalancing (does nothing unless YIELD_AUTO_ENABLED)
+      await require('./hyperliquid/copy').tick(); // copy trading: read followed traders, queue their copies (does nothing unless HL_COPY_ENABLED)
       await require('./hyperliquid/auto').tick(); // automatic perps orders (does nothing unless HL_AUTO_ENABLED)
     }), env.tradeTickMs);
     // Their triggers over WebSocket (trade/memeStream.js): does nothing until its URLs are set and it's switched on in the admin panel.

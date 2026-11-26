@@ -59,6 +59,18 @@ a settings change, not a rebuild, unless noted.
 | Meme Watch insider wallets | 200 a filter, at most 19 filters: 3,800 wallets | As above | As above |
 | `max_amm_pools`: PumpSwap pools followed for the wallet rankings | 200, the most recently graduated first | A position on a coin over the cap is dropped (the Health tab counts them) | `RULES.max_amm_pools` in `services/walletRankings.js` (a code change) |
 
+## Hyperliquid copy trading (`hyperliquid/copy.js`)
+
+Hyperliquid's info API is free, limited to 1,200 request weight a minute per
+IP (RektBull keeps `HL_WEIGHT_PER_MINUTE`, 1,000, for itself). Its WebSocket
+allows only 10 users per IP, so followed traders are read over REST.
+
+| Limit | Default | What it costs users | To lift |
+|---|---|---|---|
+| Traders watched in all | 30 (`HL_COPY_MAX_LEADERS`): 30 × 4 reads a minute × weight 2 = 240 weight a minute | A new trader can't be followed once 30 are watched; traders others already copy still can | Raise it, or read from a second IP |
+| How often a trader is read | Every 15 seconds (`HL_COPY_POLL_MS`) | Copies are placed about 15 to 30 seconds after the trader's trade | Lower it: the weight grows with it |
+| Traders per account | 3 (`MAX_FOLLOWS` in `copy.js`, a code change) | | |
+
 ## Other costs held down
 
 - **Wallet rankings' open positions** are kept in the streaming process's

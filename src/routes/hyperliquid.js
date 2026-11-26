@@ -18,6 +18,8 @@ const regions = require('../compliance/regions');
 const auto = require('../hyperliquid/auto');
 const protect = require('../hyperliquid/protect');
 const entries = require('../hyperliquid/entries');
+const copy = require('../hyperliquid/copy');
+const services = require('../admin/services');
 
 const router = express.Router();
 
@@ -27,7 +29,7 @@ const APPS = { mainnet: 'https://app.hyperliquid.xyz', testnet: 'https://app.hyp
 
 const refusal = fn => async (req, res) => {
   try { await fn(req, res); } catch (err) {
-    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked || err instanceof auto.AutoRefused || err instanceof entries.EntryRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
+    if (err instanceof relay.RelayRefused || err instanceof regions.RegionBlocked || err instanceof auto.AutoRefused || err instanceof entries.EntryRefused || err instanceof copy.CopyRefused) return res.status(err.status).json({ error: err.code, message: err.message, ...(err.extra || {}) });
     if (err.isHyperliquid || err.isProviderLimit) return res.status(err.status || 503).json({ error: 'hyperliquid_unavailable', message: err.isProviderLimit ? `Hyperliquid couldn't be reached: ${err.message}.` : err.message });
     throw err;
   }
@@ -183,6 +185,23 @@ router.post('/v1/hyperliquid/auto/intents', requireEvmWallet, require('../admin/
 router.delete('/v1/hyperliquid/auto/intents/:id', requireEvmWallet, refusal(async (req, res) => {
   if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
   res.json(await auto.cancel(req.account, req.params.id));
+}));
+
+/* ── copy trading (hyperliquid/copy.js): automatic trading that follows a trader the user chose ── */
+
+router.get('/v1/hyperliquid/copy', requireEvmWallet, refusal(async (req, res) => res.json(await copy.overview(req.account))));
+
+/** A trader's results and positions, from Hyperliquid's own figures: open to every signed-in wallet, like any read. */
+router.get('/v1/hyperliquid/copy/traders/:address', requireEvmWallet, refusal(async (req, res) => res.json(await copy.traderProfile(req.params.address))));
+
+router.post('/v1/hyperliquid/copy/follows', requireEvmWallet, services.gate('perps'), services.gate('perps_copy'), refusal(async (req, res) => {
+  res.status(201).json(await copy.follow(req.account, req.body || {}, { before: () => regions.refuseIfBlocked(req, 'hyperliquid') }));
+}));
+
+/** Stopping is a way out: never refused by a pause or a region. */
+router.post('/v1/hyperliquid/copy/follows/:id/stop', requireEvmWallet, refusal(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  res.json(await copy.stop(req.account, req.params.id, { close: req.body?.close_positions === true }));
 }));
 
 module.exports = router;

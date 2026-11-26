@@ -381,6 +381,7 @@
     await Promise.all([loadAccount(), loadApprovals()]);
     if (hl.afterSignIn) await hl.afterSignIn();
     if (RB.state.hlAuto) await RB.state.hlAuto.load();
+    if (RB.state.hlCopy) await RB.state.hlCopy.load();
     if (RB.state.hlProtect) await RB.state.hlProtect.load();
     if (RB.state.hlEntries) await RB.state.hlEntries.load();
     showPlan();

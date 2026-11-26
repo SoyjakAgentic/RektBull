@@ -101,6 +101,59 @@ badly within Hyperliquid's rules: it could not withdraw or transfer. That's why
 the key stays in KMS behind the trade service's account, and why the most a
 user can lose is what they keep in that Hyperliquid account.
 
+## Copy trading
+
+A user follows any Hyperliquid trader's address. When the trader opens a
+position, RektBull opens the same side for the user; when the trader closes
+it, RektBull closes the user's copy. Code: `src/hyperliquid/copy.js`, the
+Perps page's "Copy a trader" card. The owner approved it on 26 November 2026,
+under the same exception as automatic trading.
+
+**It runs on automatic trading.** It uses the same agent approval, and the same
+limits enforced by RektBull's trade service, not onchain: per trade, per 24
+hours, leverage and markets. Every copy is an automatic order
+(`hl_auto_intents`, `follow_id` set) and passes every check above before it's
+signed. The most a user can lose is still the margin in their Hyperliquid
+account. It starts **off**: `HL_COPY_ENABLED`, plus automatic trading itself.
+
+| The trader | The follower's copy |
+|---|---|
+| Opens a position in a market they didn't hold, or flips to the other side | Opened at the follower's trade size, up to their leverage cap (never more than the trader's), with their own stop-loss (required) and take-profit (optional) |
+| Closes it (or flips) | Closed, if copying opened it |
+| Adds to it, or reduces it partly | Nothing |
+| Held it before the follow began | Nothing, ever |
+
+- **Not copied, and recorded with why:**
+  - a market where the follower holds a position copying didn't open;
+  - an open once the price has moved more than `HL_COPY_MAX_DRIFT_BPS` (1%)
+    against the follower since the trader's entry (it isn't chased);
+  - anything the automatic-trading limits refuse, such as a market that isn't
+    deep enough.
+- **How the trader is watched.** Their positions are read from Hyperliquid's
+  info API (`clearinghouseState`, weight 2) every `HL_COPY_POLL_MS`
+  (15 seconds). A copy is placed about 15 to 30 seconds after the trader's
+  trade, at the price then. Hyperliquid's WebSocket isn't used: it allows only
+  10 users per IP (api/rate-limits-and-user-limits). A read that fails is
+  never taken as a close: the follower's stop-loss covers the gap.
+- **The fees.** Copies are trades RektBull decides (`source = 'agent'`): 0.05%
+  to open, 0.10% to close at a profit, nothing at a loss (above, "The fees on
+  trades RektBull decides"). Following asks for the 0.10% approval first. The
+  trader being copied is paid nothing and is told nothing.
+- **Stopping** (`POST /v1/hyperliquid/copy/follows/:id/stop`) is never blocked.
+  Open copies stay open with their stop-loss, or are closed too if the user
+  asks: those closes are the user's decision, so they carry the user's own
+  0.01%. When the automatic-trading approval ends, copying stops.
+- **Pausing** "Perps copy trading" (or Perps) in the admin panel stops new
+  copies and new follows. A trader's closes are still copied. The automatic
+  trading emergency stop stops everything, as above.
+- **Region blocks** are checked when the user starts copying.
+- **No vetting.** RektBull doesn't vet traders. The page shows the trader's
+  results from Hyperliquid's `portfolio` figures (perps profit and loss over a
+  day, week, month and all time) and what they hold, with the source, and
+  says past results don't predict future ones.
+- **Limits:** up to 3 traders per account, and at most `HL_COPY_MAX_LEADERS`
+  (30) traders watched in all (docs/COST_LIMITS.md).
+
 ## Protecting positions (proposals, phase 1)
 
 Decided by the owner on 23 November 2026. RektBull checks the positions a user
@@ -301,6 +354,8 @@ the blocks refuse everyone.
 | `HL_AUTO_MAX_LEVERAGE`, `HL_AUTO_PRICE_BAND_BPS` | Leverage cap (10), price band (50 = 0.5%) |
 | `HL_AUTO_MIN_OPEN_INTEREST_USD`, `HL_AUTO_MIN_DAY_VOLUME_USD` | How deep a market must be for automatic opens ($5M each) |
 | `HL_WEIGHT_PER_MINUTE` | RektBull's share of Hyperliquid's 1,200 request weight a minute per IP |
+| `HL_COPY_ENABLED` | Copy trading (also needs automatic trading on) |
+| `HL_COPY_POLL_MS`, `HL_COPY_MAX_LEADERS`, `HL_COPY_MAX_DRIFT_BPS` | How often a followed trader is read (15000), how many traders are watched in all (30), how far the price may have moved against the follower since the trader's entry (100 = 1%) |
 | `GEO_COUNTRY_HEADER`, `GEO_SUBDIVISION_HEADER` | The load balancer's country and region headers, for region blocks |
 
 ## Before switching automatic trading on
@@ -322,6 +377,10 @@ the blocks refuse everyone.
 - `test/hyperliquidAuto.test.js`: grants, limits, the price band, the fee
   check, isolated margin, closing, region blocks, the emergency stop and
   revoking.
+- `test/hlCopy.test.js`: following (the grant, the fee approval, the
+  settings), a trader's results, copying opens and closes with their fees, a
+  failed read never taken as a close, the price limit, the follower's own
+  positions left alone, a flip, pausing, and stopping with and without closing.
 - `test/hlProtect.test.js`: the protection rules, the proposal fee only on a
   live proposal's reduce-only orders, the market alerts and Perps Guard.
 - `test/hlEntries.test.js`: the three entry rules and their brackets; scoring
