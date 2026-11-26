@@ -26,6 +26,11 @@
  * orders must all be reduce-only in its market, or an entry proposal
  * (hyperliquid/entries.js), whose orders must be exactly the ones proposed. A fee approval may be for up to the
  * higher of the two rates; the user's own orders still carry the lower one.
+ * The third is the automatic-order fee (HL_AUTO_FEE_TENTHS_BPS, 0.05%): on the
+ * orders RektBull's agent places for automatic trading (hyperliquid/auto.js),
+ * accepted only when the trade service itself checks them ({ auto: true }),
+ * never from a request the Perps page sends. A fee approval may be for up to
+ * the highest of the three rates.
  */
 const env = require('../config/env');
 const hl = require('../providers/hyperliquid');
@@ -66,16 +71,18 @@ function checkOrder(o, i) {
 /** RektBull's builder code: { b: address, f: tenths of a basis point }, or null when no address is set. */
 const builder = () => (env.hlBuilderAddress && env.hlBuilderFeeTenthsBps > 0 ? { b: env.hlBuilderAddress, f: env.hlBuilderFeeTenthsBps } : null);
 
-/** The most a fee approval may be for: RektBull's fee, or its proposal fee when that's higher. */
-const maxApproval = () => { const ours = builder(); return ours ? Math.max(ours.f, env.hlProposalFeeTenthsBps) : 0; };
+/** The most a fee approval may be for: the highest of RektBull's fee, its proposal fee and its automatic-order fee. */
+const maxApproval = () => { const ours = builder(); return ours ? Math.max(ours.f, env.hlProposalFeeTenthsBps, env.hlAutoFeeTenthsBps) : 0; };
+/** The fee on RektBull's automatic orders, as a builder field, or null when no builder address is set. */
+const autoBuilder = () => { const ours = builder(); return ours ? { b: ours.b, f: Math.max(ours.f, env.hlAutoFeeTenthsBps) } : null; };
 
-function checkBuilder(action, opens, proposal) {
+function checkBuilder(action, opens, proposal, auto = false) {
   const ours = builder();
   const b = action.builder;
   if (b !== undefined) {
     if (!b || typeof b !== 'object' || !isAddr(b.b) || !Number.isInteger(b.f)) bad('builder must be { b: address, f: tenths of a basis point }');
     if (!ours || b.b.toLowerCase() !== ours.b) throw new RelayRefused('This order names a builder that isn\'t RektBull\'s. RektBull only relays orders that pay its own builder address, or none.', 422, 'wrong_builder');
-    if (b.f !== ours.f) {
+    if (b.f !== ours.f && !(auto && b.f === autoBuilder().f)) { // the automatic-order fee: only on the trade service's own orders
       // The proposal fee: on a live protection proposal's reduce-only orders in its market, or on exactly the orders
       // of a live entry proposal (hyperliquid/entries.js), nothing changed but the client order ids.
       // Compared with keys sorted: the proposal's orders come back from Postgres JSONB with its own key order.
@@ -100,7 +107,7 @@ function checkBuilder(action, opens, proposal) {
  * opens: it can open or add to a position (an order that isn't reduce-only).
  * approves: it approves an agent or a builder fee.
  */
-function check(body, { wallet, now = Date.now(), proposal = null }) {
+function check(body, { wallet, now = Date.now(), proposal = null, auto = false }) {
   const { action, nonce, signature } = body || {};
   if (!action || typeof action !== 'object' || typeof action.type !== 'string') bad('action is missing');
   if (!Number.isSafeInteger(nonce)) bad('nonce must be the time in milliseconds');
@@ -126,7 +133,7 @@ function check(body, { wallet, now = Date.now(), proposal = null }) {
       if (!ours) throw new RelayRefused('RektBull has no builder address set, so there is no fee to approve.', 422, 'no_builder');
       if (action.builder.toLowerCase() !== ours.b) throw new RelayRefused('RektBull only relays a fee approval for its own builder address.', 422, 'wrong_builder');
       // At most RektBull's rate (its proposal fee, when that's higher): never an approval for more. "0%" takes the approval away.
-      if (Number(action.maxFeeRate.slice(0, -1)) * 1000 > maxApproval() + 1e-9) throw new RelayRefused(`RektBull's fee is ${H.feeRate(ours.f)}${maxApproval() > ours.f ? ` (${H.feeRate(maxApproval())} on orders from its proposals)` : ''}: it won't relay an approval for more (${action.maxFeeRate}).`, 422, 'fee_too_high');
+      if (Number(action.maxFeeRate.slice(0, -1)) * 1000 > maxApproval() + 1e-9) throw new RelayRefused(`RektBull's fee is ${H.feeRate(ours.f)}${maxApproval() > ours.f ? ` (${H.feeRate(maxApproval())} on its proposals' and automatic orders)` : ''}: it won't relay an approval for more (${action.maxFeeRate}).`, 422, 'fee_too_high');
     }
     let signer;
     try { signer = H.recoverUser(action, payload.signature); } catch { bad('the signature couldn\'t be read'); }
@@ -148,7 +155,7 @@ function check(body, { wallet, now = Date.now(), proposal = null }) {
     if (!['na', 'normalTpsl', 'positionTpsl'].includes(action.grouping)) bad('grouping must be na, normalTpsl or positionTpsl');
     action.orders.forEach(checkOrder);
     opens = action.orders.some(o => !o.r);
-    checkBuilder(action, opens, proposal);
+    checkBuilder(action, opens, proposal, auto);
   } else if (action.type === 'cancel') {
     only(action, ['type', 'cancels'], 'the cancel action');
     if (!Array.isArray(action.cancels) || !action.cancels.length || action.cancels.length > MAX_ORDERS || action.cancels.some(c => !Number.isInteger(c?.a) || !Number.isSafeInteger(c?.o))) bad('cancels must hold 1 to 20 { a, o } pairs');
@@ -187,4 +194,4 @@ async function send(body, ctx) {
   return { ok: true, type: checked.type, results: summarize(answer), hyperliquid: answer, source: 'Hyperliquid\'s exchange API' };
 }
 
-module.exports = { check, send, summarize, builder, maxApproval, RelayRefused, L1, USER };
+module.exports = { autoBuilder, check, send, summarize, builder, maxApproval, RelayRefused, L1, USER };

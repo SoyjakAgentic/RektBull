@@ -11,7 +11,8 @@
   takes the fee (`HL_BUILDER_FEE_TENTHS_BPS`, 0.01% by default) from fills
   only; a fix from a RektBull proposal (a reduce-only stop-loss or reduction,
   docs/HYPERLIQUID.md) carries `HL_PROPOSAL_FEE_TENTHS_BPS` (0.05%) instead,
-  accepted by the relay only on a live proposal's orders. That is a capped fee-on-fill permission, not a token approval and not
+  accepted by the relay only on a live proposal's orders, and an order RektBull's agent places for automatic trading
+  carries `HL_AUTO_FEE_TENTHS_BPS` (0.05%), accepted only from the trade service itself. That is a capped fee-on-fill permission, not a token approval and not
   a recurring pull: nothing is taken unless an order the user or their agent
   placed fills. A Polymarket builder code works the same way
   (docs/POLYMARKET.md): `POLYMARKET_BUILDER_CODE` is signed into every order the

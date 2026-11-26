@@ -123,11 +123,18 @@ test('the fee: only RektBull\'s builder address, at RektBull\'s rate, and nothin
     assert.equal(env.hlProposalFeeTenthsBps, 50);
     assert.deepEqual([cfg.proposal_fee_tenths_bps, cfg.proposal_fee_rate], [50, '0.05%']);
     assert.equal(relay.check(await feeApproval(BUILDER, 50), ctx).type, 'approveBuilderFee', 'up to the proposal fee may be approved');
-    refused(() => relay.check(more, ctx), 'fee_too_high', /0\.01% \(0\.05% on orders from its proposals\): it won't relay an approval for more \(0\.1%\)/);
+    refused(() => relay.check(more, ctx), 'fee_too_high', /0\.01% \(0\.05% on its proposals' and automatic orders\): it won't relay an approval for more \(0\.1%\)/);
     const proposal = { id: 'p1', asset: 0, fee_tenths_bps: 50 };
     const closeAt50 = H.orderAction([order({ isBuy: false, reduceOnly: true })], { builder: { b: BUILDER, f: 50 } });
     refused(() => relay.check({ action: closeAt50, nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'wrong_fee', /isn't RektBull's \(0\.01%\)\.$/, 'without a proposal, 0.05% is refused');
     assert.deepEqual(relay.check(await l1(closeAt50), { ...ctx, proposal }).payload.action.builder, { b: BUILDER, f: 50 }, 'a proposal\'s reduce-only order carries its fee');
+    // The automatic-order fee (0.05% by default): only on the trade service's own orders ({ auto: true }), never from the page.
+    assert.equal(env.hlAutoFeeTenthsBps, 50);
+    const openAt50 = H.orderAction([order({ isBuy: true, reduceOnly: false })], { builder: { b: BUILDER, f: 50 } });
+    refused(() => relay.check({ action: openAt50, nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, ctx), 'wrong_fee', /isn't RektBull's \(0\.01%\)\.$/, 'from the page, an opening order at 0.05% is refused');
+    assert.deepEqual(relay.check(await l1(openAt50), { ...ctx, auto: true }).payload.action.builder, { b: BUILDER, f: 50 }, 'the trade service\'s automatic order carries it');
+    const openAt70 = H.orderAction([order({ isBuy: true, reduceOnly: false })], { builder: { b: BUILDER, f: 70 } });
+    refused(() => relay.check({ action: openAt70, nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, { ...ctx, auto: true }), 'wrong_fee', /isn't RektBull's/, 'even automatic orders carry exactly the automatic-order fee');
     const opensAt50 = H.orderAction([order()], { builder: { b: BUILDER, f: 50 } });
     refused(() => relay.check({ action: opensAt50, nonce: Date.now(), signature: { r: '0x1', s: '0x2', v: 27 } }, { ...ctx, proposal }), 'wrong_fee', /only for its own reduce-only orders, in its market/, 'never on an order that opens');
     const otherMarket = H.orderAction([order({ asset: 3, isBuy: false, reduceOnly: true })], { builder: { b: BUILDER, f: 50 } });

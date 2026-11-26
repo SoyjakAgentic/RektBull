@@ -121,7 +121,9 @@ async function approvals(user, { ms = 5000 } = {}) {
   else if (fee.ok) {
     const approved = Number(fee.value) || 0;
     const proposal = Math.max(env.hlProposalFeeTenthsBps, env.hlBuilderFeeTenthsBps);
-    out.builder_fee = { set: true, builder, approved_tenths_bps: approved, needed_tenths_bps: env.hlBuilderFeeTenthsBps, approved: approved >= env.hlBuilderFeeTenthsBps, proposal_tenths_bps: proposal, proposal_approved: approved >= proposal };
+    const auto = Math.max(env.hlAutoFeeTenthsBps, env.hlBuilderFeeTenthsBps);
+    out.builder_fee = { set: true, builder, approved_tenths_bps: approved, needed_tenths_bps: env.hlBuilderFeeTenthsBps, approved: approved >= env.hlBuilderFeeTenthsBps, proposal_tenths_bps: proposal, proposal_approved: approved >= proposal,
+      auto_tenths_bps: auto, auto_approved: approved >= auto };
   }
   else out.builder_fee = { set: true, builder, error: `The builder fee approval couldn't be read: ${fee.error}` };
   return out;

@@ -140,6 +140,9 @@ const env = {
   // The fee on an order from a RektBull proposal (hyperliquid/protect.js), 0.05% by default: the owner, 23 November 2026.
   // Only an order matching a live proposal may carry it (hyperliquid/relay.js); the user's own orders carry the fee above.
   hlProposalFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_PROPOSAL_FEE_TENTHS_BPS, 50))),
+  // The fee on RektBull's automatic orders (hyperliquid/auto.js), 0.05% by default: the AI places them, so they carry
+  // more than the user's own orders (HL_BUILDER_FEE_TENTHS_BPS). The relay accepts it only from the trade service.
+  hlAutoFeeTenthsBps: Math.min(100, Math.max(0, int(process.env.HL_AUTO_FEE_TENTHS_BPS, 50))),
   // Automatic trading only opens positions in markets at least this deep (both must hold).
   hlAutoMinOpenInterestUsd: int(process.env.HL_AUTO_MIN_OPEN_INTEREST_USD, 5000000),
   hlAutoMinDayVolumeUsd: int(process.env.HL_AUTO_MIN_DAY_VOLUME_USD, 5000000),

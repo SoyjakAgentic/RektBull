@@ -128,6 +128,22 @@ positions" card):
   names its source. If the candles or open orders can't be read, the proposal
   says so. With open orders unread, it doesn't propose a second stop-loss.
 
+**The automatic-order fee** (the owner, 26 November 2026). An order RektBull's
+agent places for automatic trading carries `HL_AUTO_FEE_TENTHS_BPS` (50 = 0.05%),
+instead of the 0.01% on the user's own orders.
+- **Why:** the AI places these orders, which is the service the fee pays for.
+  Users' own orders stay at 0.01% to compete with manual terminals.
+- **The approval:** the user's wallet approves it once, as the most RektBull
+  may charge per fill, when automatic trading is switched on (the Automatic
+  trading section asks for it before the agent).
+  - An automatic order doesn't open without it, and says why.
+  - A close carries it only where it's approved: a position can always be
+    closed.
+- **Where it may be carried:** the relay accepts it only on the trade
+  service's own orders (`relay.check(…, { auto: true })`). A request from the
+  Perps page can't carry it, whatever it's signed with.
+- **Points:** automatic fills earn their rebate at this rate.
+
 **The proposal fee.** An order from a proposal carries RektBull's proposal fee,
 `HL_PROPOSAL_FEE_TENTHS_BPS` (50 = 0.05%), instead of the 0.01% on the user's
 own orders. Hyperliquid sets the builder fee per order, so this needs no
@@ -262,6 +278,7 @@ the blocks refuse everyone.
 | `HL_NETWORK` | `mainnet` or `testnet` |
 | `HL_BUILDER_ADDRESS`, `HL_BUILDER_FEE_TENTHS_BPS` | The fee (PAYMENTS.md) |
 | `HL_PROPOSAL_FEE_TENTHS_BPS` | The fee on an order from a RektBull proposal (50 = 0.05%) |
+| `HL_AUTO_FEE_TENTHS_BPS` | The fee on an order RektBull's agent places for automatic trading (50 = 0.05%) |
 | `HL_AUTO_ENABLED` | Automatic trading |
 | `HL_AGENT_ADDRESS`, `KMS_HL_AGENT_KEY_VERSION` | RektBull's agent: public address, and its KMS key (trade service only) |
 | `HL_AUTO_MAX_LEVERAGE`, `HL_AUTO_PRICE_BAND_BPS` | Leverage cap (10), price band (50 = 0.5%) |

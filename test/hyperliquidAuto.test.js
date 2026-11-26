@@ -74,7 +74,7 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   // The stand-in Hyperliquid.
   const sent = [];
   let positions = [];
-  let builderApproved = 10;
+  let builderApproved = 50; // approved with the grant: the automatic-order fee, 0.05%
   let meta = fixture('metaAndAssetCtxs');
   let fill = { totalSz: '0.00764', avgPx: '65400' };
   hl._reset();
@@ -130,7 +130,7 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   assert.equal(entry.action.orders[0].r, false);
   const px = Number(entry.action.orders[0].p);
   assert.ok(px > 65365 && px <= 65365 * 1.005 + 1, `within 0.5% of the mark: ${px}`);
-  assert.deepEqual(entry.action.builder, { b: env.hlBuilderAddress, f: 10 });
+  assert.deepEqual(entry.action.builder, { b: env.hlBuilderAddress, f: 50 }, 'an automatic order carries the automatic-order fee (0.05%), not the 0.01% on the user\'s own');
   assert.equal(exits.action.orders[0].r, true, 'the stop is reduce-only');
   assert.equal(exits.action.orders[0].t.trigger.tpsl, 'sl');
   assert.ok(Number(exits.action.orders[0].t.trigger.triggerPx) < 65400);
@@ -157,13 +157,14 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   assert.match(ov.intents.find(i => i.id === sol.body.id).error, /more than 0.5% apart/);
   meta = fixture('metaAndAssetCtxs');
 
-  // The fee must be approved before an automatic open.
-  builderApproved = 0;
+  // The automatic-order fee must be approved before an automatic open: the user's own 0.01% isn't enough.
+  builderApproved = 10;
   await q({ coin: 'ETH', side: 'long', size_usd: 100, leverage: 1 });
   await auto.tick();
   ov = (await call('GET', '/v1/hyperliquid/auto')).body;
-  assert.match(ov.intents[0].error, /fee isn't approved/);
-  builderApproved = 10;
+  assert.match(ov.intents[0].error, /RektBull's 0\.05% fee on automatic orders isn't approved on this account\. Approve it in the Automatic trading section/);
+  assert.deepEqual([ov.fee.rate, ov.fee.own_orders_rate], ['0.05%', '0.01%'], 'the page is told both rates');
+  builderApproved = 50;
 
   // A cross-margin position already open: not touched.
   positions = [{ type: 'oneWay', position: { coin: 'ETH', szi: '0.1', entryPx: '1800', positionValue: '183', unrealizedPnl: '3', liquidationPx: null, marginUsed: '183', leverage: { type: 'cross', value: 1 }, maxLeverage: 25, cumFunding: { sinceOpen: '0' } } }];

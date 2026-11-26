@@ -47,6 +47,13 @@
       const markets = $('a-markets').value.split(/[\s,]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
       const limits = { max_trade_usd: Number($('a-trade').value), max_day_usd: Number($('a-day').value), max_leverage: Number($('a-lev').value), markets: markets.length ? markets : null };
       const days = Math.min(Math.max(Math.floor(Number($('a-days').value)) || 30, 1), st.max_days);
+      // The fee on automatic orders (0.05% by default), approved first as the most RektBull may charge per fill.
+      if (st.fee && !hl().approvals?.builder_fee?.auto_approved) {
+        say('auto-msg', `Your wallet will show the fee approval first: at most ${st.fee.rate} of each fill, to RektBull's builder address. Automatic orders carry ${st.fee.rate}; your own orders still carry ${st.fee.own_orders_rate}.`);
+        const fee = await hl().walletSign(chainId => H.approveBuilderFeeAction({ mainnet: hl().config.network === 'mainnet', signatureChainId: chainId, builder: st.fee.builder, tenthsBps: st.fee.tenths_bps, nonce: hl().nonce() }));
+        await api('POST', '/v1/hyperliquid/exchange', fee);
+        await hl().loadApprovals();
+      }
       say('auto-msg', 'Your wallet will show the approval: RektBull\'s agent, which can trade on Hyperliquid and can\'t withdraw.');
       const approval = await hl().walletSign(chainId => H.approveAgentAction({ mainnet: hl().config.network === 'mainnet', signatureChainId: chainId, agentAddress: st.agent_address, name: st.agent_name, validUntilMs: Date.now() + days * 86400000 - 10 * 60000, nonce: Date.now() }));
       await api('POST', '/v1/hyperliquid/auto/grant', { approval, limits });
