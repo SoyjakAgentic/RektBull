@@ -106,6 +106,7 @@ test('through the app: proposals saved, the proposal fee only on their orders, m
   t.after(() => db.getPool().end());
   require('../src/admin/settings').reset();
   await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
+  await require('../src/compliance/regions').set('hyperliquid_auto', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const saved = { address: env.hlBuilderAddress, fee: env.hlBuilderFeeTenthsBps, enabled: env.hlEnabled };
   Object.assign(env, { hlBuilderAddress: BUILDER, hlBuilderFeeTenthsBps: 10, hlEnabled: true });
   t.after(() => Object.assign(env, { hlBuilderAddress: saved.address, hlBuilderFeeTenthsBps: saved.fee, hlEnabled: saved.enabled }));

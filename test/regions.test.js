@@ -85,7 +85,10 @@ test('the admin\'s list: country and region codes, de-duplicated and sorted', ()
   try {
     const list = withSettings({}, () => regions.adminList(req()));
     assert.match(list.note, /blocked for everyone/, 'the panel warns when no country header is set');
-    assert.deepEqual(list.venues.map(v => v.id), ['hyperliquid', 'polymarket']);
+    assert.deepEqual(list.venues.map(v => v.id), ['hyperliquid', 'hyperliquid_auto', 'polymarket', 'polymarket_auto', 'telegram']);
+    assert.deepEqual(list.venues.find(v => v.id === 'polymarket_auto').venue_list, regions.DEFAULTS.polymarket.countries, 'automatic: the venue\'s own list by default');
+    assert.match(list.venues.find(v => v.id === 'hyperliquid_auto').note, /only check/);
+    assert.deepEqual([list.venues.find(v => v.id === 'telegram').countries, list.venues.find(v => v.id === 'telegram').default_label], [[], 'no blocks']);
   } finally { env.geoCountryHeader = before; }
 });
 
@@ -105,4 +108,42 @@ test('the Hyperliquid relay: a block stops opening and approving, never getting 
   assert.equal(regionMatters(agent(30), now), true, 'a new 30-day key');
   assert.equal(regionMatters(agent(1), now), false, 'the page\'s "end the key": a thrown-away key for a day');
   assert.equal(regionMatters(agent(30, '0x0000000000000000000000000000000000000000'), now), false);
+});
+
+test('automatic trading: the venue\'s own list by default, and it needs both lists; Telegram has no blocks by default', () => {
+  const before = env.geoCountryHeader;
+  env.geoCountryHeader = 'X-Country';
+  try {
+    withSettings({}, () => {
+      // RektBull's servers send automatic orders, so they never go where the venue itself wouldn't take them.
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'GB' }), 'polymarket_auto').blocked, true, 'Polymarket close-only: no automatic entries');
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid_auto').blocked, true);
+      assert.match(regions.blockedFor(req({ 'X-Country': 'US' }), 'hyperliquid_auto').reason, /Automatic Hyperliquid trading \(RektBull trading for you\) isn't offered in your country \(US\)\. You can still stop automatic trading/);
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'US' }), 'telegram').blocked, false, 'Telegram: nothing by default');
+      assert.equal(regions.blockedFor(req(), 'telegram').blocked, false, 'not even an unknown country');
+    });
+    // The manual list cleared by an admin: automatic trading still follows its own list.
+    withSettings({ 'regions:polymarket': { countries: [] } }, () => {
+      assert.doesNotThrow(() => regions.refuseIfBlocked(req({ 'X-Country': 'GB' }), 'polymarket'));
+      assert.throws(() => regions.refuseAutoIfBlocked(req({ 'X-Country': 'GB' }), 'polymarket'), e => e instanceof regions.RegionBlocked);
+    });
+    // And the other way: an automatic list cleared still needs the manual one.
+    withSettings({ 'regions:hyperliquid_auto': { countries: [] } }, () => {
+      assert.throws(() => regions.refuseAutoIfBlocked(req({ 'X-Country': 'US' }), 'hyperliquid'), /Hyperliquid perps trading isn't offered/);
+      assert.equal(regions.refuseAutoIfBlocked(req({ 'X-Country': 'DE' }), 'hyperliquid').blocked, false);
+    });
+    withSettings({ 'regions:telegram': { countries: ['KP'] } }, () => {
+      assert.equal(regions.blockedFor(req({ 'X-Country': 'KP' }), 'telegram').blocked, true, 'an admin can set Telegram blocks');
+    });
+    // A place recorded earlier, for orders sent with no request to read.
+    withSettings({}, () => {
+      assert.match(regions.placeBlocked('GB', ['polymarket', 'polymarket_auto']), /isn't offered in GB/);
+      assert.equal(regions.placeBlocked('PT', ['polymarket', 'polymarket_auto']), null);
+      assert.match(regions.placeBlocked('CA-ON', ['hyperliquid', 'hyperliquid_auto']), /isn't offered in CA-ON/);
+      assert.match(regions.placeBlocked('CA', ['hyperliquid']), /parts of CA, and the user's region isn't known/);
+      assert.match(regions.placeBlocked(null, ['hyperliquid']), /country isn't known/, 'unknown: blocked');
+      assert.equal(regions.placeBlocked(null, ['telegram']), null, 'an empty list blocks nothing');
+    });
+    assert.equal(regions.placeOf(req({ 'X-Country': 'de' })), 'DE');
+  } finally { env.geoCountryHeader = before; }
 });

@@ -328,12 +328,17 @@ once. See [PAYMENTS.md](PAYMENTS.md#perps-fees-hyperliquid-builder-code).
 
 ## Region blocks
 
-These are set per venue in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)).
-They start with Hyperliquid's own list: the United States and Ontario (its
-Terms of Use), plus the places under comprehensive US sanctions.
+These are set in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)), as
+two lists: manual trading, and automatic and copy trading. Both start with
+Hyperliquid's own list: the United States and Ontario (its Terms of Use),
+plus the places under comprehensive US sanctions.
 
-- **What they stop:** opening positions, leverage changes and new approvals,
-  for manual and automatic trading alike.
+- **What they stop:** opening positions, leverage changes and new approvals.
+- **Automatic and copy trading** needs both lists to allow it, when it's
+  switched on, when an order is queued, and before each automatic open: the
+  user's place is recorded when it's switched on and on each visit to the
+  Perps page (`hl_auto_grants.country`, migration 048). RektBull's servers
+  send these orders, so Hyperliquid never sees where the user is.
 - **What they never stop:** viewing, cancelling, closing, revoking.
 
 `GEO_COUNTRY_HEADER` must be set before trading is switched on. Without it,

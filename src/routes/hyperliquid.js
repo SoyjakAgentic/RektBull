@@ -169,16 +169,17 @@ router.post('/v1/hyperliquid/entries/:id/bracket', requireEvmWallet, refusal(asy
 
 /* ── automatic trading (hyperliquid/auto.js): RektBull's agent, the user's limits, enforced by the trade service ── */
 
-router.get('/v1/hyperliquid/auto', requireEvmWallet, refusal(async (req, res) => res.json(await auto.overview(req.account))));
+// Each visit records where the user is: automatic opens stop while that's a blocked place (hyperliquid/auto.js).
+router.get('/v1/hyperliquid/auto', requireEvmWallet, refusal(async (req, res) => res.json(await auto.overview(req.account, { place: regions.placeOf(req) }))));
 
 router.post('/v1/hyperliquid/auto/grant', requireEvmWallet, require('../admin/services').gate('perps'), refusal(async (req, res) => {
-  res.status(201).json(await auto.grant(req.account, req.body, { before: () => regions.refuseIfBlocked(req, 'hyperliquid') }));
+  res.status(201).json(await auto.grant(req.account, req.body, { before: () => regions.refuseAutoIfBlocked(req, 'hyperliquid'), place: regions.placeOf(req) }));
 }));
 
 router.post('/v1/hyperliquid/auto/revoke', requireEvmWallet, refusal(async (req, res) => res.json(await auto.revoke(req.account, req.body || {}))));
 
 router.post('/v1/hyperliquid/auto/intents', requireEvmWallet, require('../admin/services').gate('perps', req => req.body?.side === 'close'), refusal(async (req, res) => {
-  if (req.body?.side !== 'close') regions.refuseIfBlocked(req, 'hyperliquid');
+  if (req.body?.side !== 'close') regions.refuseAutoIfBlocked(req, 'hyperliquid'); // RektBull's servers send it
   res.status(201).json(await auto.queue(req.account, req.body || {}));
 }));
 
@@ -195,7 +196,7 @@ router.get('/v1/hyperliquid/copy', requireEvmWallet, refusal(async (req, res) =>
 router.get('/v1/hyperliquid/copy/traders/:address', requireEvmWallet, refusal(async (req, res) => res.json(await copy.traderProfile(req.params.address))));
 
 router.post('/v1/hyperliquid/copy/follows', requireEvmWallet, services.gate('perps'), services.gate('perps_copy'), refusal(async (req, res) => {
-  res.status(201).json(await copy.follow(req.account, req.body || {}, { before: () => regions.refuseIfBlocked(req, 'hyperliquid') }));
+  res.status(201).json(await copy.follow(req.account, req.body || {}, { before: () => regions.refuseAutoIfBlocked(req, 'hyperliquid') }));
 }));
 
 /** Stopping is a way out: never refused by a pause or a region. */

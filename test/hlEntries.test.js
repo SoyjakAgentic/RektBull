@@ -88,6 +88,7 @@ test('through the app: shadow, then offered; sized for the account; only the exa
   const settings = require('../src/admin/settings');
   settings.reset();
   await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
+  await require('../src/compliance/regions').set('hyperliquid_auto', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const saved = { a: env.hlBuilderAddress, f: env.hlBuilderFeeTenthsBps };
   Object.assign(env, { hlBuilderAddress: BUILDER, hlBuilderFeeTenthsBps: 10 });
   t.after(() => Object.assign(env, { hlBuilderAddress: saved.a, hlBuilderFeeTenthsBps: saved.f }));

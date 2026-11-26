@@ -114,14 +114,15 @@
       const input = el('textarea', { rows: '2', cols: '60', 'aria-label': `${v.name}: blocked countries` }, v.countries.join(', '));
       return el('div', { class: 'row' },
         el('p', {}, el('strong', {}, v.name), ' ', el('span', { class: `tag${v.countries.length ? ' bad' : ''}` }, v.countries.length ? `${v.countries.length} blocked` : 'no blocks'), ' ',
-          el('span', { class: 'small muted' }, v.changed ? 'changed from the venue\'s own list' : 'the venue\'s own list'), el('br'),
-          el('span', { class: 'small muted' }, `Venue's list: ${v.venue_list_source}.`)),
+          el('span', { class: 'small muted' }, v.changed ? `changed from its default (${v.default_label || 'the venue\'s own list'})` : `the default: ${v.default_label || 'the venue\'s own list'}`), el('br'),
+          el('span', { class: 'small muted' }, `Default: ${v.venue_list_source}.`),
+          v.note ? el('span', { class: 'small muted' }, el('br'), v.note) : ''),
         el('label', { class: 'inline' }, input),
         el('button', { class: 'btn', type: 'button', onclick: () => {
           const list = input.value.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(Boolean);
           change('regions-msg', `${v.name}: block ${list.length ? list.join(', ') : 'no countries'}`, 'PUT', `/v1/admin/regions/${v.id}`, { countries: list });
         } }, 'Save'),
-        v.changed ? el('button', { class: 'btn ghost', type: 'button', onclick: () => change('regions-msg', `${v.name}: back to the venue's own list`, 'PUT', `/v1/admin/regions/${v.id}`, { default: true }) }, 'Venue\'s list') : '');
+        v.changed ? el('button', { class: 'btn ghost', type: 'button', onclick: () => change('regions-msg', `${v.name}: back to its default`, 'PUT', `/v1/admin/regions/${v.id}`, { default: true }) }, 'Back to default') : '');
     }));
   }
 

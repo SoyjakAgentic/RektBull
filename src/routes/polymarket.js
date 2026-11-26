@@ -116,8 +116,8 @@ const autoRead = fn => read(async (req, res) => {
 router.get('/v1/polymarket/auto', requireEvmWallet, autoRead(async (req, res) => res.json(await auto.overview(req.account, where(req)))));
 /** Turning it on: checks the region now, then prepares the authorization for the user's own key to sign and submit. */
 router.post('/v1/polymarket/auto/start', requireEvmWallet, pausedGate, autoRead(async (req, res) => {
-  const r = regions.blockedFor(req, 'polymarket');
-  if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
+  const r = [regions.blockedFor(req, 'polymarket'), regions.blockedFor(req, 'polymarket_auto')].find(x => x.blocked);
+  if (r) return res.status(451).json({ error: 'region_blocked', message: r.reason });
   res.status(201).json(await auto.start(req.account, req.body || {}, { country: where(req) }));
 }));
 /** Turning it off: never blocked. RektBull stops at once; the returned revocation ends the key on Polymarket too. */

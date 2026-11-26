@@ -116,9 +116,32 @@ wallet, and revoking always works.
 
 ## Region blocks
 
-Per trading venue (Hyperliquid perps, Polymarket), a list of places where
-trading through RektBull is refused. **Each venue starts with the places it bans
-itself** (`src/compliance/regions.js`, each list with its source):
+Lists of places where trading through RektBull is refused, checked on
+RektBull's server before anything is sent to the venue
+(`src/compliance/regions.js`). The owner's call of 26 November 2026: RektBull
+never sends, or helps send, an order the venue itself wouldn't take from where
+the user is.
+
+| List | What it covers | Default |
+|---|---|---|
+| Hyperliquid perps (`hyperliquid`) | Manual trading: the user's own wallet signs, from their own device | Hyperliquid's own list |
+| Hyperliquid automatic and copy trading (`hyperliquid_auto`) | Switching it on, and every automatic open, which RektBull's servers send | Hyperliquid's own list |
+| Polymarket (`polymarket`) | Manual trading, wallet set-up, funding and approvals | Polymarket's own list |
+| Polymarket automatic entries (`polymarket_auto`) | Switching them on, and every entry, which RektBull's servers send | Polymarket's own list |
+| Telegram (`telegram`) | Connecting Telegram from the site, and the Telegram app's pages | No blocks |
+
+- **Automatic trading needs both lists to allow it** (the venue's manual list
+  and its automatic one). The venue sees RektBull's server, not the user, so
+  these lists are its only check. The user's place is recorded when
+  automatic trading is switched on and on each visit, and an automatic open
+  isn't sent while it's a blocked place.
+- **Telegram** doesn't tell a bot where a user is. Its list applies where the
+  user's own device reaches RektBull. A trade from Telegram still needs the
+  venue's lists.
+- **Meme trading** (the Trade desk, Launches, swaps and orders) has no region
+  blocks.
+
+The venues' own lists (each with its source):
 
 - **Hyperliquid:** the United States and Ontario (its Terms of Use), and the
   places under comprehensive US sanctions: Cuba, Iran, North Korea, Syria,
@@ -129,8 +152,8 @@ itself** (`src/compliance/regions.js`, each list with its source):
     France, Germany, Italy, Poland, Australia, Singapore and Taiwan;
   - the places its own site limits (Ireland, Japan, the Netherlands, South Korea).
 
-An admin can change a list (country codes such as `US`, region codes such as
-`CA-ON` for Ontario), or set it empty, or go back to the venue's own list.
+An admin can change any list (country codes such as `US`, region codes such
+as `CA-ON` for Ontario), or set it empty, or go back to its default.
 Each change needs a reason and is logged (`regions:<venue>`).
 
 - **What a block stops:** opening or adding to a position, leverage and margin

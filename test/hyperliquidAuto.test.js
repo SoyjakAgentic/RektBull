@@ -61,6 +61,7 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   require('../src/admin/settings').reset();
   // These requests carry no country, so the venues' own region lists would refuse them: clear Hyperliquid's here.
   await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
+  await require('../src/compliance/regions').set('hyperliquid_auto', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const { issueToken } = require('../src/auth/siwe');
   const server = require('../src/app').createApp().listen(0);
   t.after(() => server.close());
@@ -231,6 +232,20 @@ test('granting, queueing, sending and revoking', { skip: !DB && 'set TEST_DATABA
   assert.equal((await call('POST', '/v1/hyperliquid/auto/intents', { coin: 'BTC', side: 'long', size_usd: 20, leverage: 1 }, { 'x-test-country': 'US' })).status, 451);
   assert.equal((await call('POST', '/v1/hyperliquid/auto/intents', { coin: 'BTC', side: 'close' }, { 'x-test-country': 'US' })).status, 201);
   await regions.set('hyperliquid', [], { wallet: '0xadmin', reason: 'test' });
+
+  // Automatic trading has its own list too (the venue's own by default), and RektBull's servers send its orders:
+  // where the user was last seen is checked before each automatic open. Closing always works.
+  await regions.set('hyperliquid_auto', ['GB'], { wallet: '0xadmin', reason: 'test' });
+  const gb = await call('POST', '/v1/hyperliquid/auto/intents', { coin: 'BTC', side: 'long', size_usd: 20, leverage: 1 }, { 'x-test-country': 'GB' });
+  assert.equal(gb.status, 451); assert.match(gb.body.message, /Automatic Hyperliquid trading \(RektBull trading for you\) isn't offered in your country \(GB\)/);
+  assert.equal((await call('GET', '/v1/hyperliquid/auto', null, { 'x-test-country': 'GB' })).body.grant.country, 'GB', 'a visit records where the user is');
+  const agentOpen = await auto.queue({ id: acct.id, wallet }, { coin: 'BTC', side: 'long', size_usd: 20, leverage: 1 }, { source: 'agent', reason: 'test' });
+  const nGB = sent.length;
+  await auto.tick();
+  assert.equal(sent.length, nGB, 'nothing sent');
+  assert.match((await db.query('SELECT error FROM hl_auto_intents WHERE id = $1', [agentOpen.id])).rows[0].error, /^Not opened: Automatic Hyperliquid trading \(RektBull trading for you\) isn't offered in GB\. Nothing was sent; closing positions still works\./);
+  await call('GET', '/v1/hyperliquid/auto', null, { 'x-test-country': 'DE' });
+  await regions.set('hyperliquid_auto', [], { wallet: '0xadmin', reason: 'test' });
 
   // The emergency stop: what's queued is cancelled, nothing is sent.
   const stops = require('../src/admin/stops');

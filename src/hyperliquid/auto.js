@@ -145,7 +145,7 @@ function grantValidUntil(action, now = Date.now()) {
 
 const presentGrant = g => g && ({
   id: g.id, status: g.status, agent_address: g.agent_address, valid_until: g.valid_until,
-  max_trade_usd: Number(g.max_trade_usd), max_day_usd: Number(g.max_day_usd), max_leverage: g.max_leverage, markets: g.markets,
+  max_trade_usd: Number(g.max_trade_usd), max_day_usd: Number(g.max_day_usd), max_leverage: g.max_leverage, markets: g.markets, country: g.country || null,
   created_at: g.created_at, ended_at: g.ended_at,
 });
 const presentIntent = r => ({
@@ -167,7 +167,7 @@ async function activeGrant(accountId) {
  * to Hyperliquid and records the limits. `before` runs after the checks and
  * before anything is sent (the route's region check).
  */
-async function grant(account, body, { before } = {}) {
+async function grant(account, body, { before, place = null } = {}) {
   const off = whyOff();
   if (off) no(off, 503, 'not_enabled');
   if (await stops.isStopped('auto_trading')) no('Automatic trading is paused by RektBull for now.', 503, 'stopped');
@@ -178,9 +178,9 @@ async function grant(account, body, { before } = {}) {
   const g = await db.tx(async c => {
     await c.query(`UPDATE hl_auto_grants SET status = 'revoked', ended_at = now() WHERE account_id = $1 AND status = 'active'`, [account.id]);
     const { rows } = await c.query(
-      `INSERT INTO hl_auto_grants (id, account_id, wallet, agent_address, valid_until, max_trade_usd, max_day_usd, max_leverage, markets)
-       VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0), $6, $7, $8, $9) RETURNING *`,
-      [id, account.id, account.wallet, env.hlAgentAddress, until, limits.max_trade_usd, limits.max_day_usd, limits.max_leverage, limits.markets],
+      `INSERT INTO hl_auto_grants (id, account_id, wallet, agent_address, valid_until, max_trade_usd, max_day_usd, max_leverage, markets, country, seen_at)
+       VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0), $6, $7, $8, $9, $10, now()) RETURNING *`,
+      [id, account.id, account.wallet, env.hlAgentAddress, until, limits.max_trade_usd, limits.max_day_usd, limits.max_leverage, limits.markets, place],
     );
     return rows[0];
   });
@@ -333,6 +333,9 @@ async function execute(row) {
     } else {
       const refusal = markets.autoRefusal(m);
       if (refusal) return fail(intent, `Not opened: ${intent.coin} is no longer deep enough for automatic trading (${refusal}).`);
+      // Where the user was last seen: RektBull's servers send this, so the venue can't check it. Closing always works.
+      const where = require('../compliance/regions').placeBlocked(g.country, ['hyperliquid', 'hyperliquid_auto']);
+      if (where) return fail(intent, `Not opened: ${where}. Nothing was sent; closing positions still works.`);
       const isBuy = intent.side === 'long';
       if (pos && pos.side !== intent.side) return fail(intent, `You hold a ${pos.side} in ${intent.coin}; an automatic ${intent.side} would close or flip it. Close it first. Nothing was sent.`);
       if (pos && pos.margin_mode !== 'isolated') return fail(intent, `You hold a cross-margin ${intent.coin} position; automatic trading only uses isolated margin. Nothing was sent.`);
@@ -426,7 +429,9 @@ async function tick() {
   }
 }
 
-async function overview(account) {
+async function overview(account, { place } = {}) {
+  // A visit: where the user is now, for the next automatic open (as Polymarket's automatic entries do).
+  if (place !== undefined) await db.query(`UPDATE hl_auto_grants SET country = $2, seen_at = now() WHERE account_id = $1 AND status = 'active'`, [account.id, place]);
   const [g, { rows }] = await Promise.all([
     db.query(`SELECT * FROM hl_auto_grants WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1`, [account.id]),
     db.query(`SELECT * FROM hl_auto_intents WHERE account_id = $1 ORDER BY created_at DESC LIMIT 50`, [account.id]),

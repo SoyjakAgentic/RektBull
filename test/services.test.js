@@ -28,7 +28,7 @@ test('service switches and free runs', { skip: !DB && 'set TEST_DATABASE_URL to 
   const { issueToken } = require('../src/auth/siwe');
   // No country header in tests: clear the venues' region lists so the region check isn't what refuses.
   const regions = require('../src/compliance/regions');
-  for (const v of ['polymarket', 'hyperliquid']) await regions.set(v, [], { wallet: ADMIN, reason: 'tests run from no country' });
+  for (const v of ['polymarket', 'hyperliquid', 'polymarket_auto', 'hyperliquid_auto']) await regions.set(v, [], { wallet: ADMIN, reason: 'tests run from no country' });
 
   // The real app; and a test route behind the real payment gate, on its own app.
   const express = require('express');
