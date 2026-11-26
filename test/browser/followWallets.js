@@ -28,7 +28,7 @@ let sellComing = false;
 const trade = (tx, side, token, symbol, amount, other, usd, at) => ({ chain: 'base', chain_name: 'Base', wallet: W, label: 'Smart money', side, token, symbol, amount, other, usd, tx, tx_url: `https://basescan.org/tx/${tx}`, at, buy: `/trade?chain=base&token=${token}&side=buy#trade-card`, page: `/token?chain=base&token=${token}` });
 wt.list = async () => {
   if (sellComing && trades.length === 1) trades.unshift(trade('0x' + '2'.repeat(64), 'sell', MEME, 'MEME', 500000, { native: true, symbol: 'ETH', amount: null }, 210.5, ago(2)));
-  return { wallets: followed.map((w, i) => ({ id: i + 1, address: w.address, family: 'evm', label: w.label || null, created_at: ago(600) })), limit: 5, free_limit: 5, pro_limit: 25, safety_pro: false, alerts_on: true, chains: ['Base'], trades: followed.length ? trades : [], source: 'stand-in transfers', note: 'Not advice.' };
+  return { wallets: followed.map((w, i) => ({ id: i + 1, address: w.address, family: 'evm', label: w.label || null, created_at: ago(600), copy: w.copy || null })), copy_limits: { min_usd: 5, max_usd: 10000 }, limit: 5, free_limit: 5, pro_limit: 25, safety_pro: false, alerts_on: true, chains: ['Base'], trades: followed.length ? trades : [], source: 'stand-in transfers', note: 'Not advice.' };
 };
 wt.follow = async (_id, { address, label }) => {
   const w = wt.parseAddress(address);
@@ -38,6 +38,7 @@ wt.follow = async (_id, { address, label }) => {
   return wt.list();
 };
 wt.unfollow = async (_id, id) => { followed.splice(Number(id) - 1, 1); return wt.list(); };
+wt.setCopy = async (_id, id, b) => { followed[Number(id) - 1].copy = b.usd ? { usd: b.usd, stop_pct: b.stop_pct, take_pct: b.take_pct, sell_with: b.sell_with } : null; return wt.list(); };
 
 (async () => {
   const { createApp } = require('../../src/app');
@@ -49,7 +50,9 @@ wt.unfollow = async (_id, id) => { followed.splice(Number(id) - 1, 1); return wt
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/status of (400|401|402)/.test(m.text())) errors.push(m.text()); });
-  page.on('dialog', d => d.accept());
+  // Prompts are answered from this queue (the copy settings), confirms accepted.
+  const answers = [];
+  page.on('dialog', d => (d.type() === 'prompt' ? d.accept(answers.length ? answers.shift() : d.defaultValue()) : d.accept()));
   await page.clock.install();
   try {
     await page.goto(`${url}/launches#follow-card`);
@@ -98,7 +101,14 @@ wt.unfollow = async (_id, id) => { followed.splice(Number(id) - 1, 1); return wt
     assert.equal(await page.getAttribute('#f-msg a', 'href'), '/safety#pro-card');
     console.log('✔ the free limit says so, with Safety Pro offered');
 
-    await page.click('#f-wallets .watched:first-child button');
+    // A copy button on a wallet's buys: $25, a stop-loss at down 30%, no take-profit, selling when it sells.
+    answers.push('25', '30', '');
+    await page.click('#f-wallets .watched:first-child button:has-text("Add a copy button")');
+    await page.waitForFunction(() => /Copy button on its buys: \$25, stop-loss down 30%, and sells when it sells/.test(document.getElementById('f-wallets').textContent));
+    assert.match(await page.textContent('#f-msg'), /your wallet signs it/);
+    console.log('✔ a copy button on a wallet\'s buys');
+
+    await page.click('#f-wallets .watched:first-child button:has-text("Stop following")');
     await page.waitForFunction(() => document.getElementById('f-status').textContent === '4 of 5 wallets');
     console.log('✔ stop following');
 

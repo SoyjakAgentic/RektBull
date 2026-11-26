@@ -11,6 +11,8 @@
  *   stop_loss        sells for the native coin (ETH, BNB) when the coins' value falls to the trigger (DexScreener);
  *   take_profit      sells when it rises to the trigger;
  *   meme_watch_exit  sells when Meme Watch raises a critical alert for the coin (myAgents' check);
+ *   (a stop-loss placed with a copy of a followed wallet's buy, copy_wallet, also fires when that wallet sells
+ *   the coin: copySellSignal, from the Wallet Tracker; at the market, never below its own floor);
  *   limit_buy        buys the coin with the user's wrapped native coin (WETH, WBNB, in their own wallet and
  *                    approved) when its price falls to their limit, after the Trade desk's buy checks, run
  *                    again before each fill.
@@ -582,12 +584,15 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
     read(chain, router, ROUTER, 'epochOf', [owner]), read(chain, token, ERC20, 'allowance', [owner, router]).then(BigInt),
   ]);
   const net = netOf(check.feeBps);
+  // A copy's stop-loss can also sell when the copied wallet sells: only a wallet this account follows.
+  const copyWallet = exits.copy_wallet && kinds.includes('stop_loss') ? await require('../services/walletTracker').followed(accountId, exits.copy_wallet) : null;
   const orders = [];
   for (const kind of kinds) {
     const t = require('./solanaOrders').terms(kind, refOut, exits, settings, net);
     if (t.minOut <= 0n) return { off: 'that floor rounds to nothing.' };
     const o = tx.order({ account: owner, executor: cfg.executor, tokenIn: token, tokenOut: q.out, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000), epoch, salt: BigInt('0x' + crypto.randomBytes(32).toString('hex')) });
-    orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null });
+    orders.push({ kind, kind_name: KINDS[kind], order: o, hash: tx.hash(c.chainId, router, o), minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null,
+      copyWallet: kind === 'stop_loss' ? copyWallet : null });
   }
   // The router's own hash of the first: a layout that drifted from the contract's is caught before anyone signs.
   if (String(await read(chain, router, ROUTER, 'hashOrder', [orders[0].order])).toLowerCase() !== orders[0].hash.toLowerCase()) {
@@ -608,11 +613,13 @@ async function exitsForBuy({ accountId, owner, chain, token, minOut, buyAmount, 
     orders,
     summary: {
       chain_label: c.label, native: q.symbol, ...(curve?.kind === 'virtuals' ? { note: 'The coin is on Virtuals\' curve, which trades in VIRTUAL: these exits pay out VIRTUAL.' } : {}),
-      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_native: nat(o.triggerOut), floor_native: nat(o.minOut), ...o.said })),
+      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_native: nat(o.triggerOut), floor_native: nat(o.minOut), ...o.said, ...(o.copyWallet ? { sells_with: o.copyWallet } : {}) })),
       covers: `the ${fmt(amountWhole)} ${symbol} this buy is sure to bring (its minimum); anything it brings above that isn't covered`,
+      ...(exits.copy_wallet && !copyWallet && kinds.includes('stop_loss') ? { copy_note: 'The stop-loss won\'t sell with that wallet: you don\'t follow it.' } : {}),
       how: `Your wallet signs ${orders.length > 1 ? 'them' : 'it'} right after it sends the buy (a signature, nothing is sent)${approve ? ', and the approval of RektBull\'s Meme Router for these coins is in the buy\'s own batch, after the swap' : ''}. ${orders.length > 1 ? 'They open' : 'It opens'} when the buy lands.`,
       worst_case: [
         ...orders.map(o => worstCase({ kind: o.kind, amountWhole, symbol, minOut: o.minOut, validUntil, q })[0]),
+        ...(copyWallet ? [`The stop-loss also sells, at the market and never below its floor, when ${short(copyWallet)} sells ${symbol}: the Wallet Tracker sees the sale while you follow that wallet. If you stop following it, this is a plain stop-loss.`] : []),
         `Nothing else of yours can be touched: the approval covers only these coins, and the router sends what they sell for only to your wallet, in the same transaction. RektBull never holds them.`,
         ...(orders.length > 1 ? ['The two orders sell the same coins: once one has sold them, the other has nothing left to sell (cancel it on the Trade desk).'] : []),
         'To stop them: cancel them on the Trade desk (your wallet sends the cancel to the router), or revoke the approval in your wallet.',
@@ -629,11 +636,11 @@ async function recordExits(accountId, tradeId, plan) {
   const out = [];
   for (const o of plan.orders) {
     const { rows: [row] } = await db.query(
-      `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, trade_id, trail_bps, peak_out)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING *`,
+      `INSERT INTO meme_orders (account_id, chain, chain_id, router, owner, kind, token, symbol, decimals, token_in, token_out, amount_in, min_out, trigger_out, ref_out, executor, valid_until, order_json, order_hash, trade_id, trail_bps, peak_out, copy_wallet)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING *`,
       [accountId, plan.chain, c.chainId, plan.router, o.order.account.toLowerCase(), o.kind, plan.token, plan.symbol, plan.decimals, plan.token, NATIVE, o.order.amountIn.toString(), o.minOut.toString(),
         o.triggerOut?.toString() ?? null, o.refOut.toString(), plan.executor, new Date(plan.validUntil), JSON.stringify(tx.toJson(o.order)), o.hash.toLowerCase(), tradeId,
-        o.trailBps || null, o.trailBps ? o.refOut.toString() : null]);
+        o.trailBps || null, o.trailBps ? o.refOut.toString() : null, o.copyWallet || null]);
     out.push({ id: Number(row.id), kind: o.kind, kind_name: o.kind_name, chain_id: ethers.toBeHex(c.chainId), typed_data: tx.typedData(c.chainId, plan.router, o.order) });
   }
   return out;
@@ -763,7 +770,7 @@ function view(r) {
   const c = CHAINS[r.chain];
   const common = {
     id: Number(r.id), chain: r.chain, chain_label: c.label, native: quoteOfRow(r).symbol, kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state,
-    token: r.token, symbol: r.symbol, valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
+    token: r.token, symbol: r.symbol, valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason, sells_with: r.copy_wallet || null,
     last_error: r.last_error, order_hash: r.order_hash, router: r.router, created_at: r.created_at,
     ...(r.trade_id ? { trade_id: r.trade_id, waiting_for_buy: r.state === 'prepared' } : {}),
   };
@@ -792,6 +799,20 @@ async function memeWatchSignal(chain, token, reason) {
       WHERE chain = $1 AND token = $2 AND kind = 'meme_watch_exit' AND state = 'open' AND valid_until > now()`,
     [chain, String(token).toLowerCase(), JSON.stringify({ ...reason, at: new Date().toISOString() })]);
   if (rowCount) logger.info('meme orders: Meme Watch exits fired', { chain, token, orders: rowCount });
+  return rowCount;
+}
+
+/**
+ * A followed wallet sold a coin on BNB Chain or Base (the Wallet Tracker): the open stop-losses placed with copies
+ * of its buys fire. They sell at the market, never below their own floor (the router checks it on every fill).
+ */
+async function copySellSignal(chain, wallet, token, reason) {
+  if (!env.databaseUrl || !CHAINS[chain] || !addr(wallet) || !addr(token)) return 0;
+  const { rowCount } = await db.query(
+    `UPDATE meme_orders SET state = 'triggered', triggered_at = now(), trigger_reason = $4, next_attempt_at = now(), updated_at = now()
+      WHERE chain = $1 AND copy_wallet = $2 AND token = $3 AND kind = 'stop_loss' AND state = 'open' AND valid_until > now()`,
+    [chain, String(wallet).toLowerCase(), String(token).toLowerCase(), JSON.stringify({ ...reason, at: new Date().toISOString() })]);
+  if (rowCount) logger.info('meme orders: copied wallet sold, stop-losses fired', { chain, wallet, token, orders: rowCount });
   return rowCount;
 }
 
@@ -1251,7 +1272,7 @@ async function fillNow() {
 
 module.exports = {
   KINDS, CHAINS, MIN_ORDER_USD,
-  config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, tick, fundingCalls, exitsForBuy, recordExits,
+  config, ready, routerCheck, prepare, sign, cancel, cancelAll, refresh, list, memeWatchSignal, copySellSignal, tick, fundingCalls, exitsForBuy, recordExits,
   checkPrice, fire, fillNow, lastSeen: chain => lastSeen[chain] || null, read, curveOf, quoteOfRow, quoteAsset, sellQuote, buyQuote, nativeUsd, isBuy,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills, _route: route,
   _setProvider: fn => { providerFor = fn || rpcProvider; providers.clear(); },

@@ -11,6 +11,8 @@
  *   take_profit      fires when it rises to the trigger;
  *   meme_watch_exit  fires when Meme Watch raises a critical alert for the coin (launch-bundle
  *                    wallets selling, liquidity pulled), from the stream or its 6-hour check;
+ *   A stop-loss placed with a copy of a followed wallet's buy (copy_wallet) also fires when that wallet sells
+ *   the coin (copySellSignal, from the Wallet Tracker): it sells at the market, never below its own floor.
  *   limit_buy        buys the coin with the user's SOL (wrapped in their own wallet, and
  *                    approved) when its price falls to their limit, after the Trade desk's buy
  *                    checks, run again before each fill.
@@ -509,13 +511,16 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
   let approveAmount = amountIn * BigInt(kinds.length) + BigInt(others[0].left);
   if (approveAmount > MAX_U64) approveAmount = MAX_U64;
   const validUntil = Date.now() + days * 86400_000;
+  // A copy's stop-loss can also sell when the copied wallet sells: only a wallet this account follows.
+  const copyWallet = exits.copy_wallet && kinds.includes('stop_loss') ? await require('../services/walletTracker').followed(accountId, exits.copy_wallet) : null;
   const orders = [];
   for (const kind of kinds) {
     const t = terms(kind, refOut, exits, settings);
     if (t.minOut <= 0n) throw refuse('That exit\'s floor rounds to nothing; choose another.', 400);
     const nonce = crypto.randomBytes(8).readBigUInt64LE() >> 1n;
     const placed = await op.placeOrder({ program: cfg.program, owner, nonce, executor: cfg.executor, inputMint: token, outputMint: op.WSOL, outputNative: true, amountIn, minAmountOut: t.minOut, validUntil: Math.floor(validUntil / 1000) });
-    orders.push({ kind, kind_name: KINDS[kind], nonce, order: placed.order, instruction: placed.instruction, amountIn, minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null });
+    orders.push({ kind, kind_name: KINDS[kind], nonce, order: placed.order, instruction: placed.instruction, amountIn, minOut: t.minOut, triggerOut: t.triggerOut, refOut, said: t.said, trailBps: t.trailBps ?? null,
+      copyWallet: kind === 'stop_loss' ? copyWallet : null });
   }
   const instructions = [
     ...await Promise.all(volumeVenues.map(venue => op.initVolume({ venue, payer: owner, user: transit }))),
@@ -534,10 +539,12 @@ async function exitsForBuy({ accountId, owner, token, tokenProgram, tokenAta, mi
     addresses: orders.map(o => o.order),
     orders: orders.map(({ instruction, ...o }) => ({ ...o, token, symbol, tokenProgram, decimals, source: tokenAta, program: cfg.program, executor: cfg.executor, validUntil })),
     summary: {
-      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_sol: sol(o.triggerOut), floor_sol: sol(o.minOut), ...o.said })),
+      orders: orders.map(o => ({ kind: o.kind, kind_name: o.kind_name, trigger_sol: sol(o.triggerOut), floor_sol: sol(o.minOut), ...o.said, ...(o.copyWallet ? { sells_with: o.copyWallet } : {}) })),
       covers: `the ${fmt(amountWhole)} ${symbol} this buy is sure to bring (its minimum); anything it brings above that isn't covered`,
+      ...(exits.copy_wallet && !copyWallet && kinds.includes('stop_loss') ? { copy_note: 'The stop-loss won\'t sell with that wallet: you don\'t follow it.' } : {}),
       worst_case: [
         ...orders.map(first),
+        ...(copyWallet ? [`The stop-loss also sells, at the market and never below its floor, when ${short(copyWallet)} sells ${symbol}: the Wallet Tracker sees the sale while you follow that wallet. If you stop following it, this is a plain stop-loss.`] : []),
         'Nothing else of yours can be touched: the approval covers only these coins, and the order program sends what they sell for only to your wallet. RektBull never holds them.',
         ...(orders.length > 1 ? ['The two orders sell the same coins: once one has sold them, cancel the other on the Trade desk to get its deposit back.'] : []),
         'To stop them: cancel them on the Trade desk (their deposits come back), or revoke the approval in your wallet.',
@@ -577,11 +584,11 @@ async function setup(account) {
 async function recordExits(accountId, orders = []) {
   for (const o of orders || []) {
     await db.query(
-      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until, trail_bps, peak_out)
-       SELECT $1, owner, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18 FROM (SELECT solana_wallet AS owner FROM accounts WHERE id = $1) a
+      `INSERT INTO solana_orders (account_id, owner, order_address, program, nonce, kind, token, symbol, token_program, decimals, source, amount_in, min_out, trigger_out, ref_out, executor, valid_until, trail_bps, peak_out, copy_wallet)
+       SELECT $1, owner, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19 FROM (SELECT solana_wallet AS owner FROM accounts WHERE id = $1) a
        ON CONFLICT (order_address) DO NOTHING`,
       [accountId, o.order, o.program, String(o.nonce), o.kind, o.token, o.symbol, o.tokenProgram, o.decimals, o.source, String(o.amountIn), String(o.minOut), o.triggerOut === null ? null : String(o.triggerOut), String(o.refOut), o.executor, new Date(o.validUntil),
-        o.trailBps || null, o.trailBps ? String(o.refOut) : null]);
+        o.trailBps || null, o.trailBps ? String(o.refOut) : null, o.copyWallet || null]);
   }
 }
 
@@ -662,7 +669,7 @@ async function list(account) {
 function view(r) {
   const common = {
     id: Number(r.id), kind: r.kind, kind_name: KINDS[r.kind], side: isBuy(r) ? 'buy' : 'sell', state: r.state, token: r.token, symbol: r.symbol,
-    valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason,
+    valid_until: r.valid_until, triggered_at: r.triggered_at, trigger_reason: r.trigger_reason, sells_with: r.copy_wallet || null,
     last_error: r.last_error, order_address: r.order_address, order_url: `https://solscan.io/account/${r.order_address}`, created_at: r.created_at,
   };
   if (isBuy(r)) {
@@ -694,6 +701,20 @@ async function memeWatchSignal(mint, reason) {
       WHERE token = $1 AND kind = 'meme_watch_exit' AND state = 'open' AND valid_until > now()`,
     [mint, JSON.stringify({ ...reason, at: new Date().toISOString() })]);
   if (rowCount) logger.info('solana orders: Meme Watch exits fired', { mint, orders: rowCount });
+  return rowCount;
+}
+
+/**
+ * A followed wallet sold a coin (the Wallet Tracker): the open stop-losses placed with copies of its buys fire.
+ * They sell at the market, never below their own floor; the trade service fills them on its next pass.
+ */
+async function copySellSignal(wallet, mint, reason) {
+  if (!env.databaseUrl || !isSolanaAddress(String(wallet || '')) || !isSolanaAddress(String(mint || ''))) return 0;
+  const { rowCount } = await db.query(
+    `UPDATE solana_orders SET state = 'triggered', triggered_at = now(), trigger_reason = $3, next_attempt_at = now(), updated_at = now()
+      WHERE copy_wallet = $1 AND token = $2 AND kind = 'stop_loss' AND state = 'open' AND valid_until > now()`,
+    [wallet, mint, JSON.stringify({ ...reason, at: new Date().toISOString() })]);
+  if (rowCount) logger.info('solana orders: copied wallet sold, stop-losses fired', { wallet, mint, orders: rowCount });
   return rowCount;
 }
 
@@ -1037,6 +1058,6 @@ async function tick() {
 
 module.exports = {
   KINDS, ORDER_RENT, VOLUME_RENT, FILL_SLIPPAGE_BPS,
-  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, tick, terms, worstCase, tokenAccount, exitsForBuy, recordExits, setup,
+  config, ready, programCheck, prepare, confirm, cancel, refresh, list, memeWatchSignal, copySellSignal, tick, terms, worstCase, tokenAccount, exitsForBuy, recordExits, setup,
   _attempt: attempt, _reconcile: reconcile, _triggers: triggers, _confirmFills: confirmFills,
 };

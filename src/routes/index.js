@@ -697,6 +697,7 @@ const trackerCall = fn => async (req, res) => {
 router.get('/v1/wallet-tracker', requireAuth, trackerCall(req => walletTracker.list(req.account.id)));
 router.post('/v1/wallet-tracker/wallets', requireAuth, trackerCall(req => walletTracker.follow(req.account.id, req.body || {})));
 router.delete('/v1/wallet-tracker/wallets/:id', requireAuth, trackerCall(req => walletTracker.unfollow(req.account.id, req.params.id)));
+router.put('/v1/wallet-tracker/wallets/:id/copy', requireAuth, trackerCall(req => walletTracker.setCopy(req.account.id, req.params.id, req.body || {})));
 // Wallets ranked by realised profit on pump.fun (Solana) and four.meme (BNB Chain), services/walletRankings.js:
 // public, kept five minutes. ?chain=solana (the default) or bsc.
 router.get('/v1/wallet-tracker/top', async (req, res) => {

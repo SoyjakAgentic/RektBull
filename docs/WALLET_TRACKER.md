@@ -14,7 +14,9 @@ user's own wallet to sign. RektBull never trades from an alert.
   (every 5 seconds; the `alerts` job now also runs every 5 seconds),
   `public/follow.js`, migration `025_wallet_tracker.sql`.
 - **API:** `GET /v1/wallet-tracker`, `POST /v1/wallet-tracker/wallets`
-  `{ address, label }`, `DELETE /v1/wallet-tracker/wallets/:id` (signed in).
+  `{ address, label }`, `DELETE /v1/wallet-tracker/wallets/:id`,
+  `PUT /v1/wallet-tracker/wallets/:id/copy` `{ usd, stop_pct, take_pct?, sell_with }`
+  (signed in; `{ usd: null }` removes the copy button).
 
 ## How a trade is seen
 
@@ -70,6 +72,60 @@ pools).
 the newest block (the chain's pace is measured from its own blocks; Base makes
 one about every 0.2 seconds now). A chain that can't be read keeps its place,
 so the next read picks up what was missed.
+
+## Copying a buy (one tap, built 26 November 2026)
+
+The owner's call, 26 November 2026: copying a followed wallet's meme coin buys
+is one tap that the user signs, never an automatic buy. Meme coins have no
+reference price, and anyone can launch one in seconds. A permission to "buy
+whatever this wallet buys" would let a stolen key, a bug or a faked signal
+spend the user's budget on a coin an attacker made. So RektBull never buys
+from an alert.
+
+- **The settings,** per followed wallet ("Add a copy button" on the follow
+  card; `followed_wallets.copy_*`, migration 047):
+  - a preset amount ($5 to $10,000);
+  - a stop-loss (required, 1 to 90% below what the buy cost);
+  - an optional take-profit;
+  - whether the stop-loss also sells when the wallet sells (on by default).
+- **The alert.** A buy by that wallet carries "Copy it ($25): review and sign".
+  This opens the Trade desk with the buy prefilled (`?copy=&amount=&stop=&take=&sell_with=`):
+  - a banner names the wallet;
+  - the button reads "Copy: buy $25";
+  - the exits are ticked.
+
+  Every Trade desk check runs on it as on any buy: the token check, the bundle
+  check, selling straight back, and the user's per-trade amount. The user's
+  wallet signs it. On Solana, the buy and its exits are one transaction. On BNB
+  Chain and Base, the exits are signatures right after the buy.
+- **Selling when they sell** is a second trigger on the copy's stop-loss
+  (`solana_orders.copy_wallet`, `meme_orders.copy_wallet`), not another order.
+  - **When the wallet sells the coin:** the tracker sees the sale and fires the
+    stop-loss (`copySellSignal`). It sells at the market, never below the
+    stop's own floor, which is the order the user signed. The order program and
+    the Meme Router check that floor on every fill, so nothing in the contracts
+    changed.
+  - **Why it shares the stop-loss order:** on Solana, two orders don't fit in
+    the buy's transaction (1,234 bytes; Solana allows 1,232).
+  - **Which sales count:** the first sale of any size. Partial sales by the
+    wallet aren't followed in proportion.
+  - **Only while the wallet is followed:** only followed wallets are read, so a
+    copy's stop-loss sells with the wallet while the user follows it with the
+    tracker on. Otherwise it's a plain stop-loss. Only a wallet the account
+    follows can be named (`walletTracker.followed`); anything else is dropped,
+    and the plan says so.
+  - **Where:** Solana, BNB Chain and Base, where the orders are. On Ethereum and
+    Arbitrum a copy is the prefilled buy alone.
+- **The fee:** the usual 1% on the buy, and 1% of what an exit brings, as for
+  any order. Copying costs nothing more.
+- **Tests:**
+  - `test/walletTracker.test.js`: the settings, the copy link and its action,
+    and a sale firing the stop-losses.
+  - `test/evmBuyWithExits.test.js` and `test/buyWithExits.test.js`: the
+    copy's stop-loss recorded with its wallet; only it fires, once; a wallet
+    not followed is refused.
+  - `test/browser/buyWithExits.js` and `test/browser/followWallets.js`: the
+    prefilled page and the settings.
 
 ## Endpoints
 

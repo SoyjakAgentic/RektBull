@@ -135,6 +135,19 @@ test('wallet tracker: follow, read a chain, alert each follower once', { skip: !
   require('../src/services/launches').forTrade = async () => ({ young: true, risk: 'ok', detail: 'no bundle found among the first buyers' });
   t.after(() => { rpc.evmRpc = realRpc; rpc.evmTopicLogs = realLogs; });
 
+  // b puts a copy button on W's buys: $25, a stop-loss at down 30% that also sells when W sells, a take-profit at up 100%.
+  const bw = (await wt.list(b.id)).wallets[0];
+  await assert.rejects(wt.setCopy(b.id, bw.id, { usd: 2, stop_pct: 30 }), /must be \$5 to \$10,000/);
+  await assert.rejects(wt.setCopy(b.id, bw.id, { usd: 25 }), /Every copy carries a stop-loss/);
+  await assert.rejects(wt.setCopy(a.id, bw.id, { usd: 25, stop_pct: 30 }), /not found/, 'only your own');
+  const withCopy = await wt.setCopy(b.id, bw.id, { usd: 25, stop_pct: 30, take_pct: 100 });
+  assert.deepEqual(withCopy.wallets[0].copy, { usd: 25, stop_pct: 30, take_pct: 100, sell_with: true });
+  assert.equal(await wt.followed(b.id, W.toUpperCase().replace('0X', '0x')), W);
+  assert.equal(await wt.followed(b.id, T(0x7777)), null);
+  // Its sales fire the copies' stop-losses (the order services, stood in for here), alerted or not.
+  const copySales = [];
+  require('../src/trade/memeOrders').copySellSignal = async (...args) => { copySales.push(args); return 1; };
+
   // The first read starts at the newest block; nothing there yet.
   let r = await wt.tick();
   assert.deepEqual(r.find(x => x.chain === 'base'), { chain: 'base', blocks: 1, trades: 0 });
@@ -165,7 +178,14 @@ test('wallet tracker: follow, read a chain, alert each follower once', { skip: !
     'Bundle check (a token under a week old): no bundle found among the first buyers',
   ]);
   assert.match(al.detail.reasons[0].source, /read from the chain/);
-  assert.equal(alerts[1].title, `${W.slice(0, 6)}…${W.slice(-4)} bought MEME on Base`, 'b gave it no name');
+  assert.equal(alerts[1].title, `${W.slice(0, 6)}…${W.slice(-4)} bought MEME on Base: copy it for $25?`, 'b gave it no name, and has a copy button');
+  // b's copy: the Trade desk prefilled with b's settings, for b's own wallet to sign.
+  const copyUrl = new URL(alerts[1].detail.link, 'https://x');
+  assert.equal(copyUrl.pathname, '/trade');
+  assert.deepEqual(Object.fromEntries(copyUrl.searchParams), { chain: 'base', token: MEME, side: 'buy', amount: '25', copy: W, stop: '30', sell_with: '1', take: '100' });
+  assert.deepEqual(alerts[1].detail.copy, { usd: 25, stop_pct: 30, take_pct: 100, sell_with: true });
+  assert.equal(require('../src/alerts/format').message(alerts[1]).action, 'Copy it ($25): review and sign');
+  assert.equal(al.detail.copy, undefined, 'a has no copy button');
 
   const m = require('../src/alerts/format').message(al);
   assert.equal(m.subject, 'RektBull: Smart money bought MEME on Base');
@@ -186,6 +206,10 @@ test('wallet tracker: follow, read a chain, alert each follower once', { skip: !
   assert.deepEqual(sale.detail.reasons.map(x => x.text), ['Smart money sold 1,000 MEME for 250 USDC']);
   assert.equal(sale.detail.link, `/token?chain=base&token=${MEME}`);
   assert.equal(require('../src/alerts/format').message(sale).action, 'See the token');
+  assert.equal(sale.detail.copy, undefined, 'a sale carries no copy');
+  assert.equal(copySales.length, 1);
+  assert.deepEqual(copySales[0].slice(0, 3), ['base', W, MEME], 'the sale fires the copies\' stop-losses on its coin');
+  assert.equal(copySales[0][3].copy.tx, H(43));
 
   // The page's list: the trade, with its links.
   l = await wt.list(a.id);

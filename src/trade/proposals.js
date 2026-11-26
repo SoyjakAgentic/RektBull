@@ -94,6 +94,8 @@ const inputOf = (account, input) => ({
 });
 const exitsOf = e => ({
   stop_loss: !!e.stop_loss, take_profit: !!e.take_profit,
+  // A copy of a followed wallet's buy: its stop-loss also sells when that wallet sells (checked as followed later).
+  ...(e.stop_loss && typeof e.copy_wallet === 'string' && /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/.test(e.copy_wallet) ? { copy_wallet: e.copy_wallet } : {}),
   ...Object.fromEntries(['stop_pct', 'floor_pct', 'take_pct', 'slippage_pct', 'days'].filter(k => e[k] !== undefined && e[k] !== null && e[k] !== '').map(k => [k, Number(e[k])])),
 });
 /**

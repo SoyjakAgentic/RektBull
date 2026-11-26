@@ -117,8 +117,14 @@
     if (['buy', 'sell'].includes(q.get('side'))) { $('side').value = q.get('side'); $('side').dispatchEvent(new Event('change')); }
     const f = Number(q.get('fraction'));
     if (f > 0 && f <= 100) $('fraction').value = String(f);
-    const a = Number(q.get('amount')); // a buy button on the token page
+    const a = Number(q.get('amount')); // a buy button on the token page, or a copy's preset
     if (a > 0 && a <= 1000000) $('amount').value = String(a);
+    // A copy of a followed wallet's buy (its alert): the exits from the copy settings, applied once the user's own
+    // settings are loaded (applyCopy). The user's wallet still signs it: RektBull never buys from an alert.
+    const copy = q.get('copy') || '';
+    if (q.get('side') === 'buy' && (/^0x[0-9a-fA-F]{40}$/.test(copy) || SOL_MINT.test(copy))) {
+      tradeState.copy = { wallet: copy, stop: Number(q.get('stop')) || null, take: Number(q.get('take')) || null, sellWith: q.get('sell_with') !== '0' };
+    }
     if (q.get('token')) { $('trade-card').scrollIntoView({ block: 'start' }); changed(); }
   }
 
@@ -136,7 +142,8 @@
     ...(isSell() ? { sell_fraction: Number($('fraction').value) / 100 } : { amount_usd: Number($('amount').value) }),
     ...(tradeState.ack ? { acknowledge_risks: true } : {}),
     ...(exitsAsked() ? { exits: { stop_loss: $('x-stop').checked, take_profit: $('x-take').checked, stop_pct: Number($('x-stop-pct').value), take_pct: Number($('x-take-pct').value),
-      ...($('x-stop').checked && $('x-trail').checked ? { trail_pct: Number($('x-stop-pct').value) } : {}) } } : {}),
+      ...($('x-stop').checked && $('x-trail').checked ? { trail_pct: Number($('x-stop-pct').value) } : {}),
+      ...($('x-stop').checked && tradeState.copy && $('x-copy').checked ? { copy_wallet: tradeState.copy.wallet } : {}) } } : {}),
   });
   // Exits with a buy: on Solana in RektBull's order program, in the same transaction; on BNB Chain and Base, Meme Router
   // orders the wallet signs right after it sends the buy.
@@ -164,7 +171,22 @@
     } }, sell ? `Sell ${v}%` : `Buy $${v}`)));
   }
   function labelGo() {
-    $('go').textContent = isSell() ? `Sell ${Number($('fraction').value) || 0}%` : `Buy $${Number($('amount').value) || 0}`;
+    $('go').textContent = isSell() ? `Sell ${Number($('fraction').value) || 0}%` : `${tradeState.copy ? 'Copy: buy' : 'Buy'} $${Number($('amount').value) || 0}`;
+  }
+
+  /** A copy's settings on the form: its stop-loss (which can also sell with the copied wallet) and take-profit. */
+  function applyCopy() {
+    const c = tradeState.copy;
+    if (!c) return;
+    $('copy-banner').hidden = false;
+    $('copy-banner').textContent = `Copying ${short(c.wallet)}'s buy with your copy settings. Check the plan below: your wallet signs the buy, and RektBull never buys for you.`;
+    if (c.stop) { $('x-stop').checked = true; $('x-stop-pct').value = String(c.stop); $('x-trail').checked = false; }
+    if (c.take) { $('x-take').checked = true; $('x-take-pct').value = String(c.take); }
+    $('x-copy-wrap').hidden = false;
+    $('x-copy-who').textContent = short(c.wallet);
+    $('x-copy').checked = c.sellWith;
+    $('x-copy').disabled = !$('x-stop').checked;
+    changed();
   }
 
   let debounce = null;
@@ -183,7 +205,9 @@
   $('side').addEventListener('change', () => { showSide(); changed(); });
   for (const id of ['token', 'amount', 'fraction']) $(id).addEventListener('input', () => changed({ keepAck: id !== 'token' }));
   for (const id of ['chain', 'base']) $(id).addEventListener('change', () => { showSide(); changed({ keepAck: true }); });
-  for (const id of ['x-stop', 'x-take', 'x-trail']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+  for (const id of ['x-stop', 'x-take', 'x-trail', 'x-copy']) $(id).addEventListener('change', () => changed({ keepAck: true }));
+  // Selling with the copied wallet is the stop-loss's second trigger: it needs the stop-loss.
+  $('x-stop').addEventListener('change', () => { $('x-copy').disabled = !$('x-stop').checked; });
   for (const id of ['x-stop-pct', 'x-take-pct']) $(id).addEventListener('input', () => changed({ keepAck: true }));
 
   /** Runs every check on a firm price and shows it. Resolves to the preview, or null if the trade can't go ahead. */
@@ -244,12 +268,14 @@
       return [el('div', { class: 'worst' },
         el('strong', {}, `Exits: ${x.orders.map(o => `${o.kind_name.toLowerCase()} (fires at ${o.trigger_native} ${x.native}, never below ${o.floor_native} ${x.native})`).join('; ')}`),
         el('p', { class: 'small' }, `For ${x.covers}. ${x.how}`),
+        ...(x.copy_note ? [el('p', { class: 'warn small' }, x.copy_note)] : []),
         ...x.worst_case.map(t => el('p', { class: 'small' }, t)),
         el('p', { class: 'small muted' }, `${x.costs.deposit} ${x.costs.fee}`))];
     }
     return [el('div', { class: 'worst' },
       el('strong', {}, `Exits, in the same transaction: ${x.orders.map(o => `${o.kind_name.toLowerCase()} (fires at ${o.trigger_sol} SOL, never below ${o.floor_sol} SOL)`).join('; ')}`),
       el('p', { class: 'small' }, `For ${x.covers}.`),
+      ...(x.copy_note ? [el('p', { class: 'warn small' }, x.copy_note)] : []),
       ...x.worst_case.map(t => el('p', { class: 'small' }, t)),
       el('p', { class: 'small muted' }, `Deposits: ${x.costs.order_deposits_sol} SOL, returned when they're filled or cancelled.${x.costs.volume_accounts_sol ? ` Once: ${x.costs.volume_accounts_sol} SOL for pump.fun's volume accounts.` : ''} ${x.costs.fee}`),
       ...(x.setup_sol ? [el('p', { class: 'small' }, `Your wallet will ask twice: first a one-time setup (${x.setup_sol} SOL, your own pump.fun volume accounts, once per wallet), then the buy with its exits.`)] : []),
@@ -415,6 +441,7 @@
     $('s-speed').value = s.send_speed || 'standard';
     tradeState.presets = { buy: s.buy_presets_usd, sell: s.sell_presets_pct };
     showPresets();
+    applyCopy();
   }
   const list = v => String(v).split(/[\s,]+/).filter(Boolean).map(Number);
   $('s-save').addEventListener('click', async () => {

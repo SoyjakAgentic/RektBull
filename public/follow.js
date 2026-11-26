@@ -49,13 +49,43 @@
       $('f-status').textContent = `${r.wallets.length} of ${r.limit} wallets${r.alerts_on ? '' : ' · alerts are off on the AI agents page'}`;
       $('f-wallets').replaceChildren(...r.wallets.map(w => el('div', { class: 'watched' },
         el('div', {}, el('strong', { title: w.address }, w.label ? `${w.label} (${short(w.address)})` : short(w.address)),
-          el('div', { class: 'small muted' }, `Following since ${new Date(w.created_at).toLocaleDateString()}`)),
-        el('button', { class: 'link', type: 'button', onclick: () => unfollow(w) }, 'Stop following'))));
+          el('div', { class: 'small muted' }, `Following since ${new Date(w.created_at).toLocaleDateString()}`),
+          el('div', { class: 'small' }, w.copy
+            ? `Copy button on its buys: $${w.copy.usd}, stop-loss down ${w.copy.stop_pct}%${w.copy.take_pct ? `, take-profit up ${w.copy.take_pct}%` : ''}${w.copy.sell_with ? ', and sells when it sells' : ''}.`
+            : 'No copy button on its buys.')),
+        el('div', { class: 'row' },
+          el('button', { class: 'link', type: 'button', onclick: () => copySettings(w, r.copy_limits || { min_usd: 5, max_usd: 10000 }) }, w.copy ? 'Copy settings' : 'Add a copy button'),
+          el('button', { class: 'link', type: 'button', onclick: () => unfollow(w) }, 'Stop following')))));
       $('f-trades').replaceChildren(...(r.trades.length ? r.trades.map(tradeItem)
         : [el('li', { class: 'small muted' }, r.wallets.length ? 'No trades since you followed them. New ones show here, and in your alerts, within seconds.' : 'Follow a wallet to see its trades here.')]));
       first = false;
       $('f-src').textContent = `Source: ${r.source}. ${r.note}`;
     } catch (err) { if (err.status !== 401) say('f-msg', err.message, 'bad'); }
+  }
+
+  /**
+   * A copy button on a wallet's buy alerts: the buy prefilled with this amount and these exits, for your own wallet
+   * to sign. RektBull never buys from an alert. The stop-loss can also sell when the wallet sells.
+   */
+  async function copySettings(w, limits) {
+    const c = w.copy || { usd: 25, stop_pct: 30, take_pct: null, sell_with: true };
+    const usd = prompt(`Copy button on ${w.label || short(w.address)}'s buys: how many dollars a copy? ($${limits.min_usd} to $${limits.max_usd.toLocaleString('en-US')}; leave empty to remove the button)`, String(c.usd));
+    if (usd === null) return;
+    try {
+      if (!usd.trim()) {
+        await api('PUT', `/v1/wallet-tracker/wallets/${w.id}/copy`, { usd: null });
+        say('f-msg', 'Copy button removed.', 'ok');
+        return await load();
+      }
+      const stop = prompt('Every copy carries a stop-loss. At down what percent?', String(c.stop_pct));
+      if (stop === null) return;
+      const take = prompt('A take-profit at up what percent? (leave empty for none)', c.take_pct ? String(c.take_pct) : '');
+      if (take === null) return;
+      const sellWith = confirm('Should the stop-loss also sell when this wallet sells the coin? It sells at the market, never below the stop-loss\'s floor, while you follow the wallet.');
+      await api('PUT', `/v1/wallet-tracker/wallets/${w.id}/copy`, { usd: Number(usd), stop_pct: Number(stop), take_pct: take.trim() ? Number(take) : null, sell_with: sellWith });
+      say('f-msg', 'Saved. Its next buy alert carries a copy button: the buy is prefilled, and your wallet signs it.', 'ok');
+      await load();
+    } catch (err) { say('f-msg', err.message, 'bad'); }
   }
 
   async function unfollow(w) {
