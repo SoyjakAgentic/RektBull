@@ -188,15 +188,8 @@ async function blockedReason(sess) {
   if (sess.status !== 'active') return 'the key isn\'t active';
   if (new Date(sess.stop_at) <= new Date()) return 'past the user\'s stop date';
   if (Number(sess.valid_until) * 1000 <= Date.now() + 3600000) return 'Polymarket\'s 180 days are nearly up';
-  const regions = require('../compliance/regions');
-  const list = regions.countries('polymarket');
-  if (!list.length) return null;
-  const c = sess.country; // CA, or CA-ON when the region was known
-  if (!c) return 'the user\'s country isn\'t known';
-  const base = c.slice(0, 2);
-  if (list.includes(base) || list.includes(c)) return `Polymarket isn't offered in ${c}`;
-  if (c.length === 2 && list.some(x => x.startsWith(base + '-'))) return `Polymarket isn't offered in parts of ${base}, and the user's region isn't known`;
-  return null;
+  // The manual list and the automatic one (compliance/regions.js): RektBull's servers send these orders.
+  return require('../compliance/regions').placeBlocked(sess.country, ['polymarket', 'polymarket_auto']); // CA, or CA-ON
 }
 
 /**

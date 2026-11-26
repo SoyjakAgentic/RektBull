@@ -719,7 +719,12 @@ const channelCall = fn => async (req, res) => {
   }
 };
 router.get('/v1/alerts/channels', requireAuth, channelCall(req => alertChannels.list(req.account.id)));
-router.post('/v1/alerts/channels/telegram', requireAuth, channelCall(req => alertChannels.startTelegram(req.account.id)));
+router.post('/v1/alerts/channels/telegram', requireAuth, (req, res, next) => {
+  // No blocks by default; an admin can set some (compliance/regions.js "telegram").
+  const r = require('../compliance/regions').blockedFor(req, 'telegram');
+  if (r.blocked) return res.status(451).json({ error: 'region_blocked', message: r.reason });
+  next();
+}, channelCall(req => alertChannels.startTelegram(req.account.id)));
 router.post('/v1/alerts/channels/email', requireAuth, channelCall(req => alertChannels.startEmail(req.account.id, req.body?.email)));
 router.post('/v1/alerts/channels/push', requireAuth, channelCall(req => alertChannels.addPush(req.account.id, req.body?.subscription, req.body?.label)));
 router.patch('/v1/alerts/channels/:id', requireAuth, channelCall(req => alertChannels.update(req.account.id, req.params.id, req.body || {})));

@@ -12,6 +12,24 @@
  * and never to closing a position, cancelling an order or taking money out:
  * a user can always get out.
  *
+ * The lists (the owner's call, 26 November 2026):
+ *   - hyperliquid, polymarket: manual trading, the user's own wallet signing
+ *     from their own device. Each starts with the venue's own list, so nobody
+ *     is offered a trade the venue would refuse.
+ *   - hyperliquid_auto, polymarket_auto: automatic trading, which RektBull's
+ *     servers send for the user (Hyperliquid's agent and copy trading,
+ *     Polymarket's automatic entries). The venue sees RektBull's server, not
+ *     the user, so these lists are the only check: each also starts with the
+ *     venue's own list, and switching automatic trading on, or each automatic
+ *     order, needs both the manual and the automatic list to allow it
+ *     (refuseAutoIfBlocked, placeBlocked). RektBull never trades for anyone
+ *     where the venue itself wouldn't take the order.
+ *   - telegram: connecting Telegram, and trading from it. No blocks by default;
+ *     an admin can set some. Telegram doesn't tell a bot where a user is, so
+ *     this applies only where the user's own device reaches RektBull (linking
+ *     a chat from the site, the Telegram app's pages); a trade from Telegram
+ *     still needs the venue's lists too.
+ *
  * The country comes from ONE request header, named by GEO_COUNTRY_HEADER and
  * set by the load balancer in front of the app (for example Google Cloud's
  * `X-Client-Geo-Location: {client_region}`, or Cloudflare's `CF-IPCountry`);
@@ -49,10 +67,17 @@ const DEFAULTS = {
   },
 };
 
+const OUT = 'You can still see markets and your positions, cancel orders, close positions and take money out.';
+const AUTO_OUT = 'You can still stop automatic trading, close positions and take money out.';
 const VENUES = {
-  hyperliquid: { name: 'Hyperliquid perps' },
-  polymarket: { name: 'Polymarket' },
+  hyperliquid: { name: 'Hyperliquid perps', what: 'Hyperliquid perps trading', venue: 'hyperliquid', still: OUT },
+  hyperliquid_auto: { name: 'Hyperliquid automatic and copy trading', what: 'Automatic Hyperliquid trading (RektBull trading for you)', venue: 'hyperliquid', still: AUTO_OUT },
+  polymarket: { name: 'Polymarket', what: 'Polymarket trading', venue: 'polymarket', still: OUT },
+  polymarket_auto: { name: 'Polymarket automatic entries', what: 'Automatic Polymarket entries (RektBull trading for you)', venue: 'polymarket', still: AUTO_OUT },
+  telegram: { name: 'Telegram (connecting it, and trading from it)', what: 'RektBull on Telegram', still: 'Everything on the website stays open.' },
 };
+/** A list's default: the venue's own list, or (Telegram) none. */
+const defaultOf = id => (VENUES[id].venue ? DEFAULTS[VENUES[id].venue] : { countries: [], source: 'no blocks by default (the owner\'s call, 26 November 2026)' });
 
 const key = venue => `regions:${venue}`;
 const CODE = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;
@@ -75,11 +100,11 @@ function locate(req) {
 }
 const countryOf = req => locate(req).country;
 
-/** The venue's list: the admin's, or the venue's own. */
+/** A list: the admin's, or its default (the venue's own). */
 function countries(venue) {
   if (!VENUES[venue]) throw new Error(`unknown venue ${venue}`);
   const v = settings.get(key(venue));
-  return Array.isArray(v?.countries) ? v.countries : DEFAULTS[venue].countries;
+  return Array.isArray(v?.countries) ? v.countries : defaultOf(venue).countries;
 }
 
 /**
@@ -91,14 +116,13 @@ function blockedFor(req, venue) {
   const { country, region } = locate(req);
   const out = (blocked, reason = null) => ({ blocked, country, region, reason });
   if (!list.length) return out(false);
-  const name = VENUES[venue].name;
-  const still = 'You can still see markets and your positions, cancel orders, close positions and take money out.';
-  if (!country) return out(true, `${name} trading isn't offered in some countries, and RektBull couldn't tell which country you're connecting from. ${still}`);
-  if (list.includes(country)) return out(true, `${name} trading isn't offered in your country (${country}). ${still}`);
+  const { what: name, still } = VENUES[venue];
+  if (!country) return out(true, `${name} isn't offered in some countries, and RektBull couldn't tell which country you're connecting from. ${still}`);
+  if (list.includes(country)) return out(true, `${name} isn't offered in your country (${country}). ${still}`);
   const regions = list.filter(c => c.startsWith(country + '-'));
   if (regions.length) {
-    if (!region) return out(true, `${name} trading isn't offered in some parts of your country (${regions.join(', ')}), and RektBull couldn't tell which part you're connecting from. ${still}`);
-    if (regions.includes(region)) return out(true, `${name} trading isn't offered where you are (${region}). ${still}`);
+    if (!region) return out(true, `${name} isn't offered in some parts of your country (${regions.join(', ')}), and RektBull couldn't tell which part you're connecting from. ${still}`);
+    if (regions.includes(region)) return out(true, `${name} isn't offered where you are (${region}). ${still}`);
   }
   return out(false);
 }
@@ -114,6 +138,31 @@ function refuseIfBlocked(req, venue) {
   return r;
 }
 
+/** Automatic trading on a venue: refused unless both the venue's manual list and its automatic list allow it. */
+function refuseAutoIfBlocked(req, venue) {
+  refuseIfBlocked(req, venue);
+  return refuseIfBlocked(req, `${venue}_auto`);
+}
+
+/** Where a request comes from, to record (CA-ON when the region is known, else CA), or null. */
+const placeOf = req => { const l = locate(req); return l.region || l.country || null; };
+
+/**
+ * A place recorded earlier (CC, or CC-RR) against lists, for orders RektBull's servers send with no request to
+ * read: why it's blocked, or null. An unknown place is blocked wherever a list has entries (blocks fail closed).
+ */
+function placeBlocked(place, ids) {
+  for (const id of ids) {
+    const list = countries(id);
+    if (!list.length) continue;
+    if (!place) return 'the user\'s country isn\'t known';
+    const base = place.slice(0, 2);
+    if (list.includes(base) || list.includes(place)) return `${VENUES[id].what} isn't offered in ${place}`;
+    if (place.length === 2 && list.some(x => x.startsWith(base + '-'))) return `${VENUES[id].what} isn't offered in parts of ${base}, and the user's region isn't known`;
+  }
+  return null;
+}
+
 /** Checks an admin's list: unique codes (US, or CA-ON for a region), sorted. */
 function checkList(list) {
   if (!Array.isArray(list)) throw Object.assign(new Error('countries must be a list of country codes, such as ["US", "CA-ON"].'), { status: 400 });
@@ -124,7 +173,7 @@ function checkList(list) {
   return out;
 }
 
-/** Sets a venue's list (an empty list means no blocks). `null` goes back to the venue's own list. */
+/** Sets a list (an empty list means no blocks). `null` goes back to its default (the venue's own list). */
 async function set(venue, list, { wallet, reason }) {
   if (!VENUES[venue]) throw Object.assign(new Error('No such venue.'), { status: 404 });
   if (list === null) {
@@ -148,9 +197,15 @@ function adminList(req) {
       : 'GEO_COUNTRY_HEADER isn\'t set, so RektBull can\'t tell anyone\'s country: every venue with blocks is blocked for everyone. Set the load balancer to add a country header first (docs/ADMIN.md).',
     venues: Object.entries(VENUES).map(([id, v]) => {
       const changed = Array.isArray(settings.get(key(id))?.countries);
-      return { id, name: v.name, countries: countries(id), changed, venue_list: DEFAULTS[id].countries, venue_list_source: DEFAULTS[id].source };
+      const d = defaultOf(id);
+      return {
+        id, name: v.name, automatic: id.endsWith('_auto'), countries: countries(id), changed, venue_list: d.countries, venue_list_source: d.source,
+        default_label: v.venue ? 'the venue\'s own list' : 'no blocks',
+        ...(id.endsWith('_auto') ? { note: 'Sent by RektBull\'s servers for the user, so the venue never sees where the user is: this list is the only check. Switching automatic trading on, and each automatic order, also needs the manual list to allow it.' } : {}),
+        ...(id === 'telegram' ? { note: 'Telegram doesn\'t tell a bot where a user is: this applies where the user\'s own device reaches RektBull (connecting Telegram from the site, the Telegram app\'s pages).' } : {}),
+      };
     }),
   };
 }
 
-module.exports = { VENUES, DEFAULTS, locate, countryOf, countries, blockedFor, refuseIfBlocked, RegionBlocked, checkList, set, adminList };
+module.exports = { VENUES, DEFAULTS, locate, countryOf, placeOf, countries, blockedFor, refuseIfBlocked, refuseAutoIfBlocked, placeBlocked, RegionBlocked, checkList, set, adminList };

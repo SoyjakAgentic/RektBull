@@ -122,7 +122,11 @@ Polymarket's geoblock check before it offers to send.
 
 RektBull's region blocks for Polymarket **start with that same list**:
 blocked and close-only alike, plus the places Polymarket's own site limits.
-They're set per venue in the admin panel ([ADMIN.md](ADMIN.md#region-blocks)).
+There are two lists, both starting with it, set in the admin panel
+([ADMIN.md](ADMIN.md#region-blocks)): manual trading, and automatic entries.
+Automatic entries are sent from RektBull's servers, so Polymarket never sees
+where the user is: switching them on, and each entry, need both lists to
+allow it.
 
 - **What they stop:** buying, wallet set-up and approvals.
 - **What they never stop:** selling, redeeming, withdrawing, or sending what

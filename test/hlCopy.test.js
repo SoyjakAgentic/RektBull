@@ -45,6 +45,7 @@ test('copy trading: following a trader, copying their opens and closes, and stop
   t.after(() => db.getPool().end());
   require('../src/admin/settings').reset();
   await require('../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
+  await require('../src/compliance/regions').set('hyperliquid_auto', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const { issueToken } = require('../src/auth/siwe');
   const server = require('../src/app').createApp().listen(0);
   t.after(() => server.close());

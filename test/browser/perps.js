@@ -32,6 +32,7 @@ const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'f
   require('../../src/providers/llama').protocols = async () => [];
   // The browser's requests carry no country, so Hyperliquid's own region list would refuse them: clear it here.
   await require('../../src/compliance/regions').set('hyperliquid', [], { wallet: '0xtest', reason: 'tests run from no country' });
+  await require('../../src/compliance/regions').set('hyperliquid_auto', [], { wallet: '0xtest', reason: 'tests run from no country' });
   const H = require('../../public/hl-core.js');
 
   // The stand-in Hyperliquid: approvals are remembered, so the page sees what it approved.
