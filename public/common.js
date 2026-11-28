@@ -75,10 +75,29 @@
   window.addEventListener('wallet-standard:register-wallet', e => { try { e.detail(standardApi); } catch { /* a broken wallet */ } });
   try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: standardApi })); } catch { /* fine */ }
 
+  /* A phone or tablet: no wallet extensions, but wallet apps with their own browsers. */
+  const isPhone = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  /**
+   * Links that open this page inside a wallet app's own browser, where connecting works: each in the format the
+   * wallet's own documentation gives (docs/MOBILE.md, checked 28 November 2026). A link to an app that isn't
+   * installed opens its download page. Nothing goes through RektBull or anyone else.
+   */
+  function walletApps(href = location.href.split('#')[0]) {
+    const u = encodeURIComponent(href);
+    const ref = encodeURIComponent(location.origin);
+    return [
+      { name: 'MetaMask', chains: 'EVM chains and Solana', href: `https://link.metamask.io/dapp/${href.replace(/^https?:\/\//, '')}` },
+      { name: 'Phantom', chains: 'Solana and EVM chains', href: `https://phantom.com/ul/browse/${u}?ref=${ref}` },
+      { name: 'Coinbase Wallet', chains: 'EVM chains', href: `https://go.cb-w.com/dapp?cb_url=${u}` },
+      { name: 'Trust Wallet', chains: 'EVM chains', href: `https://link.trustwallet.com/open_url?coin_id=60&url=${u}` },
+      { name: 'Solflare', chains: 'Solana', href: `https://solflare.com/ul/v1/browse/${u}?ref=${ref}` },
+    ];
+  }
   const NO_WALLET = 'No wallet found. Install MetaMask, Phantom, Solflare or Coinbase Wallet, or open this page in your wallet\'s browser.';
+  const NO_WALLET_PHONE = 'No wallet in this browser. Tap Account (or Connect wallet) to open this page in your wallet app.';
   setTimeout(() => {
     if (!state.wallets.some(w => w.kind === 'evm') && window.ethereum) { state.wallets.push({ kind: 'evm', info: { uuid: 'injected', name: 'Browser wallet' }, provider: window.ethereum }); render(); }
-    if (!state.wallets.length) say('connect-msg', NO_WALLET, 'bad');
+    if (!state.wallets.length) say('connect-msg', isPhone() ? NO_WALLET_PHONE : NO_WALLET, 'bad');
   }, 400);
 
   function render() {
@@ -124,7 +143,16 @@
     if (!m) return;
     if (!m.hidden) return closeMenu();
     if (!state.token) {
-      if (!state.wallets.length) return toast(NO_WALLET);
+      if (!state.wallets.length) {
+        if (!isPhone()) return toast(NO_WALLET);
+        // On a phone: open this page in a wallet app's browser, where it connects as it would on a computer.
+        m.replaceChildren(
+          el('p', { class: 'acct-menu-note' }, 'No wallet in this browser. Open this page in your wallet app: you sign in there, and nothing is moved or approved.'),
+          ...walletApps().map(w => el('a', { class: 'wallet-app', href: w.href, rel: 'noopener' }, el('strong', {}, w.name), el('span', {}, w.chains))),
+          el('p', { class: 'acct-menu-note' }, 'Not installed? The link opens its download page.'));
+        m.hidden = false;
+        return;
+      }
       m.replaceChildren(el('p', { class: 'acct-menu-note' }, 'Sign in with a wallet. It only proves you own it: nothing is moved or approved.'),
         ...state.wallets.map(w => el('button', { type: 'button', onclick: async () => { closeMenu(); await connect(w); if (connected() && !state.token) await signIn(w.kind); } }, w.info.name)));
       m.hidden = false;
@@ -421,6 +449,7 @@
   }
 
   window.RB = {
+    walletApps, isPhone,
     sendCalls, sleep, markdown, toast,
     state, el, say, api, short, usd, request, switchChain, catalog, priceLabel, paymentMessage, paidLabel,
     onSignedIn: f => listeners.push(f),
