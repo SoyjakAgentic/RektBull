@@ -25,9 +25,36 @@ commands are in [HYPERLIQUID.md](HYPERLIQUID.md) ("From Telegram").
 
 ## Wallets on phones
 
-**Today:** on a phone, a wallet connects inside the wallet app's own browser
-(MetaMask, Phantom, Solflare, Coinbase Wallet, Trust and others inject it).
-In Safari or Chrome with no wallet, the Account tab says so.
+**"Open in your wallet" (built 28 November 2026, the owner's choice).** On a
+phone or tablet with no wallet in the browser, the Account tab (and the
+header's Connect wallet) shows links that open the page you're on inside a
+wallet app's own browser, where it connects as on a computer:
+- **Free, and direct:** there's no licence, no project ID, and nothing goes
+  through RektBull or a third party.
+- **Not installed?** The link opens the app's download page.
+- **Code:** `walletApps()` in `public/common.js`.
+
+Each link is in the format the wallet's own documentation gives (checked
+28 November 2026):
+
+| Wallet | Link | Chains | Documented at |
+|---|---|---|---|
+| MetaMask | `https://link.metamask.io/dapp/{the page, without https://}` | EVM, Solana | docs.metamask.io, metamask-connect/evm/guides/metamask-exclusive/use-deeplinks |
+| Phantom | `https://phantom.com/ul/browse/{encoded page}?ref={encoded site}` | Solana, EVM | docs.phantom.com/phantom-deeplinks/other-methods/browse |
+| Coinbase Wallet | `https://go.cb-w.com/dapp?cb_url={encoded page}` | EVM | docs.cdp.coinbase.com, coinbase-wallet/developer-guidance/mobile-dapp-integration |
+| Trust Wallet | `https://link.trustwallet.com/open_url?coin_id=60&url={encoded page}` | EVM | developer.trustwallet.com/developer/develop-for-trust/deeplinking |
+| Solflare | `https://solflare.com/ul/v1/browse/{encoded page}?ref={encoded site}` | Solana | docs.solflare.com/solflare/technical/deeplinks/other-methods/browse |
+
+**Left out:**
+- **OKX:** its official page gives two conflicting versions of the link.
+- **MetaMask's older `metamask.app.link`:** no longer in MetaMask's docs.
+
+**Caveat:** MetaMask's docs warn that apps with their own embedded browsers
+(X, Discord, Reddit) handle these links inconsistently. From there, the
+user may need to open the page in Safari or Chrome first.
+
+**Before launch:** try each link on a real iPhone and Android phone.
+These links can't be tested end to end without the apps installed.
 
 **WalletConnect, checked 26 November 2026:** `@walletconnect/ethereum-provider`
 2.26.0 and `@reown/appkit-cdn` 1.8.24.
@@ -44,14 +71,10 @@ In Safari or Chrome with no wallet, the Account tab says so.
   and AppKit's CDN build is 424 ES module files (34 MB). Without a build step,
   it would have to be bundled once into one vendor file.
 
-**The plan put to the owner:**
-1. **"Open in your wallet" links now,** with no licence or third party:
-   - MetaMask, Trust Wallet, Coinbase Wallet and OKX for EVM chains;
-   - Phantom for EVM chains and Solana;
-   - Solflare for Solana.
-2. **WalletConnect with the Telegram Mini App,** where leaving Telegram for a
-   wallet's browser would break the flow. The owner decides on the commercial
-   licence as usage nears 500 monthly wallets.
+**The plan, decided by the owner on 28 November 2026:** "Open in your wallet"
+links now (above), and WalletConnect with the Telegram Mini App, where
+leaving Telegram for a wallet's browser would break the flow. The owner
+decides on the commercial licence as usage nears 500 monthly wallets.
 
 ## Tests
 
@@ -60,5 +83,7 @@ In Safari or Chrome with no wallet, the Account tab says so.
 - `test/browser/mobile.js`: run as an iPhone in Chromium.
   - The tab bar is on every page, with the current tab marked.
   - Nothing scrolls sideways, and the menu stays on one line.
-  - Account does what the header's button does.
+  - On a phone with no wallet, Account offers the five wallet-app links, each
+    in its documented format, carrying the page and its query.
+  - On a computer with no wallet, the install message appears instead.
   - Buttons are 44 px tall, and there's no tab bar on a desktop.
